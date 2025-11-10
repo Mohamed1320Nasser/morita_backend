@@ -1,0 +1,369 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-1.0.x", "rhel-openssl-1.1.x"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  admin
+  system
+  tester
+  user
+}
+
+enum OtpType {
+  verify_email
+  forget_email
+}
+
+model User {
+  id                  Int       @id @default(autoincrement()) @db.UnsignedInt
+  fullname            String
+  username            String?   @unique
+  email               String    @unique
+  phone               String?
+  password            String?
+  profileId           Int?      @unique @db.UnsignedInt
+  emailIsVerified     Boolean   @default(false)
+  emailVerifyToken    String?
+  passwordSetupToken  String?   @unique
+  passwordSetupExpiry DateTime? @db.DateTime(0)
+  banned              Boolean   @default(false)
+  role                Role      @default(user)
+  createdAt           DateTime  @default(now()) @db.DateTime(0)
+  updatedAt           DateTime  @default(now()) @updatedAt() @db.DateTime(0)
+  deletedAt           DateTime?
+
+  sessions     Session[]
+  otpRequests  OtpRequest[]
+  files        File[]        @relation("fileUploader")
+  profile      File?         @relation("userProfile", fields: [profileId], references: [id])
+  orders       Order[]       @relation("userOrders")
+  transactions Transaction[] @relation("userTransactions")
+  wallet       Wallet?       @relation("userWallet")
+
+  @@index([email])
+  @@index([role])
+}
+
+model Session {
+  id            Int       @id @default(autoincrement()) @db.UnsignedInt
+  token         String    @unique
+  identifier    String
+  userId        Int       @db.UnsignedInt
+  tenantId      String?
+  companyId     Int?      @db.UnsignedInt
+  source        String?
+  langCode      String?
+  expired       Boolean   @default(false)
+  expired_since DateTime? @db.DateTime(0)
+  createdAt     DateTime  @default(now()) @db.DateTime(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tenantId])
+  @@index([companyId])
+}
+
+model OtpRequest {
+  id        String   @id @default(uuid())
+  userId    Int?     @db.UnsignedInt
+  email     String?
+  otp       String
+  verified  Boolean  @default(false)
+  attempts  Int      @default(0)
+  expiredAt DateTime @default(now()) @db.DateTime(0)
+  createdAt DateTime @default(now()) @db.DateTime(0)
+  type      OtpType
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+}
+
+model File {
+  id         Int      @id @default(autoincrement()) @db.UnsignedInt
+  title      String
+  folder     String
+  size       Int
+  format     String
+  uploadedBy Int      @db.UnsignedInt
+  createdAt  DateTime @default(now()) @db.DateTime(0)
+
+  uploader          User              @relation("fileUploader", fields: [uploadedBy], references: [id], onDelete: Cascade)
+  user              User?             @relation("userProfile")
+  serviceCategories ServiceCategory[] @relation("categoryIcon")
+}
+
+enum PricingUnit {
+  FIXED // One-time flat price
+  PER_LEVEL // Price per level (e.g., 1-99 Firemaking)
+  PER_KILL // Price per boss kill
+  PER_ITEM // Price per item collected
+  PER_HOUR // Hourly rate
+}
+
+enum ModifierType {
+  PERCENTAGE // +10%, +20%, etc.
+  FIXED // +50M, -10M, etc.
+}
+
+enum ModifierDisplayType {
+  NORMAL // Standard modifier display
+  UPCHARGE // Highlighted as upcharge (red)
+  NOTE // Highlighted as note (green)
+  WARNING // Highlighted as warning (yellow)
+}
+
+enum PaymentType {
+  CRYPTO // Bitcoin, ETH, etc.
+  NON_CRYPTO // PayPal, Bank, etc.
+}
+
+enum AccountStatus {
+  AVAILABLE // Ready to use
+  RESERVED // Reserved for order
+  IN_USE // Currently being used
+  COMPLETED // Service completed
+}
+
+enum OrderStatus {
+  PENDING // Order created, awaiting processing
+  IN_PROGRESS // Worker assigned, in progress
+  COMPLETED // Service completed
+  CANCELLED // Order cancelled
+  REFUNDED // Order refunded
+}
+
+enum TransactionType {
+  DEPOSIT // User adds money
+  WITHDRAWAL // User withdraws money
+  PAYMENT // User pays for service
+  REFUND // Refund issued
+}
+
+model ServiceCategory {
+  id           String    @id @default(uuid())
+  name         String
+  slug         String    @unique
+  emoji        String?
+  description  String?   @db.Text
+  iconId       Int?      @db.UnsignedInt
+  active       Boolean   @default(true)
+  displayOrder Int       @default(0)
+  createdAt    DateTime  @default(now()) @db.DateTime(0)
+  updatedAt    DateTime  @default(now()) @updatedAt() @db.DateTime(0)
+  deletedAt    DateTime?
+
+  icon File? @relation("categoryIcon", fields: [iconId], references: [id])
+
+  services Service[] @relation("serviceCategory")
+  accounts Account[] @relation("accountCategory")
+
+  @@index([slug])
+  @@index([active])
+  @@index([displayOrder])
+}
+
+model Service {
+  id           String    @id @default(uuid())
+  categoryId   String
+  name         String
+  slug         String
+  description  String?   @db.Text
+  emoji        String?
+  active       Boolean   @default(true)
+  displayOrder Int       @default(0)
+  createdAt    DateTime  @default(now()) @db.DateTime(0)
+  updatedAt    DateTime  @default(now()) @updatedAt() @db.DateTime(0)
+  deletedAt    DateTime?
+
+  category       ServiceCategory @relation("serviceCategory", fields: [categoryId], references: [id])
+  pricingMethods PricingMethod[] @relation("servicePricingMethods")
+  accounts       Account[]       @relation("accountService")
+  orders         Order[]         @relation("serviceOrders")
+
+  @@unique([categoryId, slug])
+  @@index([categoryId])
+  @@index([active])
+  @@index([displayOrder])
+}
+
+model PricingMethod {
+  id           String      @id @default(uuid())
+  serviceId    String
+  name         String
+  description  String?     @db.Text
+  basePrice    Decimal     @db.Decimal(10, 2)
+  pricingUnit  PricingUnit @default(FIXED)
+  startLevel   Int? // Starting level for level-based pricing (e.g., 1, 40, 50)
+  endLevel     Int? // Ending level for level-based pricing (e.g., 40, 50, 99)
+  displayOrder Int         @default(0)
+  active       Boolean     @default(true)
+  createdAt    DateTime    @default(now()) @db.DateTime(0)
+  updatedAt    DateTime    @default(now()) @updatedAt() @db.DateTime(0)
+  deletedAt    DateTime?
+
+  service      Service           @relation("servicePricingMethods", fields: [serviceId], references: [id])
+  modifiers    PricingModifier[] @relation("pricingMethodModifiers")
+  methodPrices MethodPrice[]     @relation("pricingMethodPrices")
+  orders       Order[]           @relation("pricingMethodOrders")
+
+  @@index([serviceId])
+  @@index([active])
+  @@index([displayOrder])
+  @@index([startLevel, endLevel])
+}
+
+model PricingModifier {
+  id           String              @id @default(uuid())
+  methodId     String
+  name         String
+  modifierType ModifierType
+  value        Decimal             @db.Decimal(10, 2)
+  condition    String?             @db.Text // JSON string for complex conditions
+  displayType  ModifierDisplayType @default(NORMAL) // How to display this modifier
+  priority     Int                 @default(0)
+  active       Boolean             @default(true)
+  createdAt    DateTime            @default(now()) @db.DateTime(0)
+  updatedAt    DateTime            @default(now()) @updatedAt() @db.DateTime(0)
+
+  method PricingMethod @relation("pricingMethodModifiers", fields: [methodId], references: [id])
+
+  @@index([methodId])
+  @@index([priority])
+  @@index([active])
+}
+
+model PaymentMethod {
+  id        String      @id @default(uuid())
+  name      String
+  type      PaymentType
+  active    Boolean     @default(true)
+  createdAt DateTime    @default(now()) @db.DateTime(0)
+  updatedAt DateTime    @default(now()) @updatedAt() @db.DateTime(0)
+  deletedAt DateTime?
+
+  methodPrices MethodPrice[] @relation("paymentMethodPrices")
+  orders       Order[]       @relation("paymentMethodOrders")
+
+  @@index([type])
+  @@index([active])
+}
+
+model MethodPrice {
+  id              String   @id @default(uuid())
+  methodId        String
+  paymentMethodId String
+  price           Decimal  @db.Decimal(10, 2)
+  createdAt       DateTime @default(now()) @db.DateTime(0)
+  updatedAt       DateTime @default(now()) @updatedAt() @db.DateTime(0)
+
+  method        PricingMethod @relation("pricingMethodPrices", fields: [methodId], references: [id])
+  paymentMethod PaymentMethod @relation("paymentMethodPrices", fields: [paymentMethodId], references: [id])
+
+  @@unique([methodId, paymentMethodId])
+  @@index([methodId])
+  @@index([paymentMethodId])
+}
+
+// Future Models (Schema only - not implemented in this sprint)
+model Account {
+  id          String        @id @default(uuid())
+  categoryId  String
+  serviceId   String
+  accountData Json // Encrypted account credentials
+  status      AccountStatus @default(AVAILABLE)
+  reservedAt  DateTime?
+  completedAt DateTime?
+  createdAt   DateTime      @default(now()) @db.DateTime(0)
+  updatedAt   DateTime      @default(now()) @updatedAt() @db.DateTime(0)
+
+  category ServiceCategory @relation("accountCategory", fields: [categoryId], references: [id])
+  service  Service         @relation("accountService", fields: [serviceId], references: [id])
+  orders   Order[]         @relation("accountOrders")
+
+  @@index([categoryId])
+  @@index([serviceId])
+  @@index([status])
+}
+
+model Order {
+  id              String      @id @default(uuid())
+  userId          Int         @db.UnsignedInt
+  serviceId       String
+  methodId        String
+  paymentMethodId String
+  accountId       String?
+  totalPrice      Decimal     @db.Decimal(10, 2)
+  status          OrderStatus @default(PENDING)
+  metadata        Json? // Additional order data
+  completedAt     DateTime?
+  createdAt       DateTime    @default(now()) @db.DateTime(0)
+  updatedAt       DateTime    @default(now()) @updatedAt() @db.DateTime(0)
+
+  user          User          @relation("userOrders", fields: [userId], references: [id])
+  service       Service       @relation("serviceOrders", fields: [serviceId], references: [id])
+  method        PricingMethod @relation("pricingMethodOrders", fields: [methodId], references: [id])
+  paymentMethod PaymentMethod @relation("paymentMethodOrders", fields: [paymentMethodId], references: [id])
+  account       Account?      @relation("accountOrders", fields: [accountId], references: [id])
+  transactions  Transaction[] @relation("orderTransactions")
+
+  @@index([userId])
+  @@index([serviceId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Transaction {
+  id        String          @id @default(uuid())
+  userId    Int             @db.UnsignedInt
+  orderId   String?
+  type      TransactionType
+  amount    Decimal         @db.Decimal(10, 2)
+  currency  String          @default("USD")
+  status    String          @default("PENDING")
+  createdAt DateTime        @default(now()) @db.DateTime(0)
+
+  user  User   @relation("userTransactions", fields: [userId], references: [id])
+  order Order? @relation("orderTransactions", fields: [orderId], references: [id])
+
+  @@index([userId])
+  @@index([orderId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model Wallet {
+  id        String   @id @default(uuid())
+  userId    Int      @unique @db.UnsignedInt
+  balance   Decimal  @default(0) @db.Decimal(10, 2)
+  currency  String   @default("USD")
+  createdAt DateTime @default(now()) @db.DateTime(0)
+  updatedAt DateTime @default(now()) @updatedAt() @db.DateTime(0)
+
+  user User @relation("userWallet", fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model DiscordMessage {
+  id          String    @id @default(uuid())
+  messageId   String    @unique
+  channelId   String
+  messageType String // "CATEGORY_LIST", "SERVICE_DETAIL", "GROUPED_CATEGORIES"
+  categoryId  String?
+  serviceId   String?
+  groupIndex  Int? // For grouped messages (0, 1, 2, etc.)
+  createdAt   DateTime  @default(now()) @db.DateTime(0)
+  expiresAt   DateTime? @db.DateTime(0)
+
+  @@index([messageId])
+  @@index([channelId])
+  @@index([messageType])
+}

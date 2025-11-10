@@ -1,0 +1,48 @@
+import { ButtonBuilder, ButtonStyle, ActionRowBuilder } from "discord.js";
+import { Service } from "../../types/discord.types";
+
+export class ServiceButtonComponent {
+    /**
+     * Create service detail button
+     */
+    static createServiceDetailButton(
+        service: Service
+    ): ActionRowBuilder<ButtonBuilder> {
+        const button = new ButtonBuilder()
+            .setCustomId(`pricing_service_${service.id}_details`)
+            .setLabel(`→ ${service.name} ←`)
+            .setStyle(ButtonStyle.Secondary);
+
+        return new ActionRowBuilder<ButtonBuilder>().addComponents(button);
+    }
+
+    /**
+     * Create "Click here for more information" button
+     */
+    static createMoreInfoButton(
+        serviceId: string
+    ): ActionRowBuilder<ButtonBuilder> {
+        const button = new ButtonBuilder()
+            .setCustomId(`pricing_service_${serviceId}_more_info`)
+            .setLabel("Click here for more information")
+            .setStyle(ButtonStyle.Link)
+            .setURL("https://morita-gaming.com"); // Replace with actual service page URL
+
+        return new ActionRowBuilder<ButtonBuilder>().addComponents(button);
+    }
+
+    /**
+     * Create order now button
+     */
+    static createOrderNowButton(
+        serviceId: string
+    ): ActionRowBuilder<ButtonBuilder> {
+        const button = new ButtonBuilder()
+            .setCustomId(`pricing_service_${serviceId}_order`)
+            .setLabel("Order Now")
+            .setStyle(ButtonStyle.Success)
+            .setEmoji("🛒");
+
+        return new ActionRowBuilder<ButtonBuilder>().addComponents(button);
+    }
+}
