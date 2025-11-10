@@ -5,9 +5,7 @@ config();
 
 export const discordConfig = {
     // Bot credentials
-    token:
-        process.env.DISCORD_BOT_TOKEN ||
-        "your-discord-bot-token-here",
+    token: process.env.DISCORD_BOT_TOKEN || "",
     clientId: process.env.DISCORD_CLIENT_ID || "1431962373719326781",
     guildId: process.env.DISCORD_GUILD_ID || "1431960124699709482",
 
