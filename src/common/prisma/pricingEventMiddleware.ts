@@ -2,12 +2,26 @@ import { Prisma } from "@prisma/client";
 import { pricingEventService } from "../../discord-bot/services/pricingEvent.service";
 import logger from "../loggers";
 
+// Type definitions for Prisma middleware (compatible with Prisma v4+)
+type MiddlewareParams = {
+    model?: string;
+    action: string;
+    args: any;
+    dataPath: string[];
+    runInTransaction: boolean;
+};
+
+type Middleware = (
+    params: MiddlewareParams,
+    next: (params: MiddlewareParams) => Promise<any>
+) => Promise<any>;
+
 /**
  * Prisma middleware to emit events when pricing-related data changes
  * This enables real-time Discord updates without polling
  */
-export function pricingEventMiddleware(): Prisma.Middleware {
-    return async (params, next) => {
+export function pricingEventMiddleware(): Middleware {
+    return async (params: MiddlewareParams, next) => {
         const result = await next(params);
 
         // Only emit events for successful write operations
@@ -34,7 +48,7 @@ export function pricingEventMiddleware(): Prisma.Middleware {
  * Emit appropriate event based on model and action
  */
 async function emitEventForModel(
-    params: Prisma.MiddlewareParams,
+    params: MiddlewareParams,
     result: any
 ): Promise<void> {
     const model = params.model;
@@ -88,7 +102,7 @@ async function emitEventForModel(
  */
 async function handleCategoryEvent(
     action: "created" | "updated" | "deleted",
-    params: Prisma.MiddlewareParams,
+    params: MiddlewareParams,
     result: any
 ): Promise<void> {
     let categoryId: string | undefined;
@@ -116,7 +130,7 @@ async function handleCategoryEvent(
  */
 async function handleServiceEvent(
     action: "created" | "updated" | "deleted",
-    params: Prisma.MiddlewareParams,
+    params: MiddlewareParams,
     result: any
 ): Promise<void> {
     let serviceId: string | undefined;
@@ -148,7 +162,7 @@ async function handleServiceEvent(
  */
 async function handlePricingMethodEvent(
     action: "created" | "updated" | "deleted",
-    params: Prisma.MiddlewareParams,
+    params: MiddlewareParams,
     result: any
 ): Promise<void> {
     let methodId: string | undefined;
@@ -180,7 +194,7 @@ async function handlePricingMethodEvent(
  */
 async function handlePricingModifierEvent(
     action: "created" | "updated" | "deleted",
-    params: Prisma.MiddlewareParams,
+    params: MiddlewareParams,
     result: any
 ): Promise<void> {
     let modifierId: string | undefined;
