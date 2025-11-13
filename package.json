@@ -28,7 +28,6 @@
         "db:studio": "npx prisma studio",
         "db:push": "npx prisma db push",
         "db:seed": "npx prisma db seed",
-        "seed:industries": "ts-node scripts/seed-industries.ts",
         "seed:gaming": "ts-node src/scripts/seed-gaming-services.ts",
         "docs:generate": "ts-node scripts/simple-docs-generator.ts",
         "docs:serve": "ts-node scripts/simple-docs-generator.ts"

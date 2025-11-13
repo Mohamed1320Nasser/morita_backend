@@ -107,7 +107,8 @@ import { startDiscordBot } from "./discord-bot/botStarter";
             `server running on http://${Environment.Server.host}:${Environment.Server.port}/`
         );
 
-        // Start Discord bot after server is ready
+        logger.info("Starting Discord bot...");
         await startDiscordBot();
+        logger.info("Discord bot started successfully");
     });
 })();
