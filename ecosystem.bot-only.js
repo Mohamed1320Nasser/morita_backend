@@ -23,8 +23,11 @@ module.exports = {
       // Note: env_file is not supported by PM2
       // The .env file is loaded by dotenv.config() in src/discord-bot/start.ts
 
+      // Log files - ensure bot-logs/ directory exists before starting
       error_file: './bot-logs/bot-error.log',
       out_file: './bot-logs/bot-out.log',
+      // Also output to PM2 logs (for immediate visibility)
+      log_type: 'json',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: true,
       autorestart: true,
