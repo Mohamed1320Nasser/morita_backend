@@ -52,7 +52,26 @@ if (!discordConfig.validate()) {
     logger.error(
         "Discord bot configuration is invalid. Please check your environment variables."
     );
-    process.exit(1);
+
+    // Only exit if running as standalone script (not when imported from app.ts)
+    // Check if this file is being run directly (standalone mode)
+    // When imported, the main script path won't match this file
+    const mainScript = process.argv[1] || "";
+    const isStandalone =
+        mainScript.includes("discord-bot/start") ||
+        mainScript.includes("discord-bot\\start") ||
+        mainScript.endsWith("start.js");
+
+    if (isStandalone) {
+        // Running standalone - exit process
+        process.exit(1);
+    } else {
+        // Being imported from app.ts - throw error instead of exiting
+        // This allows app.ts to catch and handle the error gracefully
+        throw new Error(
+            "Discord bot configuration is invalid. Please check your environment variables."
+        );
+    }
 }
 console.log("[BOT-START] ✅ Discord configuration validated");
 
