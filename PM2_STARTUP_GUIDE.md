@@ -1,12 +1,35 @@
 # How to Make Discord Bot Always Run with PM2
 
-## Quick Start (Recommended)
+## Quick Start
 
-Use the automated startup script:
+### Option 1: Direct PM2 Start (Recommended - if ecosystem file doesn't work)
+
+If PM2 shows process as `ecosystem.bot-only` instead of `morita-bot`, use this:
+
+```bash
+cd /home/morita/public_html/morita_backend
+./start-bot-direct.sh
+```
+
+Or:
+```bash
+npm run start:pm2:bot:direct
+```
+
+This starts the bot directly without using the ecosystem file.
+
+### Option 2: Ecosystem File Start
+
+Try this first, but if PM2 shows wrong process name, use Option 1:
 
 ```bash
 cd /home/morita/public_html/morita_backend
 ./start-bot-pm2.sh
+```
+
+Or:
+```bash
+npm run start:pm2:bot:setup
 ```
 
 This script will:
@@ -153,6 +176,19 @@ pm2 monit
 ---
 
 ## Troubleshooting
+
+### PM2 Shows Wrong Process Name (`ecosystem.bot-only` instead of `morita-bot`)?
+
+**Problem:** PM2 is treating the ecosystem file as a script instead of reading the config.
+
+**Solution:** Use the direct startup method:
+```bash
+./start-bot-direct.sh
+# or
+npm run start:pm2:bot:direct
+```
+
+This bypasses the ecosystem file and starts the bot directly with all PM2 options specified.
 
 ### Bot Not Starting?
 

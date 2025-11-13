@@ -1,13 +1,14 @@
 #!/bin/bash
 
-# Discord Bot PM2 Startup Script
-# This script ensures everything is set up correctly before starting with PM2
+# Discord Bot Direct PM2 Startup (Alternative Method)
+# This starts the bot directly without using ecosystem file
+# Use this if ecosystem.bot-only.js doesn't work correctly
 
 # Change to the script's directory
 cd "$(dirname "$0")"
 
 echo "=========================================="
-echo "Discord Bot PM2 Startup Script"
+echo "Discord Bot Direct PM2 Startup"
 echo "=========================================="
 
 # 1. Create bot-logs directory if it doesn't exist
@@ -24,7 +25,6 @@ fi
 echo "2. Checking .env file..."
 if [ ! -f ".env" ]; then
     echo "   ⚠️  WARNING: .env file not found!"
-    echo "   Please create .env file from discord-bot.env.example"
     exit 1
 else
     echo "   ✅ .env file exists"
@@ -44,43 +44,43 @@ else
     echo "   ✅ Build files exist"
 fi
 
-# 4. Stop and delete ALL existing bot processes (handle both morita-bot and ecosystem.bot-only names)
+# 4. Stop and delete ALL existing bot processes
 echo "4. Stopping existing bot processes..."
-# Stop and delete by name (morita-bot)
 pm2 stop morita-bot 2>/dev/null
 pm2 delete morita-bot 2>/dev/null
-# Stop and delete by name (ecosystem.bot-only - old incorrect name)
 pm2 stop ecosystem.bot-only 2>/dev/null
 pm2 delete ecosystem.bot-only 2>/dev/null
-# Also delete by ID 0 if it exists (the process shown in your screenshot)
 pm2 delete 0 2>/dev/null
-# Kill all PM2 processes to be safe
 pm2 kill 2>/dev/null
 sleep 1
 echo "   ✅ All old processes cleaned up"
 
-# 5. Start bot with PM2 (using --update-env to ensure fresh start)
-echo "5. Starting bot with PM2..."
-pm2 start ecosystem.bot-only.js --update-env
+# 5. Start bot directly with PM2 (not using ecosystem file)
+echo "5. Starting bot directly with PM2..."
+pm2 start build/discord-bot/start.js \
+    --name morita-bot \
+    --cwd "$(pwd)" \
+    --error bot-logs/bot-error.log \
+    --output bot-logs/bot-out.log \
+    --log-date-format "YYYY-MM-DD HH:mm:ss Z" \
+    --merge-logs \
+    --autorestart \
+    --max-restarts 10 \
+    --min-uptime 10s \
+    --max-memory-restart 300M
 
-# 6. Wait a moment and check status
+# 6. Wait and check status
 sleep 3
 echo ""
 echo "6. Bot status:"
-pm2 status
+pm2 status morita-bot
 
-# 7. Show logs (try both process names)
+# 7. Show logs
 echo ""
 echo "=========================================="
 echo "Recent bot logs (last 30 lines):"
 echo "=========================================="
-# Try morita-bot first, if that fails try ecosystem.bot-only
-if pm2 logs morita-bot --lines 30 --nostream 2>/dev/null; then
-    echo "✅ Logs found for morita-bot"
-else
-    echo "⚠️  Trying ecosystem.bot-only process..."
-    pm2 logs ecosystem.bot-only --lines 30 --nostream 2>/dev/null || echo "No logs found"
-fi
+pm2 logs morita-bot --lines 30 --nostream
 
 echo ""
 echo "=========================================="
@@ -90,10 +90,5 @@ echo "Useful commands:"
 echo "  pm2 status              - Check bot status"
 echo "  pm2 logs morita-bot     - View live logs"
 echo "  pm2 restart morita-bot  - Restart bot"
-echo "  pm2 stop morita-bot     - Stop bot"
-echo ""
-echo "To save PM2 config (auto-start on reboot):"
-echo "  pm2 save"
-echo "  pm2 startup"
 echo "=========================================="
 
