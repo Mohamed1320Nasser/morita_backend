@@ -83,8 +83,8 @@ export default class PricingCalculatorController {
             serviceName: result.service?.name,
             serviceEmoji: result.service?.emoji,
             hasLevels: !!result.levels,
-            hasPriceBreakdown: !!result.priceBreakdown,
-            breakdownLength: result.priceBreakdown?.length
+            hasMethodOptions: !!result.methodOptions,
+            methodOptionsLength: result.methodOptions?.length
         });
 
         const response = {

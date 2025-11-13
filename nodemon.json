@@ -1,6 +1,6 @@
 {
     "watch": ["src"],
     "ext": "ts,json",
-    "ignore": ["src/**/*.spec.ts", "src/**/*.test.ts"],
-    "delay": "1000"
+    "ignore": ["src/**/*.spec.ts"],
+    "exec": "ts-node --files ./src/app.ts"
 }

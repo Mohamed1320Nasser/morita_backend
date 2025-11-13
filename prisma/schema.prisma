@@ -199,7 +199,7 @@ model PricingMethod {
   serviceId    String
   name         String
   description  String?     @db.Text
-  basePrice    Decimal     @db.Decimal(10, 2)
+  basePrice    Decimal     @db.Decimal(18, 8)
   pricingUnit  PricingUnit @default(FIXED)
   startLevel   Int? // Starting level for level-based pricing (e.g., 1, 40, 50)
   endLevel     Int? // Ending level for level-based pricing (e.g., 40, 50, 99)
@@ -366,4 +366,13 @@ model DiscordMessage {
   @@index([messageId])
   @@index([channelId])
   @@index([messageType])
+}
+
+// OSRS Experience Table (levels 1-99)
+model ExperienceTable {
+  level      Int @id @db.UnsignedTinyInt // 1-99
+  experience BigInt // Total XP required for this level
+  difference Int // XP difference from previous level
+  
+  @@index([level])
 }

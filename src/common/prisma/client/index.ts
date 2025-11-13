@@ -8,11 +8,11 @@ function convertDecimalsToNumbers(obj: any): any {
 
     if (obj instanceof Decimal) {
         try {
-            const num = obj.toNumber();
-            return Number(num.toFixed(2));
+            // Convert to number without rounding to preserve precision
+            return obj.toNumber();
         } catch {
-            const num = Number(obj.toString());
-            return Number(num.toFixed(2));
+            // Fallback: convert via string
+            return Number(obj.toString());
         }
     }
 

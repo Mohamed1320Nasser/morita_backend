@@ -98,80 +98,94 @@ export async function handleCalculatorModal(
                 inline: false,
             });
 
-            // Add price breakdown by level ranges
-            if (data.priceBreakdown.length > 0) {
-                const breakdownLines: string[] = [];
-                for (const range of data.priceBreakdown) {
-                    const rangeName =
-                        range.methodName.length > 30
-                            ? range.methodName.substring(0, 27) + "..."
-                            : range.methodName;
-                    const price = range.totalPrice.toFixed(2);
-                    breakdownLines.push(`**${rangeName}**`);
-                    breakdownLines.push(
-                        `\`\`\`ansi\n\u001b[36m${range.startLevel}  -  ${range.endLevel} = $${price}\u001b[0m\n\`\`\``
-                    );
+            // Add each method option as a separate choice
+            if (data.methodOptions && data.methodOptions.length > 0) {
+                // Build beautiful pricing options display
+                const priceLines: string[] = [];
+
+                for (const method of data.methodOptions) {
+                    const indicator = method.isCheapest ? "✅" : "◻️";
+                    const price = method.finalPrice.toFixed(2);
+                    const rate = method.basePrice.toFixed(8);
+
+                    // Create visually appealing line with proper spacing
+                    const methodName = method.methodName.padEnd(30, ' ');
+                    priceLines.push(`${indicator} **${method.methodName}**`);
+                    priceLines.push(`   💰 Price: \`$${price}\` • Rate: \`${rate} $/XP\``);
+                    priceLines.push(''); // Empty line for spacing
                 }
 
+                // Remove last empty line
+                priceLines.pop();
+
                 embed.addFields({
-                    name: "💵 Price Breakdown",
-                    value: breakdownLines.join("\n").substring(0, 1024),
+                    name: "💵 Pricing Options",
+                    value: priceLines.join('\n'),
                     inline: false,
                 });
+
+                // Show beautiful breakdown for cheapest option
+                const cheapest = data.methodOptions.find(m => m.isCheapest);
+                if (cheapest) {
+                    const hasModifiers = cheapest.modifiersTotal > 0;
+
+                    // Build beautiful breakdown
+                    let breakdown = `\`\`\`yml\n`;
+                    breakdown += `Service:        ${data.service.name}\n`;
+                    breakdown += `Method:         ${cheapest.methodName}\n`;
+                    breakdown += `─────────────────────────────────────────\n`;
+                    breakdown += `Levels:         ${data.levels.start} → ${data.levels.end}\n`;
+                    breakdown += `XP Required:    ${data.levels.formattedXp}\n`;
+                    breakdown += `Rate:           ${cheapest.basePrice.toFixed(8)} $/XP\n`;
+                    breakdown += `─────────────────────────────────────────\n`;
+                    breakdown += `Base Cost:      $${cheapest.subtotal.toFixed(2)}\n`;
+
+                    if (hasModifiers) {
+                        const upcharges = cheapest.modifiers.filter(m => m.displayType === 'UPCHARGE' && m.applied);
+                        for (const mod of upcharges) {
+                            const modValue = mod.type === 'PERCENTAGE'
+                                ? `+${mod.value}%`
+                                : `+$${mod.value.toFixed(2)}`;
+                            breakdown += `${mod.name}:`.padEnd(16) + `${modValue}\n`;
+                        }
+                        breakdown += `─────────────────────────────────────────\n`;
+                    }
+
+                    breakdown += `\`\`\``;
+
+                    // Add final price in ANSI color
+                    breakdown += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${cheapest.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
+
+                    embed.addFields({
+                        name: "✅ Recommended Option — Full Breakdown",
+                        value: breakdown,
+                        inline: false,
+                    });
+                }
             }
 
-            // Add upcharges if any
-            const upcharges = data.modifiers.filter(
-                (m: any) => m.displayType === "UPCHARGE" && m.applied
-            );
-            if (upcharges.length > 0) {
-                const upchargeLines = upcharges.map((m: any) => `⚠️ ${m.name}`);
-                embed.addFields({
-                    name: "⚠️ Additional Charges",
-                    value: upchargeLines.join("\n").substring(0, 1024),
-                    inline: false,
-                });
-            }
+            // Create action buttons for the result
+            const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
-            // Add notes if any
-            const notes = data.modifiers.filter(
-                (m: any) => m.displayType === "NOTE"
-            );
-            if (notes.length > 0) {
-                const noteLines = notes.slice(0, 3).map((m: any) => `→ ${m.name}`);
-                embed.addFields({
-                    name: "📝 Important Notes",
-                    value: noteLines.join("\n").substring(0, 1024),
-                    inline: false,
-                });
-            }
+            const recalculateButton = new ButtonBuilder()
+                .setCustomId(`recalculate_${serviceId}`)
+                .setLabel('Recalculate')
+                .setEmoji('🔄')
+                .setStyle(ButtonStyle.Secondary);
 
-            // Add total price section
-            const totalSection =
-                `**Subtotal:** $${data.totals.subtotal.toFixed(2)}\n` +
-                (data.totals.modifiersTotal > 0
-                    ? `**Modifiers:** +$${data.totals.modifiersTotal.toFixed(2)}\n`
-                    : "") +
-                `\`\`\`ansi\n\u001b[1;32mTotal: $${data.totals.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
+            const orderButton = new ButtonBuilder()
+                .setCustomId(`order_from_price_${serviceId}`)
+                .setLabel('Place Order')
+                .setEmoji('🛒')
+                .setStyle(ButtonStyle.Success);
 
-            embed.addFields({
-                name: "💰 Total Price",
-                value: totalSection,
-                inline: false,
-            });
-
-            // Add GP cost if available
-            if (data.totals.gpCost) {
-                embed.addFields({
-                    name: "🪙 GP Cost",
-                    value: `\`\`\`ansi\n\u001b[33m${data.totals.gpCost.toLocaleString()} GP\u001b[0m\n\`\`\``,
-                    inline: false,
-                });
-            }
+            const actionRow = new ActionRowBuilder()
+                .addComponents(recalculateButton, orderButton);
 
             // Send the result
             await interaction.editReply({
                 embeds: [embed.toJSON() as any],
+                components: [actionRow],
             });
 
             logger.info(

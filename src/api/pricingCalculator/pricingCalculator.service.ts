@@ -38,6 +38,30 @@ export interface LevelRangeCalculationRequest {
     endLevel: number;
 }
 
+export interface MethodOption {
+    methodId: string;
+    methodName: string;
+    basePrice: number; // Per XP
+    pricingUnit: string;
+    levelRanges: Array<{
+        startLevel: number;
+        endLevel: number;
+        xpRequired: number;
+        totalPrice: number;
+    }>;
+    modifiers: Array<{
+        name: string;
+        type: string;
+        displayType: string;
+        value: number;
+        applied: boolean;
+    }>;
+    subtotal: number;
+    modifiersTotal: number;
+    finalPrice: number;
+    isCheapest: boolean;
+}
+
 export interface LevelRangeCalculationResult {
     service: {
         id: string;
@@ -50,30 +74,7 @@ export interface LevelRangeCalculationResult {
         totalXp: number;
         formattedXp: string;
     };
-    priceBreakdown: Array<{
-        methodName: string;
-        startLevel: number;
-        endLevel: number;
-        xpRequired: number;
-        basePrice: number;
-        pricingUnit: string;
-        totalPrice: number;
-    }>;
-    modifiers: Array<{
-        name: string;
-        type: string;
-        displayType: string;
-        value: number;
-        applied: boolean;
-    }>;
-    totals: {
-        totalXp: number;
-        totalXpFormatted: string;
-        subtotal: number;
-        modifiersTotal: number;
-        finalPrice: number;
-        gpCost?: number; // If service has GP conversion rate
-    };
+    methodOptions: MethodOption[];
 }
 
 @Service()
@@ -316,7 +317,7 @@ export default class PricingCalculatorService {
 
     /**
      * Calculate price for a level range (e.g., Agility 70-99)
-     * This is used for the pricing calculator feature
+     * Returns separate pricing options for each method, with cheapest marked
      */
     async calculateLevelRangePrice(
         request: LevelRangeCalculationRequest
@@ -334,28 +335,12 @@ export default class PricingCalculatorService {
             throw new BadRequestError("Start level must be less than end level");
         }
 
-        // Get service with pricing methods
+        // Get service
         const service = await prisma.service.findFirst({
             where: {
                 id: serviceId,
                 active: true,
                 deletedAt: null,
-            },
-            include: {
-                pricingMethods: {
-                    where: {
-                        active: true,
-                        deletedAt: null,
-                        pricingUnit: "PER_LEVEL", // Only level-based pricing
-                    },
-                    include: {
-                        modifiers: {
-                            where: { active: true },
-                            orderBy: { priority: "asc" },
-                        },
-                    },
-                    orderBy: { displayOrder: "asc" },
-                },
             },
         });
 
@@ -363,130 +348,155 @@ export default class PricingCalculatorService {
             throw new NotFoundError("Service not found");
         }
 
+        // Get pricing methods using raw SQL to avoid Prisma Decimal precision bug
+        const pricingMethodsRaw: any[] = await prisma.$queryRawUnsafe(`
+            SELECT
+                id,
+                name,
+                CAST(basePrice AS CHAR) as basePrice,
+                pricingUnit,
+                startLevel,
+                endLevel,
+                displayOrder
+            FROM PricingMethod
+            WHERE serviceId = ?
+                AND active = 1
+                AND deletedAt IS NULL
+                AND pricingUnit = 'PER_LEVEL'
+            ORDER BY displayOrder ASC
+        `, serviceId);
+
+        // Get modifiers for these methods
+        const methodIds = pricingMethodsRaw.map(m => m.id);
+        const modifiers = await prisma.pricingModifier.findMany({
+            where: {
+                methodId: { in: methodIds },
+                active: true,
+            },
+            orderBy: { priority: 'asc' },
+        });
+
+        // Map modifiers to methods
+        const pricingMethods = pricingMethodsRaw.map(method => ({
+            ...method,
+            basePrice: parseFloat(method.basePrice),
+            modifiers: modifiers.filter(m => m.methodId === method.id),
+        }));
+
         // Calculate total XP required
         const totalXp = getXpBetweenLevels(startLevel, endLevel);
 
-        // Find all pricing methods that overlap with the requested level range
-        const applicableMethods = service.pricingMethods.filter((method) => {
-            // If method has no level range, it applies to all levels
-            if (!method.startLevel || !method.endLevel) {
-                return true;
-            }
+        // Calculate each method separately
+        const methodOptions: MethodOption[] = [];
 
-            // Check if there's any overlap between requested range and method range
-            const methodStart = method.startLevel;
-            const methodEnd = method.endLevel;
+        for (const method of pricingMethods) {
+            // Check if this method applies to the requested level range
+            const methodStart = method.startLevel || 1;
+            const methodEnd = method.endLevel || 99;
 
-            return (
+            // Check for overlap
+            const hasOverlap =
                 (startLevel >= methodStart && startLevel < methodEnd) ||
                 (endLevel > methodStart && endLevel <= methodEnd) ||
-                (startLevel <= methodStart && endLevel >= methodEnd)
-            );
-        });
+                (startLevel <= methodStart && endLevel >= methodEnd);
 
-        if (applicableMethods.length === 0) {
+            if (!hasOverlap) {
+                continue; // Skip methods that don't apply to this range
+            }
+
+            // Calculate the overlap
+            const overlapStart = Math.max(startLevel, methodStart);
+            const overlapEnd = Math.min(endLevel, methodEnd);
+
+            // Skip if no actual overlap
+            if (overlapStart >= overlapEnd) {
+                continue;
+            }
+
+            // Calculate XP and price for this range
+            const xpForRange = getXpBetweenLevels(overlapStart, overlapEnd);
+            const basePrice = method.basePrice;
+            const totalPriceForRange = basePrice * xpForRange;
+
+            // Build level ranges for this method
+            const levelRanges = [{
+                startLevel: overlapStart,
+                endLevel: overlapEnd,
+                xpRequired: xpForRange,
+                totalPrice: totalPriceForRange,
+            }];
+
+            // Apply modifiers for this method
+            let methodSubtotal = totalPriceForRange;
+            let methodModifiersTotal = 0;
+            const methodModifierResults: MethodOption["modifiers"] = [];
+
+            for (const modifier of method.modifiers) {
+                const modifierValue = Number(modifier.value);
+
+                // For upcharges, always apply
+                const shouldApply = modifier.displayType === "UPCHARGE";
+
+                if (shouldApply && modifier.modifierType === "PERCENTAGE") {
+                    const addedValue = methodSubtotal * (modifierValue / 100);
+                    methodModifiersTotal += addedValue;
+
+                    methodModifierResults.push({
+                        name: modifier.name,
+                        type: modifier.modifierType,
+                        displayType: modifier.displayType,
+                        value: modifierValue,
+                        applied: true,
+                    });
+                } else if (shouldApply && modifier.modifierType === "FIXED") {
+                    methodModifiersTotal += modifierValue;
+
+                    methodModifierResults.push({
+                        name: modifier.name,
+                        type: modifier.modifierType,
+                        displayType: modifier.displayType,
+                        value: modifierValue,
+                        applied: true,
+                    });
+                } else {
+                    // Notes and warnings are not applied, just shown
+                    methodModifierResults.push({
+                        name: modifier.name,
+                        type: modifier.modifierType,
+                        displayType: modifier.displayType,
+                        value: modifierValue,
+                        applied: false,
+                    });
+                }
+            }
+
+            const methodFinalPrice = methodSubtotal + methodModifiersTotal;
+
+            methodOptions.push({
+                methodId: method.id,
+                methodName: method.name,
+                basePrice: basePrice,
+                pricingUnit: method.pricingUnit,
+                levelRanges,
+                modifiers: methodModifierResults,
+                subtotal: Math.round(methodSubtotal * 100) / 100,
+                modifiersTotal: Math.round(methodModifiersTotal * 100) / 100,
+                finalPrice: Math.round(methodFinalPrice * 100) / 100,
+                isCheapest: false, // Will be set below
+            });
+        }
+
+        if (methodOptions.length === 0) {
             throw new BadRequestError(
                 "No pricing methods found for the specified level range"
             );
         }
 
-        // Calculate price breakdown for each applicable method
-        const priceBreakdown: LevelRangeCalculationResult["priceBreakdown"] =
-            [];
-        let subtotal = 0;
-
-        for (const method of applicableMethods) {
-            // Determine the overlap between requested range and method range
-            const methodStart = method.startLevel || 1;
-            const methodEnd = method.endLevel || 99;
-
-            const overlapStart = Math.max(startLevel, methodStart);
-            const overlapEnd = Math.min(endLevel, methodEnd);
-
-            // Skip if no actual overlap (shouldn't happen due to filter above)
-            if (overlapStart >= overlapEnd) {
-                continue;
-            }
-
-            // Calculate XP for this range
-            const xpForRange = getXpBetweenLevels(overlapStart, overlapEnd);
-
-            // Calculate number of levels
-            const numLevels = overlapEnd - overlapStart;
-
-            // Calculate price for this range
-            const basePrice = Number(method.basePrice);
-            const totalPriceForRange = basePrice * numLevels;
-
-            subtotal += totalPriceForRange;
-
-            priceBreakdown.push({
-                methodName: method.name,
-                startLevel: overlapStart,
-                endLevel: overlapEnd,
-                xpRequired: xpForRange,
-                basePrice: basePrice,
-                pricingUnit: method.pricingUnit,
-                totalPrice: totalPriceForRange,
-            });
-        }
-
-        // Collect all unique modifiers from all applicable methods
-        const allModifiers = new Map();
-        for (const method of applicableMethods) {
-            for (const modifier of method.modifiers) {
-                // Use modifier name as key to avoid duplicates
-                if (!allModifiers.has(modifier.name)) {
-                    allModifiers.set(modifier.name, modifier);
-                }
-            }
-        }
-
-        // Apply modifiers to the subtotal
-        let finalPrice = subtotal;
-        let modifiersTotal = 0;
-        const modifierResults: LevelRangeCalculationResult["modifiers"] = [];
-
-        for (const [_, modifier] of allModifiers) {
-            const modifierValue = Number(modifier.value);
-
-            // For upcharges, always apply (they're warnings/requirements)
-            const shouldApply = modifier.displayType === "UPCHARGE";
-
-            if (shouldApply && modifier.modifierType === "PERCENTAGE") {
-                const addedValue = subtotal * (modifierValue / 100);
-                finalPrice += addedValue;
-                modifiersTotal += addedValue;
-
-                modifierResults.push({
-                    name: modifier.name,
-                    type: modifier.modifierType,
-                    displayType: modifier.displayType,
-                    value: modifierValue,
-                    applied: true,
-                });
-            } else if (shouldApply && modifier.modifierType === "FIXED") {
-                finalPrice += modifierValue;
-                modifiersTotal += modifierValue;
-
-                modifierResults.push({
-                    name: modifier.name,
-                    type: modifier.modifierType,
-                    displayType: modifier.displayType,
-                    value: modifierValue,
-                    applied: true,
-                });
-            } else {
-                // Notes and warnings are not applied, just shown
-                modifierResults.push({
-                    name: modifier.name,
-                    type: modifier.modifierType,
-                    displayType: modifier.displayType,
-                    value: modifierValue,
-                    applied: false,
-                });
-            }
-        }
+        // Mark the cheapest option
+        const cheapestOption = methodOptions.reduce((min, option) =>
+            option.finalPrice < min.finalPrice ? option : min
+        );
+        cheapestOption.isCheapest = true;
 
         return {
             service: {
@@ -500,15 +510,7 @@ export default class PricingCalculatorService {
                 totalXp: totalXp,
                 formattedXp: formatXp(totalXp),
             },
-            priceBreakdown,
-            modifiers: modifierResults,
-            totals: {
-                totalXp: totalXp,
-                totalXpFormatted: formatXp(totalXp),
-                subtotal: Math.round(subtotal * 100) / 100,
-                modifiersTotal: Math.round(modifiersTotal * 100) / 100,
-                finalPrice: Math.round(finalPrice * 100) / 100,
-            },
+            methodOptions,
         };
     }
 }
