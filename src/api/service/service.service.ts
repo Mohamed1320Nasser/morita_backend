@@ -9,7 +9,6 @@ export default class ServiceService {
     constructor() {}
 
     async create(data: CreateServiceDto) {
-        // Check if category exists
         const category = await prisma.serviceCategory.findFirst({
             where: { id: data.categoryId, deletedAt: null },
         });
@@ -18,26 +17,39 @@ export default class ServiceService {
             throw new NotFoundError("Category not found");
         }
 
-        // Check if slug already exists in this category
+        let slug =
+            data.slug || slugify(data.name, { lower: true, strict: true });
+
         const existingService = await prisma.service.findFirst({
             where: {
                 categoryId: data.categoryId,
-                slug: data.slug,
+                slug,
             },
         });
 
         if (existingService) {
-            throw new BadRequestError(
-                "Service with this slug already exists in this category"
-            );
+            let counter = 1;
+            let uniqueSlug = `${slug}-${counter}`;
+
+            while (
+                await prisma.service.findFirst({
+                    where: {
+                        categoryId: data.categoryId,
+                        slug: uniqueSlug,
+                    },
+                })
+            ) {
+                counter++;
+                uniqueSlug = `${slug}-${counter}`;
+            }
+
+            slug = uniqueSlug;
         }
 
         const service = await prisma.service.create({
             data: {
                 ...data,
-                slug:
-                    data.slug ||
-                    slugify(data.name, { lower: true, strict: true }),
+                slug,
             },
         });
 
@@ -81,7 +93,7 @@ export default class ServiceService {
                         },
                     },
                     pricingMethods: {
-                        where: { deletedAt: null }, // Include ALL pricing methods (active + inactive) for accurate count
+                        where: { deletedAt: null },
                         select: {
                             id: true,
                             name: true,
@@ -142,10 +154,7 @@ export default class ServiceService {
                             },
                         },
                     },
-                    orderBy: [
-                        { startLevel: "asc" },
-                        { displayOrder: "asc" },
-                    ],
+                    orderBy: [{ startLevel: "asc" }, { displayOrder: "asc" }],
                 },
             },
         });
@@ -166,7 +175,6 @@ export default class ServiceService {
             throw new NotFoundError("Service not found");
         }
 
-        // Check if category exists (if being updated)
         if (data.categoryId && data.categoryId !== service.categoryId) {
             const category = await prisma.serviceCategory.findFirst({
                 where: { id: data.categoryId, deletedAt: null },
@@ -177,7 +185,6 @@ export default class ServiceService {
             }
         }
 
-        // Check if slug already exists in this category (if being updated)
         if (data.slug && data.slug !== service.slug) {
             const existingService = await prisma.service.findFirst({
                 where: {
@@ -213,7 +220,6 @@ export default class ServiceService {
             throw new NotFoundError("Service not found");
         }
 
-        // Check if service has active pricing methods
         const activeMethods = await prisma.pricingMethod.count({
             where: {
                 serviceId: id,
@@ -228,7 +234,6 @@ export default class ServiceService {
             );
         }
 
-        // Soft delete
         await prisma.service.update({
             where: { id },
             data: {
@@ -285,10 +290,7 @@ export default class ServiceService {
                             },
                         },
                     },
-                    orderBy: [
-                        { startLevel: "asc" },
-                        { displayOrder: "asc" },
-                    ],
+                    orderBy: [{ startLevel: "asc" }, { displayOrder: "asc" }],
                 },
             },
             orderBy: { displayOrder: "asc" },
@@ -332,10 +334,7 @@ export default class ServiceService {
                             },
                         },
                     },
-                    orderBy: [
-                        { startLevel: "asc" },
-                        { displayOrder: "asc" },
-                    ],
+                    orderBy: [{ startLevel: "asc" }, { displayOrder: "asc" }],
                 },
             },
         });
@@ -409,10 +408,7 @@ export default class ServiceService {
                             },
                         },
                     },
-                    orderBy: [
-                        { startLevel: "asc" },
-                        { displayOrder: "asc" },
-                    ],
+                    orderBy: [{ startLevel: "asc" }, { displayOrder: "asc" }],
                 },
             },
         });
@@ -421,7 +417,6 @@ export default class ServiceService {
             throw new NotFoundError("Service not found");
         }
 
-        // Get all payment methods for this service
         const paymentMethods = await prisma.paymentMethod.findMany({
             where: { active: true },
             select: {

@@ -17,9 +17,10 @@ export class CreateServiceDto {
     @MaxLength(100)
     name: string;
 
+    @IsOptional()
     @IsString()
     @MaxLength(100)
-    slug: string;
+    slug?: string;
 
     @IsOptional()
     @IsString()

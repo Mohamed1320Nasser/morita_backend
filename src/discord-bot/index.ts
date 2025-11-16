@@ -1,5 +1,4 @@
 import { Client, GatewayIntentBits, Collection, Events } from "discord.js";
-import { config } from "dotenv";
 import { join } from "path";
 import { readdirSync } from "fs";
 import { Command } from "./types/discord.types";
@@ -9,10 +8,12 @@ import { ImprovedChannelManager } from "./services/improvedChannelManager.servic
 import { EmbedBuilder } from "./utils/embedBuilder";
 import { discordConfig } from "./config/discord.config";
 import logger from "../common/loggers";
+// Import Environment to ensure .env is loaded (same as backend)
+// This ensures env vars are available whether run standalone or from app.ts
+import Environment from "../common/config/environment";
 
-// Load environment variables (quiet mode - no tips)
-// Note: Already loaded in start.ts, DOTENV_CONFIG_QUIET is set there
-config();
+// Environment variables are already loaded by Environment.ts (dotenv.config() called there)
+// No need to load again - this works for both standalone and integrated modes
 
 // Create Discord client
 const client = new Client({
@@ -66,8 +67,14 @@ const loadEvents = async () => {
             const filePath = join(eventsPath, file);
             const event = await import(filePath);
 
-            if (!event.default || !event.default.name || !event.default.execute) {
-                logger.warn(`Event file ${file} is missing required properties`);
+            if (
+                !event.default ||
+                !event.default.name ||
+                !event.default.execute
+            ) {
+                logger.warn(
+                    `Event file ${file} is missing required properties`
+                );
                 continue;
             }
 
@@ -109,9 +116,14 @@ client.once(Events.ClientReady, async readyClient => {
     // Initialize improved pricing channel manager with real-time updates
     try {
         await client.improvedChannelManager.initialize();
-        logger.info("✅ Improved pricing channel manager initialized with real-time updates");
+        logger.info(
+            "✅ Improved pricing channel manager initialized with real-time updates"
+        );
     } catch (error) {
-        logger.error("Failed to initialize improved pricing channel manager:", error);
+        logger.error(
+            "Failed to initialize improved pricing channel manager:",
+            error
+        );
     }
 });
 

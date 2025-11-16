@@ -10,10 +10,16 @@ export default async function getControllers() {
     for (let index = 0; index < controllersFiles.length; index++) {
         const _path = path.resolve(__dirname, controllersFiles[index]);
         const controller = await import(_path);
-        controllers.push(controller.default);
-        logger.info(
-            `controller loaded: ${controller.default.name}, file: ${_path}`
-        );
+        if (controller.default) {
+            controllers.push(controller.default);
+            logger.info(
+                `controller loaded: ${controller.default.name}, file: ${_path}`
+            );
+        } else {
+            logger.warn(
+                `controller file skipped (no default export): ${_path}`
+            );
+        }
     }
     return controllers;
 }

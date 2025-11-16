@@ -2,7 +2,6 @@ import {
     JsonController,
     Get,
     Post,
-    Patch,
     Delete,
     Param,
     Body,
@@ -13,7 +12,6 @@ import {
 import { Service } from "typedi";
 import ServiceService from "./service.service";
 import { CreateServiceDto, UpdateServiceDto, GetServiceListDto } from "./dtos";
-import { Request } from "express";
 import { convertResponse } from "../../common/helpers/res.helper";
 
 @JsonController("/services")
@@ -24,7 +22,7 @@ export default class ServiceController {
     @Post("/")
     async createService(@Body() data: CreateServiceDto) {
         const service = await this.serviceService.create(data);
-        return convertResponse(CreateServiceDto, service);
+        return service;
     }
 
     @Get("/")

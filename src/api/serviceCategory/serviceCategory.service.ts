@@ -14,22 +14,32 @@ export default class ServiceCategoryService {
     constructor() {}
 
     async create(data: CreateServiceCategoryDto, icon?: API.File) {
-        // Check if slug already exists
+        // Auto-generate slug from name if not provided
+        let slug = data.slug || slugify(data.name, { lower: true, strict: true });
+
+        // Check if slug already exists and make it unique
         const existingCategory = await prisma.serviceCategory.findUnique({
-            where: { slug: data.slug },
+            where: { slug },
         });
 
         if (existingCategory) {
-            throw new BadRequestError("Category with this slug already exists");
+            // Add numeric suffix to make slug unique
+            let counter = 1;
+            let uniqueSlug = `${slug}-${counter}`;
+
+            while (await prisma.serviceCategory.findUnique({ where: { slug: uniqueSlug } })) {
+                counter++;
+                uniqueSlug = `${slug}-${counter}`;
+            }
+
+            slug = uniqueSlug;
         }
 
         const category = await prisma.serviceCategory.create({
             data: {
                 ...data,
+                slug,
                 icon: icon ? { connect: { id: icon.id } } : undefined,
-                slug:
-                    data.slug ||
-                    slugify(data.name, { lower: true, strict: true }),
             },
         });
 

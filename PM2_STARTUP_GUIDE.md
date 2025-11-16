@@ -12,6 +12,7 @@ cd /home/morita/public_html/morita_backend
 ```
 
 Or:
+
 ```bash
 npm run start:pm2:bot:direct
 ```
@@ -28,11 +29,13 @@ cd /home/morita/public_html/morita_backend
 ```
 
 Or:
+
 ```bash
 npm run start:pm2:bot:setup
 ```
 
 This script will:
+
 1. ✅ Create `bot-logs/` directory if needed
 2. ✅ Verify `.env` file exists
 3. ✅ Build project if needed
@@ -85,6 +88,7 @@ pm2 status
 ```
 
 You should see:
+
 ```
 ┌─────┬─────────────┬─────────┬─────────┬──────────┐
 │ id  │ name        │ status  │ cpu     │ memory   │
@@ -100,6 +104,7 @@ pm2 logs morita-bot
 ```
 
 You should see:
+
 - `[BOT-START] Starting Discord bot...`
 - `[BOT-START] Successfully loaded .env from explicit path`
 - `Discord bot ready! Logged in as YourBot#1234`
@@ -123,6 +128,7 @@ pm2 startup
 ```
 
 This will output a command like:
+
 ```
 sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u morita --hp /home/morita
 ```
@@ -182,6 +188,7 @@ pm2 monit
 **Problem:** PM2 is treating the ecosystem file as a script instead of reading the config.
 
 **Solution:** Use the direct startup method:
+
 ```bash
 ./start-bot-direct.sh
 # or
@@ -193,36 +200,41 @@ This bypasses the ecosystem file and starts the bot directly with all PM2 option
 ### Bot Not Starting?
 
 1. **Check logs:**
-   ```bash
-   pm2 logs morita-bot --lines 100
-   ```
+
+    ```bash
+    pm2 logs morita-bot --lines 100
+    ```
 
 2. **Check if bot-logs directory exists:**
-   ```bash
-   ls -la bot-logs/
-   ```
+
+    ```bash
+    ls -la bot-logs/
+    ```
 
 3. **Check .env file:**
-   ```bash
-   ls -la .env
-   grep DISCORD_BOT_TOKEN .env
-   ```
+
+    ```bash
+    ls -la .env
+    grep DISCORD_BOT_TOKEN .env
+    ```
 
 4. **Try running directly first:**
-   ```bash
-   node build/discord-bot/start.js
-   ```
-   If this works, the issue is with PM2 config.
+    ```bash
+    node build/discord-bot/start.js
+    ```
+    If this works, the issue is with PM2 config.
 
 ### Bot Keeps Restarting?
 
 Check error logs:
+
 ```bash
 pm2 logs morita-bot --err --lines 50
 cat bot-logs/bot-error.log
 ```
 
 Common causes:
+
 - Missing `.env` file
 - Invalid `DISCORD_BOT_TOKEN`
 - Backend API not accessible
@@ -241,37 +253,42 @@ pm2 status
 ### No Logs in PM2?
 
 1. **Check log files directly:**
-   ```bash
-   cat bot-logs/bot-error.log
-   cat bot-logs/bot-out.log
-   ```
+
+    ```bash
+    cat bot-logs/bot-error.log
+    cat bot-logs/bot-out.log
+    ```
 
 2. **Check if directory exists:**
-   ```bash
-   ls -la bot-logs/
-   ```
+
+    ```bash
+    ls -la bot-logs/
+    ```
 
 3. **Check PM2 logs:**
-   ```bash
-   pm2 logs morita-bot --lines 100
-   ```
+    ```bash
+    pm2 logs morita-bot --lines 100
+    ```
 
 ---
 
 ## Verify Bot is Working
 
 ### In Discord:
+
 - Bot should appear online (green dot)
 - Try a command: `/help` or `!s agility 82-90`
 - Bot should respond
 
 ### In PM2:
+
 ```bash
 pm2 status morita-bot
 # Should show: status: online, uptime: X minutes
 ```
 
 ### In Logs:
+
 ```bash
 pm2 logs morita-bot
 # Should show: "Discord bot ready! Logged in as..."
@@ -289,9 +306,9 @@ pm2 logs morita-bot
 4. ✅ Verify with `pm2 status` and `pm2 logs morita-bot`
 
 The bot will now:
+
 - ✅ Run continuously via PM2
 - ✅ Auto-restart if it crashes
 - ✅ Start automatically on server reboot
 - ✅ Log everything to `bot-logs/` directory
 - ✅ Show logs in PM2 for easy debugging
-
