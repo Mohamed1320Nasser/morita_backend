@@ -7,10 +7,10 @@
       "description": "Sailing skill training",
       "serviceModifiers": [],
       "pricingMethods": [
-        {"name": "Quests & Crates", "basePrice": 0.0012, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 30, "displayOrder": 1, "active": true, "modifiers": []},
-        {"name": "The Tempor Tantrum", "basePrice": 0.000186, "pricingUnit": "PER_LEVEL", "startLevel": 30, "endLevel": 55, "displayOrder": 2, "active": true, "modifiers": []},
-        {"name": "The Jubbly Jive", "basePrice": 0.000084, "pricingUnit": "PER_LEVEL", "startLevel": 55, "endLevel": 72, "displayOrder": 3, "active": true, "modifiers": []},
-        {"name": "The Gwenith Glide", "basePrice": 0.000024, "pricingUnit": "PER_LEVEL", "startLevel": 72, "endLevel": 99, "displayOrder": 4, "active": true, "modifiers": []}
+        {"name": "Quests & Crates", "basePrice": 0.0007, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 30, "displayOrder": 1, "active": true, "modifiers": []},
+        {"name": "The Tempor Tantrum", "basePrice": 0.0002, "pricingUnit": "PER_LEVEL", "startLevel": 30, "endLevel": 55, "displayOrder": 2, "active": true, "modifiers": []},
+        {"name": "The Jubbly Jive", "basePrice": 0.00005, "pricingUnit": "PER_LEVEL", "startLevel": 55, "endLevel": 72, "displayOrder": 3, "active": true, "modifiers": []},
+        {"name": "The Gwenith Glide", "basePrice": 0.00002, "pricingUnit": "PER_LEVEL", "startLevel": 72, "endLevel": 99, "displayOrder": 4, "active": true, "modifiers": []}
       ],
       "notes": []
     },

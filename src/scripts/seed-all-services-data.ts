@@ -14,6 +14,7 @@
  * - services-data-QUESTS.json (Quests, Diaries & Misc)
  * - services-data-MINIGAMES.json (Minigames)
  * - services-data-IRONMAN.json (Ironman Gathering)
+ * - services-data-BOSSING.json (Bossing/PvM category)
  * - services-data-SKILLS.json (Skills category)
  * - services-data-SKILLS-part1.json (First 5 skills)
  * - services-data-SKILLS-part2.json (Remaining 15 skills)
@@ -556,7 +557,21 @@ async function main() {
             stats.totalMethodModifiers += result.methodModifierCount;
         }
 
-        // 6. Load Skills (combined from 3 files)
+        // 6. Load Bossing/PvM
+        console.log("\n📂 Loading: services-data-BOSSING.json");
+        const bossing = loadJSON("services-data-BOSSING.json");
+        if (bossing && bossing.categories && bossing.categories.length > 0) {
+            for (const categoryData of bossing.categories) {
+                const result = await seedCategory(categoryData, categoryDisplayOrder++);
+                stats.totalCategories++;
+                stats.totalServices += result.serviceCount;
+                stats.totalPricingMethods += result.pricingMethodCount;
+                stats.totalServiceModifiers += result.serviceModifierCount;
+                stats.totalMethodModifiers += result.methodModifierCount;
+            }
+        }
+
+        // 7. Load Skills (combined from 3 files)
         console.log("\n📂 Loading: services-data-SKILLS.json + part1 + part2");
         const skills = loadJSON("services-data-SKILLS.json");
         const skillsPart1 = loadJSON("services-data-SKILLS-part1.json");

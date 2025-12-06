@@ -1,0 +1,392 @@
+{
+  "categories": [
+    {
+      "name": "Bossing",
+      "slug": "bossing",
+      "emoji": "💀",
+      "description": "Boss killing services - PvM combat with PER_KILL pricing",
+      "services": [
+        {
+          "name": "Zulrah",
+          "emoji": "🐍",
+          "slug": "zulrah",
+          "description": "Zulrah boss kills - Toxic blowpipe recommended",
+          "imageUrl": "https://oldschool.runescape.wiki/images/Zulrah.png",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Standard Kill",
+              "basePrice": 2.50,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": [],
+              "description": "Standard Zulrah kills with loot kept"
+            }
+          ],
+          "notes": [
+            "All loot goes to customer",
+            "Bulk Discount: 100+ Kc = 5% OFF",
+            "Bulk Discount: 500+ Kc = 10% OFF"
+          ]
+        },
+        {
+          "name": "Vorkath",
+          "emoji": "🐉",
+          "slug": "vorkath",
+          "description": "Vorkath boss kills - Dragon hunter lance/crossbow recommended",
+          "imageUrl": "https://oldschool.runescape.wiki/images/Vorkath.png",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Standard Kill",
+              "basePrice": 2.00,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": [],
+              "description": "Standard Vorkath kills with loot kept"
+            }
+          ],
+          "notes": [
+            "All loot goes to customer",
+            "Bulk Discount: 100+ Kc = 5% OFF",
+            "Bulk Discount: 500+ Kc = 10% OFF"
+          ]
+        },
+        {
+          "name": "Alchemical Hydra",
+          "emoji": "🦎",
+          "slug": "alchemical-hydra",
+          "description": "Alchemical Hydra boss kills - 95 Slayer required",
+          "imageUrl": "https://oldschool.runescape.wiki/images/Alchemical_Hydra.png",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Standard Kill",
+              "basePrice": 3.00,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": [],
+              "description": "Alchemical Hydra kills with loot kept"
+            }
+          ],
+          "notes": [
+            "Requires 95 Slayer",
+            "All loot goes to customer",
+            "Bulk Discount: 100+ Kc = 5% OFF"
+          ]
+        },
+        {
+          "name": "Cerberus",
+          "emoji": "🐺",
+          "slug": "cerberus",
+          "description": "Cerberus boss kills - 91 Slayer required",
+          "imageUrl": "https://oldschool.runescape.wiki/images/Cerberus.png",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Standard Kill",
+              "basePrice": 2.50,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": [],
+              "description": "Cerberus kills with loot kept"
+            }
+          ],
+          "notes": [
+            "Requires 91 Slayer",
+            "All loot goes to customer",
+            "Bulk Discount: 100+ Kc = 5% OFF"
+          ]
+        },
+        {
+          "name": "Thermonuclear Smoke Devil",
+          "emoji": "💨",
+          "slug": "thermonuclear-smoke-devil",
+          "description": "Thermonuclear Smoke Devil kills - 93 Slayer required",
+          "imageUrl": "https://oldschool.runescape.wiki/images/Thermonuclear_smoke_devil.png",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Standard Kill",
+              "basePrice": 1.50,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": [],
+              "description": "Thermy kills with loot kept"
+            }
+          ],
+          "notes": [
+            "Requires 93 Slayer",
+            "All loot goes to customer"
+          ]
+        },
+        {
+          "name": "Kraken",
+          "emoji": "🦑",
+          "slug": "kraken",
+          "description": "Kraken boss kills - 87 Slayer required",
+          "imageUrl": "https://oldschool.runescape.wiki/images/Kraken.png",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Standard Kill",
+              "basePrice": 1.00,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": [],
+              "description": "Kraken kills - AFK friendly"
+            }
+          ],
+          "notes": [
+            "Requires 87 Slayer",
+            "All loot goes to customer",
+            "AFK friendly boss"
+          ]
+        },
+        {
+          "name": "Corrupted Gauntlet",
+          "emoji": "🏰",
+          "slug": "corrupted-gauntlet",
+          "description": "Corrupted Gauntlet completions - Song of the Elves required",
+          "imageUrl": "https://oldschool.runescape.wiki/images/Corrupted_Hunllef.png",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Standard Completion",
+              "basePrice": 8.00,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": [],
+              "description": "Corrupted Gauntlet completions"
+            }
+          ],
+          "notes": [
+            "Requires Song of the Elves quest",
+            "All loot goes to customer",
+            "High difficulty content",
+            "Bulk Discount: 50+ Kc = 5% OFF",
+            "Bulk Discount: 100+ Kc = 10% OFF"
+          ]
+        },
+        {
+          "name": "Phosani's Nightmare & Nightmare",
+          "emoji": "😈",
+          "slug": "nightmare",
+          "description": "The Nightmare and Phosani's Nightmare boss kills",
+          "imageUrl": "https://oldschool.runescape.wiki/images/The_Nightmare.png",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "The Nightmare (Team)",
+              "basePrice": 5.00,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": [],
+              "description": "Standard Nightmare team kills"
+            },
+            {
+              "name": "Phosani's Nightmare (Solo)",
+              "basePrice": 15.00,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 2,
+              "active": true,
+              "modifiers": [],
+              "description": "Phosani's Nightmare solo kills - hardmode"
+            }
+          ],
+          "notes": [
+            "All loot goes to customer",
+            "Phosani's is significantly harder",
+            "Bulk Discount: 50+ Kc = 5% OFF"
+          ]
+        },
+        {
+          "name": "God Wars Dungeon",
+          "emoji": "⚔️",
+          "slug": "god-wars-dungeon",
+          "description": "God Wars Dungeon boss kills - All four gods",
+          "imageUrl": "https://oldschool.runescape.wiki/images/God_Wars_Dungeon.png",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Commander Zilyana (Saradomin)",
+              "basePrice": 2.50,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": [],
+              "description": "Saradomin GWD boss kills"
+            },
+            {
+              "name": "General Graardor (Bandos)",
+              "basePrice": 2.50,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 2,
+              "active": true,
+              "modifiers": [],
+              "description": "Bandos GWD boss kills"
+            },
+            {
+              "name": "Kree'arra (Armadyl)",
+              "basePrice": 3.00,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 3,
+              "active": true,
+              "modifiers": [],
+              "description": "Armadyl GWD boss kills"
+            },
+            {
+              "name": "K'ril Tsutsaroth (Zamorak)",
+              "basePrice": 2.50,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 4,
+              "active": true,
+              "modifiers": [],
+              "description": "Zamorak GWD boss kills"
+            },
+            {
+              "name": "Nex",
+              "basePrice": 8.00,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 5,
+              "active": true,
+              "modifiers": [],
+              "description": "Nex boss kills - Ancient Prison"
+            }
+          ],
+          "notes": [
+            "All loot goes to customer",
+            "70 KC required for each god (killcount not included)",
+            "Nex requires Frozen Door quest",
+            "Bulk Discount: 100+ Kc = 5% OFF"
+          ]
+        },
+        {
+          "name": "Corporeal Beast",
+          "emoji": "👻",
+          "slug": "corporeal-beast",
+          "description": "Corporeal Beast kills - Team recommended",
+          "imageUrl": "https://oldschool.runescape.wiki/images/Corporeal_Beast.png",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Team Kill",
+              "basePrice": 5.00,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": [],
+              "description": "Corp beast team kills"
+            }
+          ],
+          "notes": [
+            "All loot goes to customer",
+            "Requires Spirit of Summer quest",
+            "Bulk Discount: 100+ Kc = 5% OFF"
+          ]
+        },
+        {
+          "name": "Moons of Peril (Lunar Chest)",
+          "emoji": "🌙",
+          "slug": "moons-of-peril",
+          "description": "Moons of Peril lunar chest completions",
+          "imageUrl": "https://oldschool.runescape.wiki/images/Lunar_chest.png",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Standard Completion",
+              "basePrice": 6.00,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": [],
+              "description": "Moons of Peril completions"
+            }
+          ],
+          "notes": [
+            "All loot goes to customer",
+            "Bulk Discount: 50+ Kc = 5% OFF"
+          ]
+        },
+        {
+          "name": "Doom of Mokhaiotl",
+          "emoji": "🗿",
+          "slug": "doom-of-mokhaiotl",
+          "description": "Doom of Mokhaiotl completions",
+          "imageUrl": "https://oldschool.runescape.wiki/images/Mokhaiotl.png",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Standard Completion",
+              "basePrice": 7.00,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": [],
+              "description": "Doom of Mokhaiotl completions"
+            }
+          ],
+          "notes": [
+            "All loot goes to customer",
+            "Bulk Discount: 50+ Kc = 5% OFF"
+          ]
+        },
+        {
+          "name": "Dagannoth Kings",
+          "emoji": "👑",
+          "slug": "dagannoth-kings",
+          "description": "Dagannoth Kings - All three kings",
+          "imageUrl": "https://oldschool.runescape.wiki/images/Dagannoth_Kings.png",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "All Three Kings (Per Kill Each)",
+              "basePrice": 1.50,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": [],
+              "description": "DKs tribrid kills"
+            }
+          ],
+          "notes": [
+            "All loot goes to customer",
+            "Price is per kill across all three",
+            "Bulk Discount: 200+ Kc = 5% OFF"
+          ]
+        },
+        {
+          "name": "Kalphite Queen",
+          "emoji": "🦂",
+          "slug": "kalphite-queen",
+          "description": "Kalphite Queen boss kills",
+          "imageUrl": "https://oldschool.runescape.wiki/images/Kalphite_Queen.png",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Standard Kill",
+              "basePrice": 2.00,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": [],
+              "description": "KQ kills with loot kept"
+            }
+          ],
+          "notes": [
+            "All loot goes to customer",
+            "Bulk Discount: 100+ Kc = 5% OFF"
+          ]
+        }
+      ]
+    }
+  ]
+}

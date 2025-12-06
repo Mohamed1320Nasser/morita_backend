@@ -15,11 +15,11 @@ export default {
         const prefix = discordConfig.prefix;
         const content = message.content.toLowerCase();
 
-        // Check if message starts with any calculator command (!s, !b, !m, !i, !q)
-        const commandMatch = content.match(/^!([sbmiq])\s+/);
+        // Check if message starts with any calculator command (!s, !p, !m, !i, !q)
+        const commandMatch = content.match(/^!([spmiq])\s+/);
         if (!commandMatch) return;
 
-        const commandType = commandMatch[1]; // s, b, m, i, or q
+        const commandType = commandMatch[1]; // s, p, m, i, or q
 
         // If calculator channel is configured, only respond in that channel
         if (discordConfig.calculatorChannelId) {
@@ -34,7 +34,7 @@ export default {
                 case 's': // Skills - PER_LEVEL
                     await handleSkillsCommand(message, apiService);
                     break;
-                case 'b': // Bossing - PER_KILL
+                case 'p': // PvM/Bossing - PER_KILL
                     await handleBossingCommand(message, apiService);
                     break;
                 case 'm': // Minigames - PER_ITEM
@@ -124,13 +124,19 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
     // Get all services to find matching service
     const services = await apiService.getAllServicesWithPricing();
 
-    // Find service by name or slug
-    const service = services.find((s: any) =>
+    // Find service by name or slug - prioritize exact matches
+    let service = services.find((s: any) =>
         s.name.toLowerCase() === serviceName ||
-        s.slug.toLowerCase() === serviceName ||
-        s.name.toLowerCase().includes(serviceName) ||
-        s.slug.toLowerCase().includes(serviceName)
+        s.slug.toLowerCase() === serviceName
     );
+
+    // If no exact match, try partial match
+    if (!service) {
+        service = services.find((s: any) =>
+            s.name.toLowerCase().includes(serviceName) ||
+            s.slug.toLowerCase().includes(serviceName)
+        );
+    }
 
     if (!service) {
         await thinkingMsg.edit({
@@ -241,24 +247,46 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
                 const discounts = cheapest.modifiers.filter(m => m.applied && Number(m.value) < 0);
                 const upcharges = cheapest.modifiers.filter(m => m.applied && Number(m.value) > 0);
 
-                // Build beautiful breakdown
-                let breakdown = `\`\`\`yml\n`;
-                breakdown += `Service:        ${data.service.name}\n`;
-                breakdown += `Method:         ${cheapest.methodName}\n`;
-                breakdown += `─────────────────────────────────────────\n`;
+                // Add header with service info
+                let headerBreakdown = `\`\`\`yml\n`;
+                headerBreakdown += `Service:        ${data.service.name}\n`;
+                headerBreakdown += `─────────────────────────────────────────\n`;
+                headerBreakdown += `Levels:         ${data.levels.start} → ${data.levels.end}\n`;
+                headerBreakdown += `XP Required:    ${data.levels.formattedXp}\n`;
+                headerBreakdown += `\`\`\``;
 
-                // Show actual level range for the method (not user input)
-                const actualLevels = cheapest.levelRanges && cheapest.levelRanges.length > 0
-                    ? `${cheapest.levelRanges[0].startLevel} → ${cheapest.levelRanges[0].endLevel}`
-                    : `${data.levels.start} → ${data.levels.end}`;
+                embed.addFields({
+                    name: "✅ Recommended Option — Full Breakdown",
+                    value: headerBreakdown,
+                    inline: false,
+                });
 
-                logger.info('[PriceCalculator] 📊 Showing levels: ' + actualLevels);
+                // Add each segment as its own field for professional display
+                if (cheapest.levelRanges && cheapest.levelRanges.length > 0) {
+                    for (let i = 0; i < cheapest.levelRanges.length; i++) {
+                        const range = cheapest.levelRanges[i];
+                        const methodName = range.methodName || cheapest.methodName;
+                        const ratePerXp = range.ratePerXp || cheapest.basePrice;
+                        const segmentPrice = range.totalPrice || 0;
 
-                breakdown += `Levels:         ${actualLevels}\n`;
-                breakdown += `XP Required:    ${data.levels.formattedXp}\n`;
-                breakdown += `Rate:           ${cheapest.basePrice.toFixed(8)} $/XP\n`;
-                breakdown += `─────────────────────────────────────────\n`;
-                breakdown += `Base Cost:      $${cheapest.subtotal.toFixed(2)}\n`;
+                        let segmentDisplay = `\`\`\`yml\n`;
+                        segmentDisplay += `Method:         ${methodName}\n`;
+                        segmentDisplay += `Rate:           ${ratePerXp.toFixed(8)} $/XP\n`;
+                        segmentDisplay += `XP:             ${range.xpRequired?.toLocaleString() || '0'}\n`;
+                        segmentDisplay += `Cost:           $${segmentPrice.toFixed(2)}\n`;
+                        segmentDisplay += `\`\`\``;
+
+                        embed.addFields({
+                            name: `📊 ${range.startLevel}-${range.endLevel}`,
+                            value: segmentDisplay,
+                            inline: false,
+                        });
+                    }
+                }
+
+                // Build pricing summary
+                let pricingSummary = `\`\`\`yml\n`;
+                pricingSummary += `Base Cost:      $${cheapest.subtotal.toFixed(2)}\n`;
 
                 // Show discounts
                 if (discounts.length > 0) {
@@ -266,7 +294,7 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
                         const modValue = mod.type === 'PERCENTAGE'
                             ? `${mod.value}%`
                             : `-$${Math.abs(Number(mod.value)).toFixed(2)}`;
-                        breakdown += `${mod.name}:`.padEnd(16) + `${modValue}\n`;
+                        pricingSummary += `${mod.name}:`.padEnd(16) + `${modValue}\n`;
                     }
                 }
 
@@ -276,15 +304,11 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
                         const modValue = mod.type === 'PERCENTAGE'
                             ? `+${mod.value}%`
                             : `+$${mod.value.toFixed(2)}`;
-                        breakdown += `${mod.name}:`.padEnd(16) + `${modValue}\n`;
+                        pricingSummary += `${mod.name}:`.padEnd(16) + `${modValue}\n`;
                     }
                 }
 
-                if (hasModifiers) {
-                    breakdown += `─────────────────────────────────────────\n`;
-                }
-
-                breakdown += `\`\`\``;
+                pricingSummary += `\`\`\``;
 
                 // Calculate OSRS gold conversion (1 USD = 5.5M OSRS gold average)
                 const osrsGoldRate = 5.5; // 5.5M per $1 USD
@@ -296,14 +320,14 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
                 logger.info('[PriceCalculator] 🔥 Final breakdown OSRS gold: ' + osrsGoldFormatted + ' for $' + cheapest.finalPrice.toFixed(2));
 
                 // Add final price in ANSI color with OSRS gold
-                breakdown += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${cheapest.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
-                breakdown += `\`\`\`ansi\n\u001b[1;33m🔥 ${osrsGoldFormatted} OSRS Gold\u001b[0m\n\`\`\``;
+                pricingSummary += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${cheapest.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
+                pricingSummary += `\`\`\`ansi\n\u001b[1;33m🔥 ${osrsGoldFormatted} OSRS Gold\u001b[0m\n\`\`\``;
 
                 logger.info('[PriceCalculator] ✅ Sending embed with all features');
 
                 embed.addFields({
-                    name: "✅ Recommended Option — Full Breakdown",
-                    value: breakdown,
+                    name: "💰 Price Summary",
+                    value: pricingSummary,
                     inline: false,
                 });
             }
@@ -328,7 +352,7 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
     }
 }
 
-// Handler for !b command (Bossing - PER_KILL pricing)
+// Handler for !p command (PvM/Bossing - PER_KILL pricing)
 async function handleBossingCommand(message: Message, apiService: ApiService) {
     const prefix = discordConfig.prefix;
     const args = message.content.slice(prefix.length + 2).trim().split(/\s+/);
@@ -336,8 +360,8 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
     if (args.length < 2) {
         await message.reply({
             content: "❌ **Invalid Command Format**\n\n" +
-                "**Usage:** `!b <boss-name> <kill-count>`\n" +
-                "**Example:** `!b zulrah 100`",
+                "**Usage:** `!p <boss-name> <kill-count>`\n" +
+                "**Example:** `!p cox 120` or `!p zulrah 100`",
         });
         return;
     }
@@ -356,9 +380,25 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
     }
 
     // Service name is everything except the last argument
-    const serviceName = args.slice(0, -1).join(" ").toLowerCase();
+    let serviceName = args.slice(0, -1).join(" ").toLowerCase();
 
-    logger.info(`[PriceCalculator] Command: !b ${serviceName} ${killCount} by ${message.author.tag}`);
+    // Common boss aliases - map short names to full service names
+    const bossAliases: { [key: string]: string } = {
+        'cox': 'chambers',
+        'chambers of xeric': 'chambers',
+        'tob': 'theatre',
+        'theatre of blood': 'theatre',
+        'toa': 'tombs',
+        'tombs of amascut': 'tombs',
+    };
+
+    // Check if serviceName matches an alias
+    if (bossAliases[serviceName]) {
+        logger.info(`[PvM] 🔄 Alias detected: "${serviceName}" → "${bossAliases[serviceName]}"`);
+        serviceName = bossAliases[serviceName];
+    }
+
+    logger.info(`[PriceCalculator] Command: !p ${serviceName} ${killCount} by ${message.author.tag}`);
 
     // Send "calculating..." message
     const thinkingMsg = await message.reply("🔢 Calculating price...");
@@ -366,22 +406,42 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
     // Get all services to find matching service
     const services = await apiService.getAllServicesWithPricing();
 
+    logger.info(`[PvM] 📊 Total services fetched: ${services.length}`);
+
+    // Log all services with PER_KILL pricing for debugging
+    const perKillServices = services.filter((s: any) =>
+        s.pricingMethods?.some((m: any) => m.pricingUnit === 'PER_KILL')
+    );
+    logger.info(`[PvM] 🎯 Services with PER_KILL pricing: ${perKillServices.length}`);
+    perKillServices.forEach((s: any) => {
+        logger.info(`[PvM]   - "${s.name}" (slug: ${s.slug})`);
+    });
+
+    logger.info(`[PvM] 🔍 Searching for service matching: "${serviceName}"`);
+
     // Find service by name or slug (filter for PER_KILL services)
     const service = services.find((s: any) => {
         const matchesName = s.name.toLowerCase().includes(serviceName) ||
             s.slug.toLowerCase().includes(serviceName);
         const hasPerKillPricing = s.pricingMethods?.some((m: any) => m.pricingUnit === 'PER_KILL');
+
+        logger.debug(`[PvM]   Checking: "${s.name}" | Name match: ${s.name.toLowerCase().includes(serviceName)} | Slug match: ${s.slug.toLowerCase().includes(serviceName)} | Has PER_KILL: ${hasPerKillPricing}`);
+
         return matchesName && hasPerKillPricing;
     });
 
     if (!service) {
+        logger.warn(`[PvM] ❌ No service found matching "${serviceName}" with PER_KILL pricing`);
         await thinkingMsg.edit({
             content: `❌ **Service Not Found**\n\n` +
-                `Could not find a bossing service matching "${serviceName}".\n\n` +
-                `Make sure the service supports kill-count pricing.`,
+                `Could not find a PvM service matching "${serviceName}".\n\n` +
+                `Make sure the service supports kill-count pricing.\n` +
+                `**Tip:** Try \`!p cox 120\` or \`!p zulrah 100\``,
         });
         return;
     }
+
+    logger.info(`[PvM] ✅ Found service: "${service.name}" (id: ${service.id})`);
 
     try {
         logger.info(`[PriceCalculator] Calculating with serviceId: ${service.id}, kills: ${killCount}`);
