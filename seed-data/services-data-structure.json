@@ -96,6 +96,7 @@
         {
           "name": "Infernal Cape",
           "emoji": "🔥",
+          "imageUrl": "https://oldschool.runescape.wiki/images/Infernal_cape.png",
           "slug": "infernal-cape",
           "description": "Professional infernal cape service",
           "serviceModifiers": [

@@ -131,6 +131,11 @@ export class BatchServiceWithPricingItemDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(500, { message: 'Image URL must not exceed 500 characters' })
+  imageUrl?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(1000, { message: 'Description must not exceed 1000 characters' })
   description?: string;
 

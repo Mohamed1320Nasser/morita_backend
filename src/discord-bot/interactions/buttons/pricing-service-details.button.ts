@@ -103,18 +103,28 @@ function buildServiceDetailsEmbed(service: any): EmbedBuilder {
     const categoryName = service.category?.name || "Gaming Service";
     const serviceName = service.name;
     const emoji = service.emoji || "🔹";
+    const imageUrl = service.imageUrl; // OSRS Wiki image URL
 
     // Create professional header with breadcrumb
-    const title = `${emoji} ${serviceName}`;
+    // If imageUrl exists, don't use emoji in title
+    const title = imageUrl ? serviceName : `${emoji} ${serviceName}`;
     const description = `**${categoryName}** • Professional Gaming Service\n\n${service.description || "High-quality gaming service with 24/7 support and guaranteed delivery."}`;
 
     const embed = new EmbedBuilder()
         .setTitle(title)
         .setDescription(description)
-        .setColor(COLORS.PRIMARY) // Morita bronze color
-        .setThumbnail(
+        .setColor(COLORS.PRIMARY); // Morita bronze color
+
+    // Use service image as thumbnail if available, otherwise use Morita logo
+    if (imageUrl) {
+        embed.setThumbnail(imageUrl);
+    } else {
+        embed.setThumbnail(
             "https://cdn.discordapp.com/avatars/1431962373719326781/542747abb0a2222bc5d5b66346d01665.webp"
-        )
+        );
+    }
+
+    embed
         .setTimestamp()
         .setFooter({
             text: "Morita Gaming Services • Premium Quality",
@@ -184,6 +194,11 @@ function buildServiceDetailsEmbed(service: any): EmbedBuilder {
         value: "🟢 **Available** • Ready to order",
         inline: false,
     });
+
+    // Add full service image at bottom if available
+    if (imageUrl) {
+        embed.setImage(imageUrl);
+    }
 
     return embed;
 }

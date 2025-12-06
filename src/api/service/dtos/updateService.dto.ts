@@ -36,6 +36,11 @@ export class UpdateServiceDto {
     emoji?: string;
 
     @IsOptional()
+    @IsString()
+    @MaxLength(500)
+    imageUrl?: string;
+
+    @IsOptional()
     @IsBoolean()
     active?: boolean;
 

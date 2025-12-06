@@ -223,6 +223,7 @@ model Service {
   slug         String
   description  String?   @db.Text
   emoji        String?
+  imageUrl     String?   // OSRS Wiki image URL for service icon
   active       Boolean   @default(true)
   displayOrder Int       @default(0)
   createdAt    DateTime  @default(now()) @db.DateTime(0)
