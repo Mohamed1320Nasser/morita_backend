@@ -1,0 +1,278 @@
+{
+  "skills_part2": [
+    {
+      "name": "Fishing",
+      "emoji": "🎣",
+      "slug": "fishing",
+      "description": "For Banking Fish Please, Open A Ticket",
+      "serviceModifiers": [],
+      "pricingMethods": [
+        {"name": "Fastest Methods", "basePrice": 0.000074, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 58, "displayOrder": 1, "active": true, "modifiers": []},
+        {"name": "Barbarian Fishing", "basePrice": 0.000026, "pricingUnit": "PER_LEVEL", "startLevel": 58, "endLevel": 72, "displayOrder": 2, "active": true, "modifiers": []},
+        {"name": "Barbarian Fishing", "basePrice": 0.000017, "pricingUnit": "PER_LEVEL", "startLevel": 72, "endLevel": 99, "displayOrder": 3, "active": true, "modifiers": []}
+      ],
+      "notes": []
+    },
+    {
+      "name": "Fletching",
+      "emoji": "🏹",
+      "slug": "fletching",
+      "description": "Fletching skill training",
+      "serviceModifiers": [],
+      "pricingMethods": [
+        {"name": "Darts", "basePrice": 0.000006, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 52, "displayOrder": 1, "active": true, "modifiers": []},
+        {"name": "Darts", "basePrice": 0.0000043, "pricingUnit": "PER_LEVEL", "startLevel": 52, "endLevel": 99, "displayOrder": 2, "active": true, "modifiers": []},
+        {"name": "Bows", "basePrice": 0.00001, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 50, "displayOrder": 3, "active": true, "modifiers": []},
+        {"name": "Bows", "basePrice": 0.000009, "pricingUnit": "PER_LEVEL", "startLevel": 50, "endLevel": 99, "displayOrder": 4, "active": true, "modifiers": []}
+      ],
+      "notes": []
+    },
+    {
+      "name": "Firemaking",
+      "emoji": "🔥",
+      "slug": "firemaking",
+      "description": "If you ordered Firemaking XP via Wintertodt, you will keep any Wintertodt Crates obtained. If you only want Wintertodt Crates, they are $0.12 each.",
+      "serviceModifiers": [],
+      "pricingMethods": [
+        {"name": "Logs", "basePrice": 0.000018, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 50, "displayOrder": 1, "active": true, "modifiers": []},
+        {"name": "Logs", "basePrice": 0.000014, "pricingUnit": "PER_LEVEL", "startLevel": 50, "endLevel": 99, "displayOrder": 2, "active": true, "modifiers": []},
+        {"name": "Wintertodt", "basePrice": 0.000008, "pricingUnit": "PER_LEVEL", "startLevel": 50, "endLevel": 75, "displayOrder": 3, "active": true, "modifiers": []},
+        {"name": "Wintertodt", "basePrice": 0.000007, "pricingUnit": "PER_LEVEL", "startLevel": 75, "endLevel": 99, "displayOrder": 4, "active": true, "modifiers": []}
+      ],
+      "notes": []
+    },
+    {
+      "name": "Farming",
+      "emoji": "🌾",
+      "slug": "farming",
+      "description": "Farming skill training",
+      "serviceModifiers": [],
+      "pricingMethods": [
+        {"name": "Tithe Farm & Tree Runs", "basePrice": 0.0001, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 34, "displayOrder": 1, "active": true, "modifiers": []},
+        {"name": "Tithe Farm & Tree Runs", "basePrice": 0.00002, "pricingUnit": "PER_LEVEL", "startLevel": 34, "endLevel": 54, "displayOrder": 2, "active": true, "modifiers": []},
+        {"name": "Tithe Farm & Tree Runs", "basePrice": 0.000017, "pricingUnit": "PER_LEVEL", "startLevel": 54, "endLevel": 99, "displayOrder": 3, "active": true, "modifiers": []},
+        {"name": "Tithe Farm", "basePrice": 0.000046, "pricingUnit": "PER_LEVEL", "startLevel": 34, "endLevel": 54, "displayOrder": 4, "active": true, "modifiers": []},
+        {"name": "Tithe Farm", "basePrice": 0.000023, "pricingUnit": "PER_LEVEL", "startLevel": 54, "endLevel": 74, "displayOrder": 5, "active": true, "modifiers": []},
+        {"name": "Tithe Farm", "basePrice": 0.000018, "pricingUnit": "PER_LEVEL", "startLevel": 74, "endLevel": 99, "displayOrder": 6, "active": true, "modifiers": []}
+      ],
+      "notes": []
+    },
+    {
+      "name": "Hunter",
+      "emoji": "🦎",
+      "slug": "hunter",
+      "description": "Hunter skill training",
+      "serviceModifiers": [],
+      "pricingMethods": [
+        {"name": "Fastest Methods", "basePrice": 0.0001, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 29, "displayOrder": 1, "active": true, "modifiers": []},
+        {"name": "Swamp Lizard", "basePrice": 0.00004, "pricingUnit": "PER_LEVEL", "startLevel": 29, "endLevel": 47, "displayOrder": 2, "active": true, "modifiers": []},
+        {"name": "Orange Salamander", "basePrice": 0.000027, "pricingUnit": "PER_LEVEL", "startLevel": 47, "endLevel": 59, "displayOrder": 3, "active": true, "modifiers": []},
+        {"name": "Red Salamander", "basePrice": 0.000025, "pricingUnit": "PER_LEVEL", "startLevel": 59, "endLevel": 67, "displayOrder": 4, "active": true, "modifiers": []},
+        {"name": "Black Salamander", "basePrice": 0.00002, "pricingUnit": "PER_LEVEL", "startLevel": 67, "endLevel": 99, "displayOrder": 5, "active": true, "modifiers": []},
+        {"name": "Red Chinchompa", "basePrice": 0.000025, "pricingUnit": "PER_LEVEL", "startLevel": 63, "endLevel": 99, "displayOrder": 6, "active": true, "modifiers": []},
+        {"name": "Black Chinchompa", "basePrice": 0.00003, "pricingUnit": "PER_LEVEL", "startLevel": 73, "endLevel": 85, "displayOrder": 7, "active": true, "modifiers": []},
+        {"name": "Black Chinchompa", "basePrice": 0.000025, "pricingUnit": "PER_LEVEL", "startLevel": 85, "endLevel": 99, "displayOrder": 8, "active": true, "modifiers": []}
+      ],
+      "notes": []
+    },
+    {
+      "name": "Herblore",
+      "emoji": "🧪",
+      "slug": "herblore",
+      "description": "Herblore skill training",
+      "serviceModifiers": [],
+      "pricingMethods": [
+        {"name": "Best Potion Available", "basePrice": 0.00001, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 52, "displayOrder": 1, "active": true, "modifiers": []},
+        {"name": "Best Potion Available", "basePrice": 0.0000084, "pricingUnit": "PER_LEVEL", "startLevel": 52, "endLevel": 81, "displayOrder": 2, "active": true, "modifiers": []},
+        {"name": "Best Potion Available", "basePrice": 0.0000048, "pricingUnit": "PER_LEVEL", "startLevel": 81, "endLevel": 99, "displayOrder": 3, "active": true, "modifiers": []}
+      ],
+      "notes": []
+    },
+    {
+      "name": "Magic",
+      "emoji": "🔮",
+      "slug": "magic",
+      "description": "Magic skill training",
+      "serviceModifiers": [],
+      "pricingMethods": [
+        {"name": "Sand Crabs", "basePrice": 0.000015, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 50, "displayOrder": 1, "active": true, "modifiers": []},
+        {"name": "Sand Crabs", "basePrice": 0.000012, "pricingUnit": "PER_LEVEL", "startLevel": 50, "endLevel": 99, "displayOrder": 2, "active": true, "modifiers": []},
+        {"name": "NMZ (Absorb)", "basePrice": 0.000008, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 70, "displayOrder": 3, "active": true, "modifiers": []},
+        {"name": "NMZ (Absorb)", "basePrice": 0.000007, "pricingUnit": "PER_LEVEL", "startLevel": 70, "endLevel": 99, "displayOrder": 4, "active": true, "modifiers": []},
+        {"name": "NMZ (Prayer)", "basePrice": 0.000009, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 70, "displayOrder": 5, "active": true, "modifiers": []},
+        {"name": "NMZ (Prayer)", "basePrice": 0.0000085, "pricingUnit": "PER_LEVEL", "startLevel": 70, "endLevel": 99, "displayOrder": 6, "active": true, "modifiers": []},
+        {"name": "Bursting/Barrage (MM1 Tunnels)", "basePrice": 0.000008, "pricingUnit": "PER_LEVEL", "startLevel": 70, "endLevel": 99, "displayOrder": 7, "active": true, "modifiers": []},
+        {"name": "Bursting/Barrage (MM2 Tunnels)", "basePrice": 0.000007, "pricingUnit": "PER_LEVEL", "startLevel": 70, "endLevel": 99, "displayOrder": 8, "active": true, "modifiers": []},
+        {"name": "High Level Alchemy", "basePrice": 0.000015, "pricingUnit": "PER_LEVEL", "startLevel": 55, "endLevel": 99, "displayOrder": 9, "active": true, "modifiers": []}
+      ],
+      "notes": []
+    },
+    {
+      "name": "Melee",
+      "emoji": "⚔️",
+      "slug": "melee",
+      "description": "Melee combat training",
+      "serviceModifiers": [],
+      "pricingMethods": [
+        {"name": "Sand Crabs", "basePrice": 0.000021, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 50, "displayOrder": 1, "active": true, "modifiers": []},
+        {"name": "Sand Crabs", "basePrice": 0.000012, "pricingUnit": "PER_LEVEL", "startLevel": 50, "endLevel": 99, "displayOrder": 2, "active": true, "modifiers": []},
+        {"name": "NMZ (Absorption)", "basePrice": 0.000008, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 70, "displayOrder": 3, "active": true, "modifiers": []},
+        {"name": "NMZ (Absorption)", "basePrice": 0.000007, "pricingUnit": "PER_LEVEL", "startLevel": 70, "endLevel": 99, "displayOrder": 4, "active": true, "modifiers": []},
+        {"name": "NMZ (Prayer)", "basePrice": 0.000009, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 70, "displayOrder": 5, "active": true, "modifiers": []},
+        {"name": "NMZ (Prayer)", "basePrice": 0.0000085, "pricingUnit": "PER_LEVEL", "startLevel": 70, "endLevel": 99, "displayOrder": 6, "active": true, "modifiers": []}
+      ],
+      "notes": []
+    },
+    {
+      "name": "Mining",
+      "emoji": "⛏️",
+      "slug": "mining",
+      "description": "Mining skill training",
+      "serviceModifiers": [],
+      "pricingMethods": [
+        {"name": "Iron Ore", "basePrice": 0.000064, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 15, "displayOrder": 1, "active": true, "modifiers": []},
+        {"name": "Iron Ore", "basePrice": 0.00005, "pricingUnit": "PER_LEVEL", "startLevel": 15, "endLevel": 61, "displayOrder": 2, "active": true, "modifiers": []},
+        {"name": "Iron Ore", "basePrice": 0.000045, "pricingUnit": "PER_LEVEL", "startLevel": 61, "endLevel": 99, "displayOrder": 3, "active": true, "modifiers": []},
+        {"name": "Motherlode Mine", "basePrice": 0.000028, "pricingUnit": "PER_LEVEL", "startLevel": 30, "endLevel": 72, "displayOrder": 4, "active": true, "modifiers": []},
+        {"name": "Motherlode Mine", "basePrice": 0.000024, "pricingUnit": "PER_LEVEL", "startLevel": 72, "endLevel": 99, "displayOrder": 5, "active": true, "modifiers": []}
+      ],
+      "notes": []
+    },
+    {
+      "name": "Prayer",
+      "emoji": "🙏",
+      "slug": "prayer",
+      "description": "For Any Other Methods, Please Open A Ticket",
+      "serviceModifiers": [],
+      "pricingMethods": [
+        {"name": "POH (Dragon Bones)", "basePrice": 0.0000058, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 70, "displayOrder": 1, "active": true, "modifiers": []},
+        {"name": "POH (Superior Bones)", "basePrice": 0.0000048, "pricingUnit": "PER_LEVEL", "startLevel": 70, "endLevel": 99, "displayOrder": 2, "active": true, "modifiers": []},
+        {"name": "Wilderness (Dragon Bones)", "basePrice": 0.000014, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 70, "displayOrder": 3, "active": true, "modifiers": []},
+        {"name": "Wilderness (Superior Bones)", "basePrice": 0.00001, "pricingUnit": "PER_LEVEL", "startLevel": 70, "endLevel": 99, "displayOrder": 4, "active": true, "modifiers": []}
+      ],
+      "notes": []
+    },
+    {
+      "name": "Ranged",
+      "emoji": "🏹",
+      "slug": "ranged",
+      "description": "Ranged combat training",
+      "serviceModifiers": [],
+      "pricingMethods": [
+        {"name": "Sand Crabs", "basePrice": 0.000015, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 50, "displayOrder": 1, "active": true, "modifiers": []},
+        {"name": "Sand Crabs", "basePrice": 0.000012, "pricingUnit": "PER_LEVEL", "startLevel": 50, "endLevel": 99, "displayOrder": 2, "active": true, "modifiers": []},
+        {"name": "NMZ (Absorb)", "basePrice": 0.000008, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 70, "displayOrder": 3, "active": true, "modifiers": []},
+        {"name": "NMZ (Absorb)", "basePrice": 0.000007, "pricingUnit": "PER_LEVEL", "startLevel": 70, "endLevel": 99, "displayOrder": 4, "active": true, "modifiers": []},
+        {"name": "NMZ (Prayer)", "basePrice": 0.000009, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 70, "displayOrder": 5, "active": true, "modifiers": []},
+        {"name": "NMZ (Prayer)", "basePrice": 0.0000085, "pricingUnit": "PER_LEVEL", "startLevel": 70, "endLevel": 99, "displayOrder": 6, "active": true, "modifiers": []},
+        {"name": "Cannon", "basePrice": 0.00004, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 50, "displayOrder": 7, "active": true, "modifiers": []},
+        {"name": "Cannon", "basePrice": 0.000024, "pricingUnit": "PER_LEVEL", "startLevel": 50, "endLevel": 99, "displayOrder": 8, "active": true, "modifiers": []},
+        {"name": "Chinning (MM1 Tunnels)", "basePrice": 0.000008, "pricingUnit": "PER_LEVEL", "startLevel": 70, "endLevel": 99, "displayOrder": 9, "active": true, "modifiers": []},
+        {"name": "Chinning (MM2 Tunnels)", "basePrice": 0.000007, "pricingUnit": "PER_LEVEL", "startLevel": 70, "endLevel": 99, "displayOrder": 10, "active": true, "modifiers": []}
+      ],
+      "notes": []
+    },
+    {
+      "name": "Runecrafting",
+      "emoji": "✨",
+      "slug": "runecrafting",
+      "description": "For Any Other Methods, Please Open A Ticket",
+      "serviceModifiers": [
+        {
+          "name": "Discount",
+          "modifierType": "PERCENTAGE",
+          "value": -10,
+          "displayType": "NOTE",
+          "priority": 0,
+          "active": true
+        }
+      ],
+      "pricingMethods": [
+        {"name": "GOTR", "basePrice": 0.0000525, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 27, "displayOrder": 1, "active": true, "modifiers": []},
+        {"name": "GOTR", "basePrice": 0.000044, "pricingUnit": "PER_LEVEL", "startLevel": 27, "endLevel": 77, "displayOrder": 2, "active": true, "modifiers": []},
+        {"name": "GOTR", "basePrice": 0.000036, "pricingUnit": "PER_LEVEL", "startLevel": 77, "endLevel": 99, "displayOrder": 3, "active": true, "modifiers": []},
+        {"name": "Blood Runes", "basePrice": 0.000029, "pricingUnit": "PER_LEVEL", "startLevel": 77, "endLevel": 99, "displayOrder": 4, "active": true, "modifiers": []},
+        {"name": "Soul Runes", "basePrice": 0.000024, "pricingUnit": "PER_LEVEL", "startLevel": 90, "endLevel": 99, "displayOrder": 5, "active": true, "modifiers": []},
+        {"name": "Lava Runes", "basePrice": 0.00006, "pricingUnit": "PER_LEVEL", "startLevel": 23, "endLevel": 99, "displayOrder": 6, "active": true, "modifiers": []}
+      ],
+      "notes": []
+    },
+    {
+      "name": "Slayer",
+      "emoji": "⚔️",
+      "slug": "slayer",
+      "description": "Slayer skill training",
+      "serviceModifiers": [
+        {
+          "name": "Low Combat No Cannon",
+          "modifierType": "PERCENTAGE",
+          "value": 35,
+          "displayType": "UPCHARGE",
+          "priority": 0,
+          "active": true
+        },
+        {
+          "name": "Low Combat No Prayer",
+          "modifierType": "PERCENTAGE",
+          "value": 35,
+          "displayType": "UPCHARGE",
+          "priority": 1,
+          "active": true
+        },
+        {
+          "name": "No Cannon",
+          "modifierType": "PERCENTAGE",
+          "value": 20,
+          "displayType": "UPCHARGE",
+          "priority": 2,
+          "active": true
+        },
+        {
+          "name": "No Burst",
+          "modifierType": "PERCENTAGE",
+          "value": 20,
+          "displayType": "UPCHARGE",
+          "priority": 3,
+          "active": true
+        },
+        {
+          "name": "No Prayer",
+          "modifierType": "PERCENTAGE",
+          "value": 25,
+          "displayType": "UPCHARGE",
+          "priority": 4,
+          "active": true
+        },
+        {
+          "name": "No Food",
+          "modifierType": "PERCENTAGE",
+          "value": 15,
+          "displayType": "UPCHARGE",
+          "priority": 5,
+          "active": true
+        }
+      ],
+      "pricingMethods": [
+        {"name": "Best Slayer Master", "basePrice": 0.00006, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 18, "displayOrder": 1, "active": true, "modifiers": []},
+        {"name": "Best Slayer Master", "basePrice": 0.00005, "pricingUnit": "PER_LEVEL", "startLevel": 18, "endLevel": 69, "displayOrder": 2, "active": true, "modifiers": []},
+        {"name": "Best Slayer Master", "basePrice": 0.000036, "pricingUnit": "PER_LEVEL", "startLevel": 69, "endLevel": 85, "displayOrder": 3, "active": true, "modifiers": []},
+        {"name": "Best Slayer Master", "basePrice": 0.000035, "pricingUnit": "PER_LEVEL", "startLevel": 85, "endLevel": 99, "displayOrder": 4, "active": true, "modifiers": []}
+      ],
+      "notes": ["Up Charge Will Be Needed If You Don't Have The Following Resources"]
+    },
+    {
+      "name": "Woodcutting",
+      "emoji": "🪓",
+      "slug": "woodcutting",
+      "description": "For Any Log Banking Or Other Methods, Please Open A Ticket",
+      "serviceModifiers": [],
+      "pricingMethods": [
+        {"name": "Fastest Methods", "basePrice": 0.000075, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 35, "displayOrder": 1, "active": true, "modifiers": []},
+        {"name": "Teaks", "basePrice": 0.000019, "pricingUnit": "PER_LEVEL", "startLevel": 35, "endLevel": 90, "displayOrder": 2, "active": true, "modifiers": []},
+        {"name": "Teaks", "basePrice": 0.0000175, "pricingUnit": "PER_LEVEL", "startLevel": 90, "endLevel": 99, "displayOrder": 3, "active": true, "modifiers": []},
+        {"name": "Redwoods", "basePrice": 0.00001, "pricingUnit": "PER_LEVEL", "startLevel": 90, "endLevel": 99, "displayOrder": 4, "active": true, "modifiers": []}
+      ],
+      "notes": []
+    }
+  ]
+}

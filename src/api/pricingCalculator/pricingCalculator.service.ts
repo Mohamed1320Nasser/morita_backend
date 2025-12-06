@@ -7,12 +7,32 @@ export interface PriceCalculationRequest {
     methodId: string;
     paymentMethodId: string;
     quantity?: number; // For PER_LEVEL, PER_KILL, PER_ITEM, PER_HOUR
+    serviceModifierIds?: string[]; // Selected service-level modifier IDs
     customConditions?: Record<string, any>; // For modifier conditions
 }
 
 export interface PriceCalculationResult {
     basePrice: number;
     finalPrice: number;
+    serviceModifiers: Array<{
+        name: string;
+        type: string;
+        displayType: string;
+        value: number;
+        applied: boolean;
+        appliedAmount?: number;
+        reason?: string;
+    }>;
+    methodModifiers: Array<{
+        name: string;
+        type: string;
+        displayType: string;
+        value: number;
+        applied: boolean;
+        appliedAmount?: number;
+        reason?: string;
+    }>;
+    // Legacy field for backwards compatibility
     modifiers: Array<{
         name: string;
         type: string;
@@ -27,6 +47,8 @@ export interface PriceCalculationResult {
     };
     breakdown: {
         subtotal: number;
+        serviceModifiersTotal: number;
+        methodModifiersTotal: number;
         totalModifiers: number;
         finalPrice: number;
     };
@@ -88,10 +110,11 @@ export default class PricingCalculatorService {
             methodId,
             paymentMethodId,
             quantity = 1,
+            serviceModifierIds = [],
             customConditions = {},
         } = request;
 
-        // Get pricing method with modifiers
+        // Get pricing method with modifiers and service
         const method = await prisma.pricingMethod.findFirst({
             where: {
                 id: methodId,
@@ -99,6 +122,14 @@ export default class PricingCalculatorService {
                 deletedAt: null,
             },
             include: {
+                service: {
+                    include: {
+                        serviceModifiers: {
+                            where: { active: true },
+                            orderBy: { priority: "asc" },
+                        },
+                    },
+                },
                 modifiers: {
                     where: { active: true },
                     orderBy: { priority: "asc" },
@@ -122,15 +153,29 @@ export default class PricingCalculatorService {
             throw new NotFoundError("Pricing method not found");
         }
 
-        if (method.methodPrices.length === 0) {
-            throw new BadRequestError(
-                "No pricing found for this payment method"
-            );
+        // Get payment method (either from methodPrices or fetch default)
+        let paymentMethod;
+        let methodPrice = 0;
+
+        if (method.methodPrices.length > 0) {
+            paymentMethod = method.methodPrices[0].paymentMethod;
+            methodPrice = Number(method.methodPrices[0].price);
+        } else {
+            // If no methodPrices, fetch the payment method directly and use price 0
+            paymentMethod = await prisma.paymentMethod.findUnique({
+                where: { id: paymentMethodId },
+                select: {
+                    id: true,
+                    name: true,
+                    type: true,
+                },
+            });
+            if (!paymentMethod) {
+                throw new NotFoundError("Payment method not found");
+            }
         }
 
-        const paymentMethod = method.methodPrices[0].paymentMethod;
         const basePrice = Number(method.basePrice);
-        const methodPrice = Number(method.methodPrices[0].price);
 
         // Calculate base price based on pricing unit
         let calculatedPrice = this.calculateBasePrice(
@@ -138,12 +183,61 @@ export default class PricingCalculatorService {
             method.pricingUnit,
             quantity
         );
-        calculatedPrice += methodPrice; // Add method-specific price
+        calculatedPrice += methodPrice; // Add method-specific price (0 if not set)
+        const subtotal = calculatedPrice;
 
-        const appliedModifiers = [];
-        let totalModifierValue = 0;
+        const serviceModifiersApplied = [];
+        let serviceModifiersTotal = 0;
 
-        // Apply modifiers
+        // Apply SERVICE-LEVEL modifiers FIRST
+        for (const modifier of method.service.serviceModifiers) {
+            // Check if this modifier was selected by the user
+            const isSelected = serviceModifierIds.includes(modifier.id);
+
+            // Evaluate condition if exists
+            const shouldApply = isSelected && await this.evaluateModifierCondition(
+                modifier,
+                customConditions,
+                calculatedPrice
+            );
+
+            if (shouldApply) {
+                const priceBeforeModifier = calculatedPrice;
+                const newPrice = this.applyModifier(
+                    calculatedPrice,
+                    modifier.modifierType,
+                    Number(modifier.value)
+                );
+                const appliedAmount = newPrice - priceBeforeModifier;
+
+                serviceModifiersApplied.push({
+                    name: modifier.name,
+                    type: modifier.modifierType,
+                    displayType: modifier.displayType,
+                    value: Number(modifier.value),
+                    applied: true,
+                    appliedAmount: Math.round(appliedAmount * 100) / 100,
+                    reason: modifier.condition || "Applied",
+                });
+
+                calculatedPrice = newPrice;
+                serviceModifiersTotal += appliedAmount;
+            } else {
+                serviceModifiersApplied.push({
+                    name: modifier.name,
+                    type: modifier.modifierType,
+                    displayType: modifier.displayType,
+                    value: Number(modifier.value),
+                    applied: false,
+                    reason: isSelected ? "Condition not met" : "Not selected",
+                });
+            }
+        }
+
+        const methodModifiersApplied = [];
+        let methodModifiersTotal = 0;
+
+        // Apply METHOD-LEVEL modifiers AFTER service modifiers
         for (const modifier of method.modifiers) {
             const shouldApply = await this.evaluateModifierCondition(
                 modifier,
@@ -152,31 +246,31 @@ export default class PricingCalculatorService {
             );
 
             if (shouldApply) {
-                const modifierValue = this.applyModifier(
+                const priceBeforeModifier = calculatedPrice;
+                const newPrice = this.applyModifier(
                     calculatedPrice,
                     modifier.modifierType,
                     Number(modifier.value)
                 );
+                const appliedAmount = newPrice - priceBeforeModifier;
 
-                appliedModifiers.push({
+                methodModifiersApplied.push({
                     name: modifier.name,
                     type: modifier.modifierType,
+                    displayType: modifier.displayType,
                     value: Number(modifier.value),
                     applied: true,
-                    reason: modifier.condition || "Condition met",
+                    appliedAmount: Math.round(appliedAmount * 100) / 100,
+                    reason: modifier.condition || "Applied",
                 });
 
-                if (modifier.modifierType === "PERCENTAGE") {
-                    calculatedPrice = modifierValue;
-                    totalModifierValue += modifierValue - calculatedPrice;
-                } else {
-                    calculatedPrice = modifierValue;
-                    totalModifierValue += Number(modifier.value);
-                }
+                calculatedPrice = newPrice;
+                methodModifiersTotal += appliedAmount;
             } else {
-                appliedModifiers.push({
+                methodModifiersApplied.push({
                     name: modifier.name,
                     type: modifier.modifierType,
+                    displayType: modifier.displayType,
                     value: Number(modifier.value),
                     applied: false,
                     reason: "Condition not met",
@@ -184,14 +278,36 @@ export default class PricingCalculatorService {
             }
         }
 
+        // Legacy modifiers field (combine both for backwards compatibility)
+        const allModifiers = [
+            ...serviceModifiersApplied.map(m => ({
+                name: m.name,
+                type: m.type,
+                value: m.value,
+                applied: m.applied,
+                reason: m.reason,
+            })),
+            ...methodModifiersApplied.map(m => ({
+                name: m.name,
+                type: m.type,
+                value: m.value,
+                applied: m.applied,
+                reason: m.reason,
+            })),
+        ];
+
         return {
             basePrice: basePrice,
-            finalPrice: Math.round(calculatedPrice * 100) / 100, // Round to 2 decimal places
-            modifiers: appliedModifiers,
+            finalPrice: Math.round(calculatedPrice * 100) / 100,
+            serviceModifiers: serviceModifiersApplied,
+            methodModifiers: methodModifiersApplied,
+            modifiers: allModifiers, // Legacy
             paymentMethod: paymentMethod,
             breakdown: {
-                subtotal: basePrice + methodPrice,
-                totalModifiers: totalModifierValue,
+                subtotal: Math.round(subtotal * 100) / 100,
+                serviceModifiersTotal: Math.round(serviceModifiersTotal * 100) / 100,
+                methodModifiersTotal: Math.round(methodModifiersTotal * 100) / 100,
+                totalModifiers: Math.round((serviceModifiersTotal + methodModifiersTotal) * 100) / 100,
                 finalPrice: Math.round(calculatedPrice * 100) / 100,
             },
         };
@@ -284,6 +400,10 @@ export default class PricingCalculatorService {
                         emoji: true,
                     },
                 },
+                serviceModifiers: {
+                    where: { active: true },
+                    orderBy: { priority: "asc" },
+                },
                 pricingMethods: {
                     where: { active: true, deletedAt: null },
                     include: {
@@ -335,12 +455,18 @@ export default class PricingCalculatorService {
             throw new BadRequestError("Start level must be less than end level");
         }
 
-        // Get service
+        // Get service with service modifiers
         const service = await prisma.service.findFirst({
             where: {
                 id: serviceId,
                 active: true,
                 deletedAt: null,
+            },
+            include: {
+                serviceModifiers: {
+                    where: { active: true },
+                    orderBy: { priority: 'asc' },
+                },
             },
         });
 
@@ -431,6 +557,36 @@ export default class PricingCalculatorService {
             let methodModifiersTotal = 0;
             const methodModifierResults: MethodOption["modifiers"] = [];
 
+            // FIRST: Apply SERVICE-LEVEL modifiers (applies to ALL pricing methods)
+            for (const modifier of service.serviceModifiers || []) {
+                const modifierValue = Number(modifier.value);
+
+                // Apply all service modifiers (discounts and upcharges)
+                if (modifier.modifierType === "PERCENTAGE") {
+                    const addedValue = methodSubtotal * (modifierValue / 100);
+                    methodModifiersTotal += addedValue;
+
+                    methodModifierResults.push({
+                        name: modifier.name,
+                        type: modifier.modifierType,
+                        displayType: modifier.displayType,
+                        value: modifierValue,
+                        applied: true,
+                    });
+                } else if (modifier.modifierType === "FIXED") {
+                    methodModifiersTotal += modifierValue;
+
+                    methodModifierResults.push({
+                        name: modifier.name,
+                        type: modifier.modifierType,
+                        displayType: modifier.displayType,
+                        value: modifierValue,
+                        applied: true,
+                    });
+                }
+            }
+
+            // SECOND: Apply METHOD-LEVEL modifiers (specific to this pricing method)
             for (const modifier of method.modifiers) {
                 const modifierValue = Number(modifier.value);
 

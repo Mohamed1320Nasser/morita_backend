@@ -48,8 +48,8 @@ export async function handlePricingServiceSelect(
         } = require("discord.js");
         const actionButtons = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-                .setCustomId(`order_service_${serviceId}`)
-                .setLabel("🛒 Order Now")
+                .setCustomId(`open_ticket_${serviceId}_${categoryId}_0`)
+                .setLabel("🎫 Open Ticket")
                 .setStyle(ButtonStyle.Success),
             new ButtonBuilder()
                 .setCustomId(`calculate_price_${serviceId}`)
@@ -57,7 +57,7 @@ export async function handlePricingServiceSelect(
                 .setStyle(ButtonStyle.Primary),
             new ButtonBuilder()
                 .setCustomId(`back_to_category_${categoryId}`)
-                .setLabel("⬅️ Back to Category")
+                .setLabel("⬅️ Back")
                 .setStyle(ButtonStyle.Secondary)
         );
 

@@ -1,0 +1,84 @@
+{
+  "skills_part1": [
+    {
+      "name": "Sailing",
+      "emoji": "⛵",
+      "slug": "sailing",
+      "description": "Sailing skill training",
+      "serviceModifiers": [],
+      "pricingMethods": [
+        {"name": "Quests & Crates", "basePrice": 0.0012, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 30, "displayOrder": 1, "active": true, "modifiers": []},
+        {"name": "The Tempor Tantrum", "basePrice": 0.000186, "pricingUnit": "PER_LEVEL", "startLevel": 30, "endLevel": 55, "displayOrder": 2, "active": true, "modifiers": []},
+        {"name": "The Jubbly Jive", "basePrice": 0.000084, "pricingUnit": "PER_LEVEL", "startLevel": 55, "endLevel": 72, "displayOrder": 3, "active": true, "modifiers": []},
+        {"name": "The Gwenith Glide", "basePrice": 0.000024, "pricingUnit": "PER_LEVEL", "startLevel": 72, "endLevel": 99, "displayOrder": 4, "active": true, "modifiers": []}
+      ],
+      "notes": []
+    },
+    {
+      "name": "Agility",
+      "emoji": "🏃",
+      "slug": "agility-training",
+      "description": "If you ordered Agility XP, you will keep any Marks of Grace obtained. If you only want Marks of Grace, they are $0.12 each.",
+      "serviceModifiers": [],
+      "pricingMethods": [
+        {"name": "Various methods", "basePrice": 0.00007, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 40, "displayOrder": 1, "active": true, "modifiers": []},
+        {"name": "Canifis Rooftop", "basePrice": 0.000054, "pricingUnit": "PER_LEVEL", "startLevel": 40, "endLevel": 50, "displayOrder": 2, "active": true, "modifiers": []},
+        {"name": "Falador Rooftop", "basePrice": 0.000045, "pricingUnit": "PER_LEVEL", "startLevel": 50, "endLevel": 60, "displayOrder": 3, "active": true, "modifiers": []},
+        {"name": "Seers Rooftop With Diary", "basePrice": 0.00002, "pricingUnit": "PER_LEVEL", "startLevel": 60, "endLevel": 90, "displayOrder": 4, "active": true, "modifiers": []},
+        {"name": "Seers Rooftop Without Diary", "basePrice": 0.000023, "pricingUnit": "PER_LEVEL", "startLevel": 60, "endLevel": 90, "displayOrder": 5, "active": true, "modifiers": []},
+        {"name": "Rellekka Rooftop", "basePrice": 0.000024, "pricingUnit": "PER_LEVEL", "startLevel": 80, "endLevel": 99, "displayOrder": 6, "active": true, "modifiers": []},
+        {"name": "Ardougne Rooftop", "basePrice": 0.00002, "pricingUnit": "PER_LEVEL", "startLevel": 90, "endLevel": 99, "displayOrder": 7, "active": true, "modifiers": []},
+        {"name": "Wilderness", "basePrice": 0.00002, "pricingUnit": "PER_LEVEL", "startLevel": 52, "endLevel": 60, "displayOrder": 8, "active": true, "modifiers": []}
+      ],
+      "notes": []
+    },
+    {
+      "name": "Cooking",
+      "emoji": "🍳",
+      "slug": "cooking",
+      "description": "Cooking skill training",
+      "serviceModifiers": [],
+      "pricingMethods": [
+        {"name": "Fastest Methods", "basePrice": 0.000014, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 35, "displayOrder": 1, "active": true, "modifiers": []},
+        {"name": "Fishes With Cooking Gauntlets", "basePrice": 0.00001, "pricingUnit": "PER_LEVEL", "startLevel": 35, "endLevel": 99, "displayOrder": 2, "active": true, "modifiers": []},
+        {"name": "Fishes Without Cooking Gauntlets", "basePrice": 0.00002, "pricingUnit": "PER_LEVEL", "startLevel": 35, "endLevel": 99, "displayOrder": 3, "active": true, "modifiers": []},
+        {"name": "Wines", "basePrice": 0.000008, "pricingUnit": "PER_LEVEL", "startLevel": 35, "endLevel": 99, "displayOrder": 4, "active": true, "modifiers": []}
+      ],
+      "notes": []
+    },
+    {
+      "name": "Crafting",
+      "emoji": "🧵",
+      "slug": "crafting",
+      "description": "Crafting skill training",
+      "serviceModifiers": [],
+      "pricingMethods": [
+        {"name": "Leathers & Gems", "basePrice": 0.000017, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 63, "displayOrder": 1, "active": true, "modifiers": []},
+        {"name": "Green D'hide Bodies", "basePrice": 0.0000083, "pricingUnit": "PER_LEVEL", "startLevel": 63, "endLevel": 71, "displayOrder": 2, "active": true, "modifiers": []},
+        {"name": "Blue D'hide Bodies", "basePrice": 0.0000078, "pricingUnit": "PER_LEVEL", "startLevel": 71, "endLevel": 77, "displayOrder": 3, "active": true, "modifiers": []},
+        {"name": "Red D'hide Bodies", "basePrice": 0.0000073, "pricingUnit": "PER_LEVEL", "startLevel": 77, "endLevel": 84, "displayOrder": 4, "active": true, "modifiers": []},
+        {"name": "Black D'hide Bodies", "basePrice": 0.0000068, "pricingUnit": "PER_LEVEL", "startLevel": 84, "endLevel": 99, "displayOrder": 5, "active": true, "modifiers": []},
+        {"name": "Battlestaves", "basePrice": 0.000009, "pricingUnit": "PER_LEVEL", "startLevel": 54, "endLevel": 99, "displayOrder": 6, "active": true, "modifiers": []},
+        {"name": "Molten Glass", "basePrice": 0.00004, "pricingUnit": "PER_LEVEL", "startLevel": 47, "endLevel": 87, "displayOrder": 7, "active": true, "modifiers": []},
+        {"name": "Molten Glass", "basePrice": 0.00002, "pricingUnit": "PER_LEVEL", "startLevel": 87, "endLevel": 99, "displayOrder": 8, "active": true, "modifiers": []}
+      ],
+      "notes": []
+    },
+    {
+      "name": "Construction",
+      "emoji": "🏗️",
+      "slug": "construction",
+      "description": "Construction skill training",
+      "serviceModifiers": [],
+      "pricingMethods": [
+        {"name": "Fastest Methods", "basePrice": 0.000024, "pricingUnit": "PER_LEVEL", "startLevel": 1, "endLevel": 33, "displayOrder": 1, "active": true, "modifiers": []},
+        {"name": "Oak Larders", "basePrice": 0.000009, "pricingUnit": "PER_LEVEL", "startLevel": 33, "endLevel": 52, "displayOrder": 2, "active": true, "modifiers": []},
+        {"name": "Mahogany Tables", "basePrice": 0.000008, "pricingUnit": "PER_LEVEL", "startLevel": 52, "endLevel": 99, "displayOrder": 3, "active": true, "modifiers": []},
+        {"name": "Teak Garden Bench", "basePrice": 0.0000092, "pricingUnit": "PER_LEVEL", "startLevel": 66, "endLevel": 99, "displayOrder": 4, "active": true, "modifiers": []},
+        {"name": "Mahogany Homes (Teak)", "basePrice": 0.000024, "pricingUnit": "PER_LEVEL", "startLevel": 50, "endLevel": 99, "displayOrder": 5, "active": true, "modifiers": []},
+        {"name": "Mahogany Homes (Mahogany)", "basePrice": 0.00002, "pricingUnit": "PER_LEVEL", "startLevel": 70, "endLevel": 99, "displayOrder": 6, "active": true, "modifiers": []}
+      ],
+      "notes": []
+    }
+  ]
+}

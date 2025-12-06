@@ -10,14 +10,32 @@ export default async function getControllers() {
     for (let index = 0; index < controllersFiles.length; index++) {
         const _path = path.resolve(__dirname, controllersFiles[index]);
         const controller = await import(_path);
+
+        // Load default export
         if (controller.default) {
             controllers.push(controller.default);
             logger.info(
                 `controller loaded: ${controller.default.name}, file: ${_path}`
             );
-        } else {
+        }
+
+        // Also load named exports that are controllers (routing-controllers classes)
+        Object.keys(controller).forEach(key => {
+            if (key !== 'default' && controller[key] && typeof controller[key] === 'function') {
+                // Check if it's a controller class (has routing-controllers metadata)
+                const potentialController = controller[key];
+                if (potentialController.prototype && potentialController.name) {
+                    controllers.push(potentialController);
+                    logger.info(
+                        `controller loaded (named export): ${potentialController.name}, file: ${_path}`
+                    );
+                }
+            }
+        });
+
+        if (!controller.default && Object.keys(controller).length === 0) {
             logger.warn(
-                `controller file skipped (no default export): ${_path}`
+                `controller file skipped (no exports): ${_path}`
             );
         }
     }

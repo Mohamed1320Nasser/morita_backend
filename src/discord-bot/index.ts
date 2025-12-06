@@ -15,13 +15,17 @@ import Environment from "../common/config/environment";
 // Environment variables are already loaded by Environment.ts (dotenv.config() called there)
 // No need to load again - this works for both standalone and integrated modes
 
-// Create Discord client
+// Create Discord client with increased timeout
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent, // Required for reading message content (!s command)
     ],
+    rest: {
+        // Increase REST API timeout to 30 seconds (default is 15s)
+        timeout: 30000,
+    },
 });
 
 // Create collections for commands and interactions
@@ -102,13 +106,29 @@ client.once(Events.ClientReady, async readyClient => {
     // Set bot activity
     readyClient.user.setActivity("🎮 Morita Gaming | /help", { type: 1 });
 
-    // Register slash commands
+    // Register slash commands (guild commands for immediate update)
     try {
         const commands = Array.from(client.commands.values()).map(
-            (cmd: any) => cmd.data
+            (cmd: any) => cmd.data.toJSON()
         );
-        await readyClient.application?.commands.set(commands);
-        logger.info(`Registered ${commands.length} slash commands`);
+
+        // Register as guild commands (immediate) instead of global (up to 1 hour delay)
+        const guildId = discordConfig.guildId;
+        if (guildId) {
+            const guild = readyClient.guilds.cache.get(guildId);
+            if (guild) {
+                await guild.commands.set(commands);
+                logger.info(`Registered ${commands.length} guild slash commands to ${guild.name}`);
+            } else {
+                // Fallback to global if guild not found
+                await readyClient.application?.commands.set(commands);
+                logger.info(`Registered ${commands.length} global slash commands (guild not found)`);
+            }
+        } else {
+            // Fallback to global if no guild ID configured
+            await readyClient.application?.commands.set(commands);
+            logger.info(`Registered ${commands.length} global slash commands`);
+        }
     } catch (error) {
         logger.error("Failed to register slash commands:", error);
     }
@@ -136,8 +156,8 @@ process.on("unhandledRejection", error => {
     logger.error("Unhandled promise rejection:", error);
 });
 
-// Login to Discord
-const startBot = async () => {
+// Login to Discord with retry logic
+const startBot = async (retries = 3, delay = 5000) => {
     try {
         await loadCommands();
         await loadEvents();
@@ -148,9 +168,28 @@ const startBot = async () => {
             );
         }
 
+        logger.info(`Attempting to login to Discord... (retries remaining: ${retries})`);
         await client.login(discordConfig.token);
-    } catch (error) {
+        logger.info("Successfully logged in to Discord!");
+    } catch (error: any) {
         logger.error("Failed to start Discord bot:", error);
+
+        // Check if this is a network/timeout error that we should retry
+        const isNetworkError =
+            error.message?.includes("timeout") ||
+            error.message?.includes("ETIMEDOUT") ||
+            error.message?.includes("ECONNREFUSED") ||
+            error.code === "ETIMEDOUT" ||
+            error.code === "ECONNREFUSED";
+
+        if (isNetworkError && retries > 0) {
+            logger.warn(`Network error detected. Retrying in ${delay / 1000} seconds...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            return startBot(retries - 1, delay);
+        }
+
+        // Non-network error or no retries left - exit
+        logger.error("Unable to start Discord bot after all retry attempts");
         process.exit(1);
     }
 };

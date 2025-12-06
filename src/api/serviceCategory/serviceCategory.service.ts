@@ -8,12 +8,22 @@ import {
 import { NotFoundError, BadRequestError } from "routing-controllers";
 import slugify from "slugify";
 import API from "../../common/config/api.types";
+import logger from "../../common/loggers";
+
+// Ticket settings interface
+interface TicketSettingsInput {
+    welcomeTitle?: string;
+    welcomeMessage?: string;
+    embedColor?: string;
+    bannerUrl?: string | null;
+    footerText?: string | null;
+}
 
 @Service()
 export default class ServiceCategoryService {
     constructor() {}
 
-    async create(data: CreateServiceCategoryDto, icon?: API.File) {
+    async create(data: CreateServiceCategoryDto & { ticketSettings?: TicketSettingsInput }, icon?: API.File) {
         // Auto-generate slug from name if not provided
         let slug = data.slug || slugify(data.name, { lower: true, strict: true });
 
@@ -35,15 +45,80 @@ export default class ServiceCategoryService {
             slug = uniqueSlug;
         }
 
+        // Extract ticketSettings from data
+        const { ticketSettings, ...categoryData } = data;
+
         const category = await prisma.serviceCategory.create({
             data: {
-                ...data,
+                ...categoryData,
                 slug,
                 icon: icon ? { connect: { id: icon.id } } : undefined,
             },
         });
 
+        // Create ticket settings if provided
+        if (ticketSettings) {
+            await this.upsertTicketSettings(category.id, ticketSettings);
+        }
+
         return category;
+    }
+
+    /**
+     * Upsert ticket settings for a category
+     */
+    async upsertTicketSettings(categoryId: string, settings: TicketSettingsInput) {
+        try {
+            const existing = await prisma.categoryTicketSettings.findUnique({
+                where: { categoryId },
+            });
+
+            if (existing) {
+                await prisma.categoryTicketSettings.update({
+                    where: { categoryId },
+                    data: {
+                        welcomeTitle: settings.welcomeTitle,
+                        welcomeMessage: settings.welcomeMessage,
+                        embedColor: settings.embedColor,
+                        bannerUrl: settings.bannerUrl,
+                        footerText: settings.footerText,
+                        updatedAt: new Date(),
+                    },
+                });
+            } else {
+                await prisma.categoryTicketSettings.create({
+                    data: {
+                        categoryId,
+                        welcomeTitle: settings.welcomeTitle || "Welcome to Your Ticket!",
+                        welcomeMessage: settings.welcomeMessage || "Our support team will assist you shortly.",
+                        embedColor: settings.embedColor || "5865F2",
+                        bannerUrl: settings.bannerUrl,
+                        footerText: settings.footerText,
+                    },
+                });
+            }
+
+            logger.info(`Ticket settings saved for category ${categoryId}`);
+        } catch (error) {
+            logger.error(`Error saving ticket settings for category ${categoryId}:`, error);
+        }
+    }
+
+    /**
+     * Get ticket settings for a category
+     */
+    async getTicketSettings(categoryId: string) {
+        const settings = await prisma.categoryTicketSettings.findUnique({
+            where: { categoryId },
+        });
+
+        return settings || {
+            welcomeTitle: "Welcome to Your Ticket!",
+            welcomeMessage: "Our support team will assist you shortly.",
+            embedColor: "5865F2",
+            bannerUrl: null,
+            footerText: null,
+        };
     }
 
     async getList(query: GetServiceCategoryListDto) {
@@ -114,6 +189,7 @@ export default class ServiceCategoryService {
                     },
                     orderBy: { displayOrder: "asc" },
                 },
+                ticketSettings: true, // Include ticket settings
             },
         });
 
@@ -124,7 +200,7 @@ export default class ServiceCategoryService {
         return category;
     }
 
-    async update(id: string, data: UpdateServiceCategoryDto, icon?: API.File) {
+    async update(id: string, data: UpdateServiceCategoryDto & { ticketSettings?: TicketSettingsInput }, icon?: API.File) {
         const category = await prisma.serviceCategory.findFirst({
             where: { id, deletedAt: null },
         });
@@ -146,14 +222,25 @@ export default class ServiceCategoryService {
             }
         }
 
+        // Extract ticketSettings from data
+        const { ticketSettings, ...categoryData } = data;
+
         const updatedCategory = await prisma.serviceCategory.update({
             where: { id },
             data: {
-                ...data,
+                ...categoryData,
                 icon: icon ? { connect: { id: icon.id } } : undefined,
                 updatedAt: new Date(),
             },
+            include: {
+                ticketSettings: true,
+            },
         });
+
+        // Update ticket settings if provided
+        if (ticketSettings) {
+            await this.upsertTicketSettings(id, ticketSettings);
+        }
 
         return updatedCategory;
     }

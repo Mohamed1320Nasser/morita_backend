@@ -11,8 +11,16 @@ export async function handleRecalculate(
     interaction: ButtonInteraction
 ): Promise<void> {
     try {
-        // Get service ID from button custom ID (format: 'recalculate_<serviceId>')
-        const serviceId = interaction.customId.replace("recalculate_", "");
+        // Get service ID from button custom ID
+        // Format: 'recalculate_<serviceId>' or 'recalculate_inticket_<serviceId>'
+        let customIdPart = interaction.customId.replace("recalculate_", "");
+        const isFromTicket = customIdPart.startsWith("inticket_");
+
+        if (isFromTicket) {
+            customIdPart = customIdPart.replace("inticket_", "");
+        }
+
+        const serviceId = customIdPart;
 
         if (!serviceId) {
             await interaction.reply({
@@ -34,9 +42,13 @@ export async function handleRecalculate(
             return;
         }
 
-        // Create modal for level input (same as calculate-price button)
+        // Create modal for level input - preserve the inticket context
+        const modalCustomId = isFromTicket
+            ? `calculator_modal_inticket_${serviceId}`
+            : `calculator_modal_${serviceId}`;
+
         const modal = new ModalBuilder()
-            .setCustomId(`calculator_modal_${serviceId}`)
+            .setCustomId(modalCustomId)
             .setTitle(`${service.emoji || "⭐"} ${service.name} Calculator`);
 
         // Start level input

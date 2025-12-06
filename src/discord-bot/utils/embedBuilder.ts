@@ -116,6 +116,37 @@ export class EmbedBuilder {
             });
         }
 
+        // Add service modifiers (applies to all methods)
+        console.log('[DEBUG] Service data:', JSON.stringify({
+            name: service.name,
+            hasServiceModifiers: !!service.serviceModifiers,
+            serviceModifiersLength: service.serviceModifiers?.length || 0,
+            serviceModifiers: service.serviceModifiers
+        }, null, 2));
+
+        if (service.serviceModifiers && service.serviceModifiers.length > 0) {
+            const modifiersText = service.serviceModifiers
+                .map(modifier => {
+                    const icon = modifier.displayType === 'UPCHARGE' ? '🔺' :
+                                 modifier.displayType === 'NOTE' ? '📝' :
+                                 modifier.displayType === 'WARNING' ? '⚠️' : '⚙️';
+                    const sign = Number(modifier.value) >= 0 ? '+' : '';
+                    const unit = modifier.modifierType === 'PERCENTAGE' ? '%' : 'M';
+                    return `${icon} ${sign}${modifier.value}${unit} ${modifier.name}`;
+                })
+                .join("\n");
+
+            console.log('[DEBUG] Adding modifiers field:', modifiersText);
+
+            embed.addFields({
+                name: "⚙️ **Available Modifiers** (All Methods)",
+                value: modifiersText,
+                inline: false,
+            });
+        } else {
+            console.log('[DEBUG] No service modifiers to display');
+        }
+
         // Add service status
         embed.addFields({
             name: "📊 **Service Status**",
@@ -188,12 +219,55 @@ export class EmbedBuilder {
             }
         );
 
-        // Add modifiers if any
-        if (result.modifiers.length > 0) {
+        // Add service modifiers if any
+        if (result.serviceModifiers && result.serviceModifiers.length > 0) {
+            const appliedServiceMods = result.serviceModifiers.filter(m => m.applied);
+
+            if (appliedServiceMods.length > 0) {
+                const serviceModsText = appliedServiceMods
+                    .map(modifier => {
+                        const value = modifier.appliedAmount
+                            ? `$${modifier.appliedAmount.toFixed(2)}`
+                            : (modifier.type === "PERCENTAGE" ? `${modifier.value}%` : `$${modifier.value}`);
+                        return `• ${modifier.name}: ${value}`;
+                    })
+                    .join("\n");
+
+                embed.addFields({
+                    name: "⚙️ **Service Modifiers**",
+                    value: serviceModsText,
+                    inline: false,
+                });
+            }
+        }
+
+        // Add method modifiers if any
+        if (result.methodModifiers && result.methodModifiers.length > 0) {
+            const appliedMethodMods = result.methodModifiers.filter(m => m.applied);
+
+            if (appliedMethodMods.length > 0) {
+                const methodModsText = appliedMethodMods
+                    .map(modifier => {
+                        const value = modifier.appliedAmount
+                            ? `$${modifier.appliedAmount.toFixed(2)}`
+                            : (modifier.type === "PERCENTAGE" ? `${modifier.value}%` : `$${modifier.value}`);
+                        return `• ${modifier.name}: ${value}`;
+                    })
+                    .join("\n");
+
+                embed.addFields({
+                    name: "🔧 **Method Modifiers**",
+                    value: methodModsText,
+                    inline: false,
+                });
+            }
+        }
+
+        // Legacy support: Show all modifiers if new format not available
+        if ((!result.serviceModifiers || result.serviceModifiers.length === 0) &&
+            (!result.methodModifiers || result.methodModifiers.length === 0) &&
+            result.modifiers && result.modifiers.length > 0) {
             const appliedModifiers = result.modifiers.filter(m => m.applied);
-            const notAppliedModifiers = result.modifiers.filter(
-                m => !m.applied
-            );
 
             if (appliedModifiers.length > 0) {
                 const modifiersText = appliedModifiers
@@ -212,24 +286,6 @@ export class EmbedBuilder {
                     inline: false,
                 });
             }
-
-            if (notAppliedModifiers.length > 0) {
-                const notAppliedText = notAppliedModifiers
-                    .map(modifier => `• ${modifier.name}: ${modifier.reason}`)
-                    .join("\n");
-
-                embed.addFields({
-                    name: `${EMOJIS.INFO} Available Modifiers:`,
-                    value: notAppliedText,
-                    inline: false,
-                });
-            }
-        } else {
-            embed.addFields({
-                name: `${EMOJIS.INFO} Modifiers:`,
-                value: MESSAGES.NO_MODIFIERS,
-                inline: false,
-            });
         }
 
         // Add total price

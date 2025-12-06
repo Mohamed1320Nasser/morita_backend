@@ -1,0 +1,9 @@
+{
+  "category": {
+    "name": "Skills",
+    "emoji": "⚡",
+    "slug": "skills",
+    "description": "Skill training services for all OSRS skills",
+    "services": []
+  }
+}

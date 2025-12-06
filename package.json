@@ -29,6 +29,8 @@
         "db:push": "npx prisma db push",
         "db:seed": "npx prisma db seed",
         "seed:gaming": "ts-node src/scripts/seed-gaming-services.ts",
+        "seed:all": "ts-node src/scripts/seed-all-services-data.ts",
+        "bot:clear-commands": "ts-node src/discord-bot/clear-commands.ts",
         "docs:generate": "ts-node scripts/simple-docs-generator.ts",
         "docs:serve": "ts-node scripts/simple-docs-generator.ts"
     },

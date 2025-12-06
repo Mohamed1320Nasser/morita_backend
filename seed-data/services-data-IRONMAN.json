@@ -1,0 +1,484 @@
+{
+  "category": {
+    "name": "Ironman Gathering",
+    "emoji": "🔗",
+    "slug": "ironman-gathering",
+    "description": "Resource gathering services for ironman accounts",
+    "services": [
+      {
+        "name": "Amethyst, Daeyalt Essence & Volcanic Ash",
+        "emoji": "💎",
+        "slug": "amethyst-daeyalt-ash",
+        "description": "Mining gathering services",
+        "serviceModifiers": [],
+        "pricingMethods": [
+          {
+            "name": "Amethyst - Each",
+            "basePrice": 0.02,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 1,
+            "active": true,
+            "description": "REQ: Expert Gloves",
+            "modifiers": [
+              {
+                "name": "No Expert Gloves",
+                "modifierType": "PERCENTAGE",
+                "value": 20,
+                "displayType": "UPCHARGE",
+                "priority": 0,
+                "active": true
+              }
+            ]
+          },
+          {"name": "Daeyalt Essence - Each", "basePrice": 0.00022, "pricingUnit": "PER_ITEM", "displayOrder": 2, "active": true, "modifiers": []},
+          {"name": "Volcanic Ash - Each", "basePrice": 0.0006, "pricingUnit": "PER_ITEM", "displayOrder": 3, "active": true, "modifiers": []}
+        ],
+        "notes": []
+      },
+      {
+        "name": "Buying Ores & Making Bars",
+        "emoji": "⚒️",
+        "slug": "ores-bars",
+        "description": "Ore purchasing and smithing services",
+        "serviceModifiers": [
+          {
+            "name": "No staminas",
+            "modifierType": "PERCENTAGE",
+            "value": 25,
+            "displayType": "UPCHARGE",
+            "priority": 0,
+            "active": true
+          },
+          {
+            "name": "No graceful",
+            "modifierType": "PERCENTAGE",
+            "value": 25,
+            "displayType": "UPCHARGE",
+            "priority": 1,
+            "active": true
+          }
+        ],
+        "pricingMethods": [
+          {"name": "Making Steel Bar - Each", "basePrice": 0.0008, "pricingUnit": "PER_ITEM", "displayOrder": 1, "active": true, "description": "REQ: Ores + Ice Gloves + Graceful", "modifiers": []},
+          {"name": "Making Mithril Bar - Each", "basePrice": 0.0012, "pricingUnit": "PER_ITEM", "displayOrder": 2, "active": true, "description": "REQ: Ores + Ice Gloves + Graceful", "modifiers": []},
+          {"name": "Making Adamantite Bar - Each", "basePrice": 0.0016, "pricingUnit": "PER_ITEM", "displayOrder": 3, "active": true, "description": "REQ: Ores + Ice Gloves + Graceful", "modifiers": []},
+          {"name": "Making Runite Bar - Each", "basePrice": 0.002, "pricingUnit": "PER_ITEM", "displayOrder": 4, "active": true, "description": "REQ: Ores + Ice Gloves + Graceful", "modifiers": []},
+          {"name": "Making Cannon Ball - Per Bar", "basePrice": 0.0025, "pricingUnit": "PER_ITEM", "displayOrder": 5, "active": true, "description": "REQ: Steel Bars + Graceful", "modifiers": []},
+          {"name": "Buying Ores - Each", "basePrice": 0.001, "pricingUnit": "PER_ITEM", "displayOrder": 6, "active": true, "description": "REQ: Graceful", "modifiers": []}
+        ],
+        "notes": []
+      },
+      {
+        "name": "Crafting Supplies Gathering - Charter Ship",
+        "emoji": "🚢",
+        "slug": "charter-ship-supplies",
+        "description": "Charter ship item gathering",
+        "serviceModifiers": [
+          {
+            "name": "No Stamina",
+            "modifierType": "PERCENTAGE",
+            "value": 20,
+            "displayType": "UPCHARGE",
+            "priority": 0,
+            "active": true
+          },
+          {
+            "name": "No Graceful",
+            "modifierType": "PERCENTAGE",
+            "value": 20,
+            "displayType": "UPCHARGE",
+            "priority": 1,
+            "active": true
+          }
+        ],
+        "pricingMethods": [
+          {"name": "Charter Ship - Each Item", "basePrice": 0.001, "pricingUnit": "PER_ITEM", "displayOrder": 1, "active": true, "description": "REQ: Stamina + Graceful", "modifiers": []},
+          {
+            "name": "Bucket of Sand - Each Bucket",
+            "basePrice": 0.0007,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 2,
+            "active": true,
+            "modifiers": [
+              {
+                "name": "Below 85 Mining",
+                "modifierType": "PERCENTAGE",
+                "value": 20,
+                "displayType": "UPCHARGE",
+                "priority": 0,
+                "active": true
+              }
+            ]
+          }
+        ],
+        "notes": []
+      },
+      {
+        "name": "Red & Black Chinchompas",
+        "emoji": "🐭",
+        "slug": "chinchompas",
+        "description": "Chinchompa hunting services",
+        "serviceModifiers": [],
+        "pricingMethods": [
+          {"name": "Red Chinchompas", "basePrice": 0.01, "pricingUnit": "PER_ITEM", "startLevel": 63, "endLevel": 80, "displayOrder": 1, "active": true, "description": "Without Hard Western Diary/Priff", "modifiers": []},
+          {"name": "Red Chinchompas", "basePrice": 0.006, "pricingUnit": "PER_ITEM", "startLevel": 80, "endLevel": 99, "displayOrder": 2, "active": true, "description": "Without Hard Western Diary/Priff", "modifiers": []},
+          {"name": "Red Chinchompas", "basePrice": 0.006, "pricingUnit": "PER_ITEM", "startLevel": 70, "endLevel": 80, "displayOrder": 3, "active": true, "description": "With Hard Western Diary/Priff", "modifiers": []},
+          {"name": "Red Chinchompas", "basePrice": 0.004, "pricingUnit": "PER_ITEM", "startLevel": 80, "endLevel": 99, "displayOrder": 4, "active": true, "description": "With Hard Western Diary/Priff", "modifiers": []},
+          {"name": "Black Chinchompas", "basePrice": 0.013, "pricingUnit": "PER_ITEM", "startLevel": 73, "endLevel": 80, "displayOrder": 5, "active": true, "modifiers": []},
+          {"name": "Black Chinchompas", "basePrice": 0.008, "pricingUnit": "PER_ITEM", "startLevel": 80, "endLevel": 99, "displayOrder": 6, "active": true, "modifiers": []}
+        ],
+        "notes": []
+      },
+      {
+        "name": "Farm Runs",
+        "emoji": "🌱",
+        "slug": "farm-runs",
+        "description": "Farming run services",
+        "serviceModifiers": [],
+        "pricingMethods": [
+          {"name": "Herb Run", "basePrice": 1, "pricingUnit": "PER_ITEM", "displayOrder": 1, "active": true, "modifiers": []},
+          {"name": "Tree Run", "basePrice": 0.1, "pricingUnit": "PER_ITEM", "displayOrder": 2, "active": true, "modifiers": []},
+          {"name": "Giant Seaweed Run", "basePrice": 0.14, "pricingUnit": "PER_ITEM", "displayOrder": 3, "active": true, "modifiers": []},
+          {"name": "Birdhouse Run", "basePrice": 0.17, "pricingUnit": "PER_ITEM", "displayOrder": 4, "active": true, "modifiers": []},
+          {"name": "Allotment", "basePrice": 0.1, "pricingUnit": "PER_ITEM", "displayOrder": 5, "active": true, "modifiers": []}
+        ],
+        "notes": []
+      },
+      {
+        "name": "Gathering Food - Raw Fish",
+        "emoji": "🐟",
+        "slug": "raw-fish",
+        "description": "Fishing services",
+        "serviceModifiers": [],
+        "pricingMethods": [
+          {
+            "name": "Karambwans - Each",
+            "basePrice": 0.002,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 1,
+            "active": true,
+            "description": "Req: Fairy Ring & +65 Fishing",
+            "modifiers": [
+              {
+                "name": "Cook",
+                "modifierType": "PERCENTAGE",
+                "value": 100,
+                "displayType": "UPCHARGE",
+                "priority": 0,
+                "active": true
+              }
+            ]
+          },
+          {
+            "name": "Monkfish - Each",
+            "basePrice": 0.0018,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 2,
+            "active": true,
+            "description": "Req: Fishing Level +62",
+            "modifiers": [
+              {
+                "name": "Cook",
+                "modifierType": "PERCENTAGE",
+                "value": 90,
+                "displayType": "UPCHARGE",
+                "priority": 0,
+                "active": true
+              }
+            ]
+          },
+          {
+            "name": "Shark - Each",
+            "basePrice": 0.0064,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 3,
+            "active": true,
+            "description": "Req: Fishing Level +76",
+            "modifiers": [
+              {
+                "name": "Cook",
+                "modifierType": "PERCENTAGE",
+                "value": 50,
+                "displayType": "UPCHARGE",
+                "priority": 0,
+                "active": true
+              }
+            ]
+          },
+          {
+            "name": "Anglerfish - Each",
+            "basePrice": 0.0064,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 4,
+            "active": true,
+            "description": "Req: Fishing Level +82",
+            "modifiers": [
+              {
+                "name": "Cook",
+                "modifierType": "PERCENTAGE",
+                "value": 50,
+                "displayType": "UPCHARGE",
+                "priority": 0,
+                "active": true
+              }
+            ]
+          }
+        ],
+        "notes": []
+      },
+      {
+        "name": "Herblore Secondaries",
+        "emoji": "🌿",
+        "slug": "herblore-secondaries",
+        "description": "Herblore ingredient gathering",
+        "serviceModifiers": [],
+        "pricingMethods": [
+          {
+            "name": "Mort Myre Fungus - Each",
+            "basePrice": 0.0024,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 1,
+            "active": true,
+            "description": "Req: Hard Morytania Diary",
+            "modifiers": [
+              {
+                "name": "No Diary",
+                "modifierType": "PERCENTAGE",
+                "value": 110,
+                "displayType": "UPCHARGE",
+                "priority": 0,
+                "active": true
+              }
+            ]
+          },
+          {
+            "name": "Snape Grass - Each",
+            "basePrice": 0.0018,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 2,
+            "active": true,
+            "description": "Req: Fremennik Easy Diary + Waterbirth Teleport",
+            "modifiers": [
+              {
+                "name": "No Diary Or Teleport",
+                "modifierType": "PERCENTAGE",
+                "value": 30,
+                "displayType": "UPCHARGE",
+                "priority": 0,
+                "active": true
+              }
+            ]
+          },
+          {"name": "Snape Grass Hosidius - Each", "basePrice": 0.002, "pricingUnit": "PER_ITEM", "displayOrder": 3, "active": true, "modifiers": []},
+          {
+            "name": "Red Spider Eggs - Each",
+            "basePrice": 0.005,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 4,
+            "active": true,
+            "description": "Req: Sardines Banked",
+            "modifiers": [
+              {
+                "name": "No Sardines",
+                "modifierType": "PERCENTAGE",
+                "value": 80,
+                "displayType": "UPCHARGE",
+                "priority": 0,
+                "active": true
+              }
+            ]
+          },
+          {
+            "name": "Blue Dragon Scales - Each",
+            "basePrice": 0.0044,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 5,
+            "active": true,
+            "description": "Req: 70 Agility",
+            "modifiers": [
+              {
+                "name": "Under 70 Agility",
+                "modifierType": "PERCENTAGE",
+                "value": 40,
+                "displayType": "UPCHARGE",
+                "priority": 0,
+                "active": true
+              }
+            ]
+          },
+          {
+            "name": "Wine of Zamorak - Each",
+            "basePrice": 0.006,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 6,
+            "active": true,
+            "description": "Req: Wilderness Dard Diaries",
+            "modifiers": [
+              {
+                "name": "No Diary",
+                "modifierType": "PERCENTAGE",
+                "value": 70,
+                "displayType": "UPCHARGE",
+                "priority": 0,
+                "active": true
+              }
+            ]
+          },
+          {
+            "name": "Unicorn Horns - Each",
+            "basePrice": 0.004,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 7,
+            "active": true,
+            "description": "Req: Cowhide Banked",
+            "modifiers": [
+              {
+                "name": "No Cowhide",
+                "modifierType": "PERCENTAGE",
+                "value": 50,
+                "displayType": "UPCHARGE",
+                "priority": 0,
+                "active": true
+              }
+            ]
+          }
+        ],
+        "notes": []
+      },
+      {
+        "name": "Impling",
+        "emoji": "🦋",
+        "slug": "impling",
+        "description": "Impling catching services",
+        "serviceModifiers": [
+          {
+            "name": "No Dream Mentor",
+            "modifierType": "PERCENTAGE",
+            "value": 25,
+            "displayType": "UPCHARGE",
+            "priority": 0,
+            "active": true
+          }
+        ],
+        "pricingMethods": [
+          {"name": "Young Impling - Each", "basePrice": 0.012, "pricingUnit": "PER_ITEM", "displayOrder": 1, "active": true, "description": "Req: Dream Mentor Quest", "modifiers": []},
+          {"name": "Eclectic Impling - Each", "basePrice": 0.012, "pricingUnit": "PER_ITEM", "displayOrder": 2, "active": true, "description": "Req: Dream Mentor Quest", "modifiers": []},
+          {"name": "Ninja Impling - Each", "basePrice": 0.024, "pricingUnit": "PER_ITEM", "displayOrder": 3, "active": true, "description": "Req: Dream Mentor Quest", "modifiers": []},
+          {"name": "Crystal Impling - Each", "basePrice": 1.98, "pricingUnit": "PER_ITEM", "displayOrder": 4, "active": true, "description": "Req: Dream Mentor Quest", "modifiers": []},
+          {"name": "Dragon Impling - Each", "basePrice": 1.6, "pricingUnit": "PER_ITEM", "displayOrder": 5, "active": true, "description": "Req: Dream Mentor Quest", "modifiers": []},
+          {"name": "Lucky Impling - Each", "basePrice": 2.4, "pricingUnit": "PER_ITEM", "displayOrder": 6, "active": true, "description": "Req: Dream Mentor Quest", "modifiers": []},
+          {"name": "Gathering Jar - Each", "basePrice": 0.0055, "pricingUnit": "PER_ITEM", "displayOrder": 7, "active": true, "modifiers": []}
+        ],
+        "notes": []
+      },
+      {
+        "name": "Logs Gathering & Plank Making",
+        "emoji": "🪵",
+        "slug": "logs-planks",
+        "description": "Woodcutting and plank making services",
+        "serviceModifiers": [],
+        "pricingMethods": [
+          {"name": "Chopping & Banking - Oak logs - Each", "basePrice": 0.0013, "pricingUnit": "PER_ITEM", "displayOrder": 1, "active": true, "modifiers": []},
+          {"name": "Chopping & Banking - Willow logs - Each", "basePrice": 0.0018, "pricingUnit": "PER_ITEM", "displayOrder": 2, "active": true, "modifiers": []},
+          {"name": "Chopping & Banking - Teak Logs - Each", "basePrice": 0.004, "pricingUnit": "PER_ITEM", "displayOrder": 3, "active": true, "modifiers": []},
+          {"name": "Chopping & Banking - Maple Logs - Each", "basePrice": 0.0025, "pricingUnit": "PER_ITEM", "displayOrder": 4, "active": true, "modifiers": []},
+          {"name": "Chopping & Banking - Yew Logs - Each", "basePrice": 0.0031, "pricingUnit": "PER_ITEM", "displayOrder": 5, "active": true, "modifiers": []},
+          {"name": "Chopping & Banking - Magic Logs - Each", "basePrice": 0.0040, "pricingUnit": "PER_ITEM", "displayOrder": 6, "active": true, "modifiers": []},
+          {"name": "Chopping & Banking - Redwood Logs - Each", "basePrice": 0.0044, "pricingUnit": "PER_ITEM", "displayOrder": 7, "active": true, "modifiers": []},
+          {"name": "Chopping & Banking - Mahogany Logs - Each", "basePrice": 0.006, "pricingUnit": "PER_ITEM", "displayOrder": 8, "active": true, "modifiers": []},
+          {
+            "name": "Plank Make - Magic Spell - Each",
+            "basePrice": 0.0011,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 9,
+            "active": true,
+            "description": "Logs Banked",
+            "modifiers": [
+              {
+                "name": "No Stamina",
+                "modifierType": "PERCENTAGE",
+                "value": 50,
+                "displayType": "UPCHARGE",
+                "priority": 0,
+                "active": true
+              }
+            ]
+          },
+          {
+            "name": "Plank Make - Prifddians - Each",
+            "basePrice": 0.0012,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 10,
+            "active": true,
+            "description": "Logs Banked",
+            "modifiers": [
+              {
+                "name": "No Stamina",
+                "modifierType": "PERCENTAGE",
+                "value": 50,
+                "displayType": "UPCHARGE",
+                "priority": 0,
+                "active": true
+              }
+            ]
+          },
+          {
+            "name": "Plank Make - Woodcutting Guild - Each",
+            "basePrice": 0.0014,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 11,
+            "active": true,
+            "description": "Logs Banked",
+            "modifiers": [
+              {
+                "name": "No Stamina",
+                "modifierType": "PERCENTAGE",
+                "value": 50,
+                "displayType": "UPCHARGE",
+                "priority": 0,
+                "active": true
+              }
+            ]
+          },
+          {
+            "name": "Plank Make - Varrock Samwill - Each",
+            "basePrice": 0.0016,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 12,
+            "active": true,
+            "description": "Logs Banked",
+            "modifiers": [
+              {
+                "name": "No Stamina",
+                "modifierType": "PERCENTAGE",
+                "value": 50,
+                "displayType": "UPCHARGE",
+                "priority": 0,
+                "active": true
+              }
+            ]
+          },
+          {
+            "name": "Plank Make - PvP Methods - Each",
+            "basePrice": 0.007,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 13,
+            "active": true,
+            "description": "Logs Banked",
+            "modifiers": [
+              {
+                "name": "No Stamina",
+                "modifierType": "PERCENTAGE",
+                "value": 50,
+                "displayType": "UPCHARGE",
+                "priority": 0,
+                "active": true
+              }
+            ]
+          }
+        ],
+        "notes": []
+      }
+    ]
+  }
+}

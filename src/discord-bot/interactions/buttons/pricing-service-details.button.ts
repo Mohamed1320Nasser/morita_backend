@@ -37,11 +37,11 @@ export async function handleServiceDetails(
         const embed = buildServiceDetailsEmbed(service);
 
         // Create professional action buttons
-        const orderButton = new ButtonBuilder()
-            .setCustomId(`order_service_${serviceId}`)
-            .setLabel("📦 Order Now")
+        const openTicketButton = new ButtonBuilder()
+            .setCustomId(`open_ticket_${serviceId}_${service.category?.id || "general"}_0`)
+            .setLabel("🎫 Open Ticket")
             .setStyle(ButtonStyle.Success)
-            .setEmoji("🚀");
+            .setEmoji("🎫");
 
         const calculateButton = new ButtonBuilder()
             .setCustomId(`calculate_price_${serviceId}`)
@@ -59,7 +59,7 @@ export async function handleServiceDetails(
 
         const components = [
             new ActionRowBuilder<ButtonBuilder>().addComponents(
-                orderButton,
+                openTicketButton,
                 calculateButton
             ),
             new ActionRowBuilder<ButtonBuilder>().addComponents(backButton),

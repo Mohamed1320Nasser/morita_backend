@@ -15,11 +15,11 @@ export default {
         const prefix = discordConfig.prefix;
         const content = message.content.toLowerCase();
 
-        // Check if message starts with any calculator command (!s, !b, !m, !q)
-        const commandMatch = content.match(/^!([sbmq])\s+/);
+        // Check if message starts with any calculator command (!s, !b, !m, !i, !q)
+        const commandMatch = content.match(/^!([sbmiq])\s+/);
         if (!commandMatch) return;
 
-        const commandType = commandMatch[1]; // s, b, m, or q
+        const commandType = commandMatch[1]; // s, b, m, i, or q
 
         // If calculator channel is configured, only respond in that channel
         if (discordConfig.calculatorChannelId) {
@@ -39,6 +39,9 @@ export default {
                     break;
                 case 'm': // Minigames - PER_ITEM
                     await handleMinigamesCommand(message, apiService);
+                    break;
+                case 'i': // Ironman - PER_ITEM (filtered by category)
+                    await handleIronmanCommand(message, apiService);
                     break;
                 case 'q': // Quote - FIXED price
                     await handleQuoteCommand(message, apiService);
@@ -169,11 +172,28 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
             .setColor(0xfca311) // Orange color from MMOGoldHut
             .setTimestamp();
 
-        // Add level range and XP required
+        // Calculate total discount/upcharge from all methods to show at top
+        const cheapestMethod = data.methodOptions?.find((m: any) => m.isCheapest);
+        const allDiscounts = cheapestMethod?.modifiers?.filter((m: any) => m.applied && Number(m.value) < 0) || [];
+        const totalDiscountPercent = allDiscounts.reduce((sum: number, mod: any) =>
+            mod.type === 'PERCENTAGE' ? sum + Math.abs(Number(mod.value)) : sum, 0
+        );
+
+        logger.info('[PriceCalculator] Total discount percent: ' + totalDiscountPercent);
+
+        // Add level range, XP required, and discount (if any)
+        let levelRangeValue =
+            `**${data.levels.start}  →  ${data.levels.end}**\n` +
+            `\`\`\`ansi\n\u001b[36m${data.levels.formattedXp} XP Required\u001b[0m\n\`\`\``;
+
+        if (totalDiscountPercent > 0) {
+            logger.info('[PriceCalculator] ✅ Adding discount to display: ' + totalDiscountPercent.toFixed(1) + '%');
+            levelRangeValue += `\`\`\`ansi\n\u001b[32mDiscount: ${totalDiscountPercent.toFixed(1)}%\u001b[0m\n\`\`\``;
+        }
+
         embed.addFields({
             name: "📊 Level Range",
-            value: `**${data.levels.start}  →  ${data.levels.end}**\n` +
-                `\`\`\`ansi\n\u001b[36m${data.levels.formattedXp} XP Required\u001b[0m\n\`\`\``,
+            value: levelRangeValue,
             inline: false,
         });
 
@@ -187,10 +207,19 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
                 const price = method.finalPrice.toFixed(2);
                 const rate = method.basePrice.toFixed(8);
 
+                // Calculate OSRS gold
+                const osrsGoldRate = 5.5; // 5.5M per $1 USD
+                const osrsGold = method.finalPrice * osrsGoldRate;
+                const osrsGoldFormatted = osrsGold >= 1000
+                    ? `${(osrsGold / 1000).toFixed(2)}B`
+                    : `${osrsGold.toFixed(1)}M`;
+
+                logger.info(`[PriceCalculator] 💰 ${method.methodName}: $${price} = ${osrsGoldFormatted} OSRS Gold`);
+
                 // Create visually appealing line with proper spacing
-                const methodName = method.methodName.padEnd(30, ' ');
                 priceLines.push(`${indicator} **${method.methodName}**`);
                 priceLines.push(`   💰 Price: \`$${price}\` • Rate: \`${rate} $/XP\``);
+                priceLines.push(`   🔥 \`${osrsGoldFormatted}\` OSRS Gold`);
                 priceLines.push(''); // Empty line for spacing
             }
 
@@ -206,34 +235,71 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
             // Show beautiful breakdown for cheapest option
             const cheapest = data.methodOptions.find(m => m.isCheapest);
             if (cheapest) {
-                const hasModifiers = cheapest.modifiersTotal > 0;
+                const hasModifiers = cheapest.modifiersTotal !== 0;
+
+                // Separate modifiers by type
+                const discounts = cheapest.modifiers.filter(m => m.applied && Number(m.value) < 0);
+                const upcharges = cheapest.modifiers.filter(m => m.applied && Number(m.value) > 0);
 
                 // Build beautiful breakdown
                 let breakdown = `\`\`\`yml\n`;
                 breakdown += `Service:        ${data.service.name}\n`;
                 breakdown += `Method:         ${cheapest.methodName}\n`;
                 breakdown += `─────────────────────────────────────────\n`;
-                breakdown += `Levels:         ${data.levels.start} → ${data.levels.end}\n`;
+
+                // Show actual level range for the method (not user input)
+                const actualLevels = cheapest.levelRanges && cheapest.levelRanges.length > 0
+                    ? `${cheapest.levelRanges[0].startLevel} → ${cheapest.levelRanges[0].endLevel}`
+                    : `${data.levels.start} → ${data.levels.end}`;
+
+                logger.info('[PriceCalculator] 📊 Showing levels: ' + actualLevels);
+
+                breakdown += `Levels:         ${actualLevels}\n`;
                 breakdown += `XP Required:    ${data.levels.formattedXp}\n`;
                 breakdown += `Rate:           ${cheapest.basePrice.toFixed(8)} $/XP\n`;
                 breakdown += `─────────────────────────────────────────\n`;
                 breakdown += `Base Cost:      $${cheapest.subtotal.toFixed(2)}\n`;
 
-                if (hasModifiers) {
-                    const upcharges = cheapest.modifiers.filter(m => m.displayType === 'UPCHARGE' && m.applied);
+                // Show discounts
+                if (discounts.length > 0) {
+                    for (const mod of discounts) {
+                        const modValue = mod.type === 'PERCENTAGE'
+                            ? `${mod.value}%`
+                            : `-$${Math.abs(Number(mod.value)).toFixed(2)}`;
+                        breakdown += `${mod.name}:`.padEnd(16) + `${modValue}\n`;
+                    }
+                }
+
+                // Show upcharges
+                if (upcharges.length > 0) {
                     for (const mod of upcharges) {
                         const modValue = mod.type === 'PERCENTAGE'
                             ? `+${mod.value}%`
                             : `+$${mod.value.toFixed(2)}`;
                         breakdown += `${mod.name}:`.padEnd(16) + `${modValue}\n`;
                     }
+                }
+
+                if (hasModifiers) {
                     breakdown += `─────────────────────────────────────────\n`;
                 }
 
                 breakdown += `\`\`\``;
 
-                // Add final price in ANSI color
+                // Calculate OSRS gold conversion (1 USD = 5.5M OSRS gold average)
+                const osrsGoldRate = 5.5; // 5.5M per $1 USD
+                const osrsGold = cheapest.finalPrice * osrsGoldRate;
+                const osrsGoldFormatted = osrsGold >= 1000
+                    ? `${(osrsGold / 1000).toFixed(3)}B`
+                    : `${osrsGold.toFixed(1)}M`;
+
+                logger.info('[PriceCalculator] 🔥 Final breakdown OSRS gold: ' + osrsGoldFormatted + ' for $' + cheapest.finalPrice.toFixed(2));
+
+                // Add final price in ANSI color with OSRS gold
                 breakdown += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${cheapest.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
+                breakdown += `\`\`\`ansi\n\u001b[1;33m🔥 ${osrsGoldFormatted} OSRS Gold\u001b[0m\n\`\`\``;
+
+                logger.info('[PriceCalculator] ✅ Sending embed with all features');
 
                 embed.addFields({
                     name: "✅ Recommended Option — Full Breakdown",
@@ -528,6 +594,173 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
         logger.info(`[PriceCalculator] Result sent for ${service.name} (${count} items) to ${message.author.tag}`);
     } catch (apiError) {
         logger.error('[PriceCalculator] API error:', apiError);
+        await thinkingMsg.edit({
+            content: `❌ **Calculation Error**\n\n` +
+                `An error occurred while calculating the price.\n\n` +
+                `Please try another service or contact support.`,
+        });
+    }
+}
+
+// Handler for !i command (Ironman Gathering - PER_ITEM pricing, filtered by category)
+async function handleIronmanCommand(message: Message, apiService: ApiService) {
+    const prefix = discordConfig.prefix;
+    const args = message.content.slice(prefix.length + 2).trim().split(/\s+/);
+
+    if (args.length < 2) {
+        await message.reply({
+            content: "❌ **Invalid Command Format**\n\n" +
+                "**Usage:** `!i <item-name> <quantity>`\n" +
+                "**Example:** `!i amethyst 1000`",
+        });
+        return;
+    }
+
+    // Last argument is quantity
+    const quantityStr = args[args.length - 1];
+    const quantity = parseInt(quantityStr);
+
+    if (isNaN(quantity) || quantity < 1) {
+        await message.reply({
+            content: "❌ **Invalid Quantity**\n\n" +
+                "Please specify a valid number.\n" +
+                "**Example:** `1000`",
+        });
+        return;
+    }
+
+    // Service name is everything except the last argument
+    const serviceName = args.slice(0, -1).join(" ").toLowerCase();
+
+    logger.info(`[Ironman] Command: !i ${serviceName} ${quantity} by ${message.author.tag}`);
+
+    // Send "calculating..." message
+    const thinkingMsg = await message.reply("🔗 Calculating Ironman service price...");
+
+    // Get all services to find matching service
+    const services = await apiService.getAllServicesWithPricing();
+
+    // Find service by name or slug (filter for Ironman Gathering category)
+    const service = services.find((s: any) => {
+        const matchesName = s.name.toLowerCase().includes(serviceName) ||
+            s.slug.toLowerCase().includes(serviceName);
+        const isIronmanCategory = s.category?.slug === 'ironman-gathering' ||
+                                  s.category?.name?.toLowerCase().includes('ironman');
+
+        // All Ironman services use PER_ITEM pricing, so we only check category
+        return matchesName && isIronmanCategory;
+    });
+
+    if (!service) {
+        await thinkingMsg.edit({
+            content: `❌ **Ironman Service Not Found**\n\n` +
+                `Could not find an Ironman gathering service matching "${serviceName}".\n\n` +
+                `Available services: amethyst, ores-bars, charter-ship, chinchompas, farm-runs, raw-fish, herblore-secondaries, impling, logs-planks`,
+        });
+        return;
+    }
+
+    try {
+        logger.info(`[Ironman] Calculating with serviceId: ${service.id}, quantity: ${quantity}`);
+
+        // Fetch full service details with pricing methods
+        const fullService = await apiService.getServiceWithPricing(service.id);
+
+        const pricingService = new PricingCalculatorService();
+
+        // Get the first PER_ITEM pricing method
+        if (!fullService.pricingMethods || fullService.pricingMethods.length === 0) {
+            throw new Error('No pricing methods found for this service');
+        }
+
+        const method = fullService.pricingMethods.find((m: any) => m.pricingUnit === 'PER_ITEM');
+
+        if (!method) {
+            throw new Error('No PER_ITEM pricing method found for this service');
+        }
+
+        // Get payment methods to get the default one
+        const paymentMethods = await apiService.getPaymentMethods();
+        if (!paymentMethods || paymentMethods.length === 0) {
+            throw new Error('No payment methods available');
+        }
+        const defaultPaymentMethod = paymentMethods[0];
+
+        // Calculate price
+        const result = await pricingService.calculatePrice({
+            methodId: method.id,
+            paymentMethodId: defaultPaymentMethod.id,
+            quantity: quantity,
+        });
+
+        // Calculate OSRS gold conversion
+        const osrsGoldRate = 5.5; // 5.5M per $1 USD
+        const osrsGold = result.finalPrice * osrsGoldRate;
+        const osrsGoldFormatted = osrsGold >= 1000
+            ? `${(osrsGold / 1000).toFixed(3)}B`
+            : `${osrsGold.toFixed(1)}M`;
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${service.emoji || '🔗'} ${service.name}`)
+            .setColor(0xfca311) // Orange color
+            .setTimestamp();
+
+        embed.addFields({
+            name: "🔗 Ironman Gathering",
+            value: `\`\`\`ansi\n\u001b[36m${quantity} × ${method.name}\u001b[0m\n\`\`\``,
+            inline: false,
+        });
+
+        // Add modifiers info
+        const appliedModifiers = result.modifiers.filter((m: any) => m.applied);
+        if (appliedModifiers.length > 0) {
+            const modLines = appliedModifiers.map((m: any) => {
+                const icon = m.displayType === 'UPCHARGE' ? '⚠️' : m.displayType === 'DISCOUNT' ? '✅' : '→';
+                return `${icon} ${m.name}: ${m.type === 'PERCENTAGE' ? m.value + '%' : '$' + m.value}`;
+            });
+            embed.addFields({
+                name: "📝 Modifiers Applied",
+                value: modLines.join('\n').substring(0, 1024),
+                inline: false,
+            });
+        }
+
+        // Build price breakdown
+        let priceBreakdown = `**Method:** ${method.name}\n`;
+        priceBreakdown += `**Rate:** $${method.basePrice.toFixed(6)}/item\n`;
+        priceBreakdown += `**Base Cost:** $${result.basePrice.toFixed(2)}\n`;
+
+        if (result.breakdown.totalModifiers !== 0) {
+            const modSymbol = result.breakdown.totalModifiers > 0 ? '+' : '';
+            priceBreakdown += `**Modifiers:** ${modSymbol}$${result.breakdown.totalModifiers.toFixed(2)}\n`;
+        }
+
+        priceBreakdown += `\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${result.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
+        priceBreakdown += `\`\`\`ansi\n\u001b[1;33m🔥 ${osrsGoldFormatted} OSRS Gold\u001b[0m\n\`\`\``;
+
+        embed.addFields({
+            name: "💰 Price Breakdown",
+            value: priceBreakdown,
+            inline: false,
+        });
+
+        // Add requirements note if available
+        if (method.description) {
+            embed.addFields({
+                name: "📋 Requirements",
+                value: method.description,
+                inline: false,
+            });
+        }
+
+        await thinkingMsg.edit({
+            content: "",
+            embeds: [embed.toJSON() as any],
+        });
+
+        logger.info(`[Ironman] Result sent for ${service.name} (${quantity} items) to ${message.author.tag}`);
+    } catch (apiError) {
+        logger.error('[Ironman] API error:', apiError);
         await thinkingMsg.edit({
             content: `❌ **Calculation Error**\n\n` +
                 `An error occurred while calculating the price.\n\n` +

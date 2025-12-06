@@ -4,6 +4,9 @@ import { discordConfig } from "../../config/discord.config";
 import PricingCalculatorService from "../../../api/pricingCalculator/pricingCalculator.service";
 import Container from "typedi";
 
+// Add version check to verify new code is running
+const CALCULATOR_VERSION = "v2.0-with-discounts-and-gold";
+
 export async function handleCalculatorModal(
     interaction: ModalSubmitInteraction
 ): Promise<void> {
@@ -11,8 +14,14 @@ export async function handleCalculatorModal(
         // Defer the reply
         await interaction.deferReply({ ephemeral: false });
 
-        // Get service ID from modal custom ID (format: calculator_modal_<serviceId>)
-        const serviceId = interaction.customId.replace("calculator_modal_", "");
+        // Get service ID from modal custom ID
+        // Format: calculator_modal_<serviceId> or calculator_modal_inticket_<serviceId>
+        let serviceId = interaction.customId.replace("calculator_modal_", "");
+        const isFromTicket = serviceId.startsWith("inticket_");
+
+        if (isFromTicket) {
+            serviceId = serviceId.replace("inticket_", "");
+        }
 
         if (!serviceId) {
             await interaction.editReply({
@@ -72,7 +81,7 @@ export async function handleCalculatorModal(
                 endLevel,
             });
 
-            logger.info('[Calculator] Calculation completed successfully');
+            logger.info(`[Calculator] ${CALCULATOR_VERSION} - Calculation completed successfully`);
             const data = result;
 
             // Validate response structure
@@ -89,12 +98,34 @@ export async function handleCalculatorModal(
                 .setColor(0xfca311) // Orange color from MMOGoldHut
                 .setTimestamp();
 
-            // Add level range and XP required
+            // Calculate total discount/upcharge from all methods to show at top
+            const cheapestMethod = data.methodOptions?.find((m: any) => m.isCheapest);
+            logger.info('[Calculator] 🔍 Cheapest method: ' + cheapestMethod?.methodName);
+            logger.info('[Calculator] 🔍 Method modifiers: ' + JSON.stringify(cheapestMethod?.modifiers, null, 2));
+
+            const allDiscounts = cheapestMethod?.modifiers?.filter((m: any) => m.applied && Number(m.value) < 0) || [];
+            logger.info('[Calculator] 🔍 Discounts found: ' + allDiscounts.length + ' - ' + JSON.stringify(allDiscounts));
+
+            const totalDiscountPercent = allDiscounts.reduce((sum: number, mod: any) =>
+                mod.type === 'PERCENTAGE' ? sum + Math.abs(Number(mod.value)) : sum, 0
+            );
+            logger.info('[Calculator] 🔍 Total discount percent: ' + totalDiscountPercent);
+
+            // Add level range, XP required, and discount (if any)
+            let levelRangeValue =
+                `**${data.levels.start}  →  ${data.levels.end}**\n` +
+                `\`\`\`ansi\n\u001b[36m${data.levels.formattedXp} XP Required\u001b[0m\n\`\`\``;
+
+            if (totalDiscountPercent > 0) {
+                logger.info('[Calculator] ✅ Adding discount to display: ' + totalDiscountPercent.toFixed(1) + '%');
+                levelRangeValue += `\`\`\`ansi\n\u001b[32mDiscount: ${totalDiscountPercent.toFixed(1)}%\u001b[0m\n\`\`\``;
+            } else {
+                logger.warn('[Calculator] ⚠️ NO discount to display (totalDiscountPercent: ' + totalDiscountPercent + ')');
+            }
+
             embed.addFields({
                 name: "📊 Level Range",
-                value:
-                    `**${data.levels.start}  →  ${data.levels.end}**\n` +
-                    `\`\`\`ansi\n\u001b[36m${data.levels.formattedXp} XP Required\u001b[0m\n\`\`\``,
+                value: levelRangeValue,
                 inline: false,
             });
 
@@ -108,10 +139,19 @@ export async function handleCalculatorModal(
                     const price = method.finalPrice.toFixed(2);
                     const rate = method.basePrice.toFixed(8);
 
+                    // Calculate OSRS gold
+                    const osrsGoldRate = 5.5; // 5.5M per $1 USD
+                    const osrsGold = method.finalPrice * osrsGoldRate;
+                    const osrsGoldFormatted = osrsGold >= 1000
+                        ? `${(osrsGold / 1000).toFixed(2)}B`
+                        : `${osrsGold.toFixed(1)}M`;
+
+                    logger.info(`[Calculator] 💰 ${method.methodName}: $${price} = ${osrsGoldFormatted} OSRS Gold`);
+
                     // Create visually appealing line with proper spacing
-                    const methodName = method.methodName.padEnd(30, ' ');
                     priceLines.push(`${indicator} **${method.methodName}**`);
                     priceLines.push(`   💰 Price: \`$${price}\` • Rate: \`${rate} $/XP\``);
+                    priceLines.push(`   🔥 \`${osrsGoldFormatted}\` OSRS Gold`);
                     priceLines.push(''); // Empty line for spacing
                 }
 
@@ -127,34 +167,73 @@ export async function handleCalculatorModal(
                 // Show beautiful breakdown for cheapest option
                 const cheapest = data.methodOptions.find(m => m.isCheapest);
                 if (cheapest) {
-                    const hasModifiers = cheapest.modifiersTotal > 0;
+                    const hasModifiers = cheapest.modifiersTotal !== 0;
+
+                    // Separate modifiers by type
+                    const discounts = cheapest.modifiers.filter(m => m.applied && Number(m.value) < 0);
+                    const upcharges = cheapest.modifiers.filter(m => m.applied && Number(m.value) > 0);
+                    const notes = cheapest.modifiers.filter(m => !m.applied);
 
                     // Build beautiful breakdown
                     let breakdown = `\`\`\`yml\n`;
                     breakdown += `Service:        ${data.service.name}\n`;
                     breakdown += `Method:         ${cheapest.methodName}\n`;
                     breakdown += `─────────────────────────────────────────\n`;
-                    breakdown += `Levels:         ${data.levels.start} → ${data.levels.end}\n`;
+
+                    // Show actual level range for the method (not user input)
+                    const actualLevels = cheapest.levelRanges && cheapest.levelRanges.length > 0
+                        ? `${cheapest.levelRanges[0].startLevel} → ${cheapest.levelRanges[0].endLevel}`
+                        : `${data.levels.start} → ${data.levels.end}`;
+
+                    logger.info('[Calculator] 📊 Level ranges: ' + JSON.stringify(cheapest.levelRanges));
+                    logger.info('[Calculator] 📊 Showing levels: ' + actualLevels);
+
+                    breakdown += `Levels:         ${actualLevels}\n`;
                     breakdown += `XP Required:    ${data.levels.formattedXp}\n`;
                     breakdown += `Rate:           ${cheapest.basePrice.toFixed(8)} $/XP\n`;
                     breakdown += `─────────────────────────────────────────\n`;
                     breakdown += `Base Cost:      $${cheapest.subtotal.toFixed(2)}\n`;
 
-                    if (hasModifiers) {
-                        const upcharges = cheapest.modifiers.filter(m => m.displayType === 'UPCHARGE' && m.applied);
+                    // Show discounts
+                    if (discounts.length > 0) {
+                        for (const mod of discounts) {
+                            const modValue = mod.type === 'PERCENTAGE'
+                                ? `${mod.value}%`
+                                : `-$${Math.abs(Number(mod.value)).toFixed(2)}`;
+                            breakdown += `${mod.name}:`.padEnd(16) + `${modValue}\n`;
+                        }
+                    }
+
+                    // Show upcharges
+                    if (upcharges.length > 0) {
                         for (const mod of upcharges) {
                             const modValue = mod.type === 'PERCENTAGE'
                                 ? `+${mod.value}%`
                                 : `+$${mod.value.toFixed(2)}`;
                             breakdown += `${mod.name}:`.padEnd(16) + `${modValue}\n`;
                         }
+                    }
+
+                    if (hasModifiers) {
                         breakdown += `─────────────────────────────────────────\n`;
                     }
 
                     breakdown += `\`\`\``;
 
-                    // Add final price in ANSI color
+                    // Calculate OSRS gold conversion (1 USD = 5.5M OSRS gold average)
+                    const osrsGoldRate = 5.5; // 5.5M per $1 USD
+                    const osrsGold = cheapest.finalPrice * osrsGoldRate;
+                    const osrsGoldFormatted = osrsGold >= 1000
+                        ? `${(osrsGold / 1000).toFixed(3)}B`
+                        : `${osrsGold.toFixed(1)}M`;
+
+                    logger.info('[Calculator] 🔥 Final breakdown OSRS gold: ' + osrsGoldFormatted + ' for $' + cheapest.finalPrice.toFixed(2));
+
+                    // Add final price in ANSI color with OSRS gold
                     breakdown += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${cheapest.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
+                    breakdown += `\`\`\`ansi\n\u001b[1;33m🔥 ${osrsGoldFormatted} OSRS Gold\u001b[0m\n\`\`\``;
+
+                    logger.info('[Calculator] ✅ Sending embed with all features');
 
                     embed.addFields({
                         name: "✅ Recommended Option — Full Breakdown",
@@ -168,19 +247,29 @@ export async function handleCalculatorModal(
             const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
             const recalculateButton = new ButtonBuilder()
-                .setCustomId(`recalculate_${serviceId}`)
+                .setCustomId(isFromTicket ? `recalculate_inticket_${serviceId}` : `recalculate_${serviceId}`)
                 .setLabel('Recalculate')
                 .setEmoji('🔄')
                 .setStyle(ButtonStyle.Secondary);
 
-            const orderButton = new ButtonBuilder()
-                .setCustomId(`order_from_price_${serviceId}`)
-                .setLabel('Place Order')
-                .setEmoji('🛒')
-                .setStyle(ButtonStyle.Success);
+            // Build action row - only add "Open Ticket" button if NOT already in a ticket
+            const actionRow = new ActionRowBuilder();
+            actionRow.addComponents(recalculateButton);
 
-            const actionRow = new ActionRowBuilder()
-                .addComponents(recalculateButton, orderButton);
+            if (!isFromTicket) {
+                // Get the cheapest price for the ticket button
+                const cheapest = data.methodOptions?.find((m: any) => m.isCheapest);
+                const finalPrice = cheapest?.finalPrice || data.methodOptions?.[0]?.finalPrice || 0;
+                const categoryId = (data.service as any).categoryId || 'general';
+
+                const openTicketButton = new ButtonBuilder()
+                    .setCustomId(`open_ticket_${serviceId}_${categoryId}_${finalPrice.toFixed(2)}`)
+                    .setLabel('Open Ticket')
+                    .setEmoji('🎫')
+                    .setStyle(ButtonStyle.Success);
+
+                actionRow.addComponents(openTicketButton);
+            }
 
             // Send the result
             await interaction.editReply({

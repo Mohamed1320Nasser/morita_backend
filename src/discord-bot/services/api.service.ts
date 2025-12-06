@@ -161,12 +161,17 @@ export class ApiService {
     async getPaymentMethods(): Promise<PaymentMethod[]> {
         try {
             const response: AxiosResponse<{
-                success: boolean;
-                data: PaymentMethod[];
+                msg: string;
+                status: number;
+                data: {
+                    success: boolean;
+                    data: PaymentMethod[];
+                };
+                error: boolean;
             }> = await this.client.get("/api/public/payment-methods");
 
-            if (response.data.success) {
-                return response.data.data;
+            if (response.data.data.success) {
+                return response.data.data.data;
             }
             throw new Error("Failed to fetch payment methods");
         } catch (error) {
@@ -253,7 +258,20 @@ export class ApiService {
 
             for (const category of categories) {
                 if (category.services && Array.isArray(category.services)) {
-                    services.push(...category.services);
+                    // Attach category reference to each service
+                    const servicesWithCategory = category.services.map(service => ({
+                        ...service,
+                        category: {
+                            id: category.id,
+                            name: category.name,
+                            slug: category.slug,
+                            emoji: category.emoji,
+                            description: category.description,
+                            displayOrder: category.displayOrder,
+                            active: category.active,
+                        }
+                    }));
+                    services.push(...servicesWithCategory);
                 }
             }
 

@@ -9,7 +9,11 @@ import { handleOrderConfirm } from "./order-confirm.button";
 import { handleCalculatePrice } from "./calculate-price.button";
 import { handleOrderNow } from "./order-now.button";
 import { handleBackToServices } from "./back-to-services.button";
-import { handleOpenTicket } from "./open-ticket.button";
+import {
+    handleOpenTicket,
+    handleTicketCalculate,
+    handleTicketClose,
+} from "./open-ticket.button";
 import { handleCalculate } from "./calculate.button";
 import { handleResetCalculator } from "./reset-calculator.button";
 import { handleOrderFromPrice } from "./order-from-price.button";
@@ -27,6 +31,10 @@ import { handleHelpSupport } from "./help-support.button";
 // import { handleCategoryToggle } from "./pricing-category-toggle.button"; // DISABLED - old system
 import { handleServiceDetails } from "./pricing-service-details.button";
 import { handleAdminRefreshPricing } from "./admin-refresh-pricing.button";
+import { handleClaimJobButton } from "./claim-job.button";
+import { handleConfirmCompleteButton } from "./confirm-complete.button";
+import { handleReportIssueButton } from "./report-issue.button";
+import { handleOrderInfoButton } from "./order-info.button";
 
 // Button handler mapping
 const buttonHandlers: {
@@ -93,6 +101,57 @@ export async function handleButtonInteraction(
             customId.endsWith("_details")
         ) {
             await handleServiceDetails(interaction);
+            return;
+        }
+
+        // Ticket buttons (with dynamic ticket ID)
+        if (customId.startsWith("ticket_calculate_")) {
+            await handleTicketCalculate(interaction);
+            return;
+        }
+
+        if (customId.startsWith("ticket_close_")) {
+            await handleTicketClose(interaction);
+            return;
+        }
+
+        // Open ticket with service data
+        if (customId.startsWith("open_ticket_")) {
+            await handleOpenTicket(interaction);
+            return;
+        }
+
+        // Recalculate buttons (including inticket variant)
+        if (customId.startsWith("recalculate_")) {
+            await handleRecalculate(interaction);
+            return;
+        }
+
+        // Job claiming buttons
+        if (customId.startsWith("claim_job_")) {
+            await handleClaimJobButton(interaction);
+            return;
+        }
+
+        // Order completion buttons
+        if (customId.startsWith("confirm_complete_")) {
+            await handleConfirmCompleteButton(interaction);
+            return;
+        }
+
+        if (customId.startsWith("report_issue_")) {
+            await handleReportIssueButton(interaction);
+            return;
+        }
+
+        // Order channel buttons
+        if (customId.startsWith("order_info_")) {
+            await handleOrderInfoButton(interaction);
+            return;
+        }
+
+        if (customId.startsWith("mark_complete_")) {
+            await handleCompleteOrder(interaction);
             return;
         }
 

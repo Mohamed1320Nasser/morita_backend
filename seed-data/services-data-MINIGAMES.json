@@ -1,0 +1,419 @@
+{
+  "category": {
+    "name": "Minigames",
+    "emoji": "🎮",
+    "slug": "minigames",
+    "description": "Minigame rewards and services",
+    "services": [
+      {
+        "name": "Barbarian Assault",
+        "emoji": "⚔️",
+        "slug": "barbarian-assault",
+        "description": "Barbarian Assault rewards",
+        "serviceModifiers": [],
+        "pricingMethods": [
+          {"name": "Fighter torso", "basePrice": 7, "pricingUnit": "FIXED", "displayOrder": 1, "active": true, "modifiers": []},
+          {"name": "Penance skirt", "basePrice": 7, "pricingUnit": "FIXED", "displayOrder": 2, "active": true, "modifiers": []},
+          {"name": "Fighter hat", "basePrice": 4, "pricingUnit": "FIXED", "displayOrder": 3, "active": true, "modifiers": []},
+          {"name": "Healer Hat", "basePrice": 4, "pricingUnit": "FIXED", "displayOrder": 4, "active": true, "modifiers": []},
+          {"name": "Ranger Hat", "basePrice": 4, "pricingUnit": "FIXED", "displayOrder": 5, "active": true, "modifiers": []},
+          {"name": "Runner Hat", "basePrice": 4, "pricingUnit": "FIXED", "displayOrder": 6, "active": true, "modifiers": []},
+          {"name": "Penance gloves", "basePrice": 3, "pricingUnit": "FIXED", "displayOrder": 7, "active": true, "modifiers": []},
+          {"name": "Runner Boots", "basePrice": 2, "pricingUnit": "FIXED", "displayOrder": 8, "active": true, "modifiers": []},
+          {"name": "BA: Queen Kill", "basePrice": 1.6, "pricingUnit": "PER_KILL", "displayOrder": 9, "active": true, "modifiers": []},
+          {"name": "BA: Level 5 All Roles", "basePrice": 30, "pricingUnit": "FIXED", "displayOrder": 10, "active": true, "modifiers": []}
+        ],
+        "notes": []
+      },
+      {
+        "name": "Agility Arena Ticket",
+        "emoji": "🎫",
+        "slug": "agility-arena-ticket",
+        "description": "Agility arena tickets",
+        "serviceModifiers": [],
+        "pricingMethods": [
+          {"name": "Per Ticket", "basePrice": 0.14, "pricingUnit": "PER_ITEM", "displayOrder": 1, "active": true, "modifiers": []}
+        ],
+        "notes": []
+      },
+      {
+        "name": "Volcanic Mine",
+        "emoji": "🌋",
+        "slug": "volcanic-mine",
+        "description": "Volcanic mine points",
+        "serviceModifiers": [],
+        "pricingMethods": [
+          {"name": "Per Point", "basePrice": 0.00055, "pricingUnit": "PER_ITEM", "displayOrder": 1, "active": true, "modifiers": []}
+        ],
+        "notes": []
+      },
+      {
+        "name": "Bounty Hunter",
+        "emoji": "💀",
+        "slug": "bounty-hunter",
+        "description": "Bounty hunter points",
+        "serviceModifiers": [],
+        "pricingMethods": [
+          {"name": "Per Point (Main Account)", "basePrice": 0.35, "pricingUnit": "PER_ITEM", "displayOrder": 1, "active": true, "modifiers": []},
+          {"name": "Per Point (Zerker Account)", "basePrice": 0.45, "pricingUnit": "PER_ITEM", "displayOrder": 2, "active": true, "modifiers": []},
+          {"name": "Per Point (Pure Account)", "basePrice": 0.5, "pricingUnit": "PER_ITEM", "displayOrder": 3, "active": true, "modifiers": []}
+        ],
+        "notes": []
+      },
+      {
+        "name": "Castle Wars, Soul Wars & LMS",
+        "emoji": "⚔️",
+        "slug": "castle-soul-lms",
+        "description": "PvP minigame points",
+        "serviceModifiers": [],
+        "pricingMethods": [
+          {
+            "name": "Castle Wars - Per Ticket",
+            "basePrice": 0.14,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 1,
+            "active": true,
+            "modifiers": []
+          },
+          {
+            "name": "Soul Wars - Per Point",
+            "basePrice": 0.022,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 2,
+            "active": true,
+            "modifiers": []
+          },
+          {
+            "name": "LMS - Per Point",
+            "basePrice": 0.14,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 3,
+            "active": true,
+            "modifiers": []
+          },
+          {
+            "name": "LMS - Per Win",
+            "basePrice": 2.5,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 4,
+            "active": true,
+            "modifiers": []
+          }
+        ],
+        "notes": [
+          "Castle Wars: 250+: 10% OFF",
+          "Soul Wars: 500+: 10% OFF | 2500+: 25% OFF"
+        ]
+      },
+      {
+        "name": "Defenders",
+        "emoji": "🛡️",
+        "slug": "defenders",
+        "description": "Warriors Guild defenders",
+        "serviceModifiers": [],
+        "pricingMethods": [
+          {
+            "name": "None to Rune Defender",
+            "basePrice": 2.5,
+            "pricingUnit": "FIXED",
+            "displayOrder": 1,
+            "active": true,
+            "description": "Req: (80+ Att/Str/Def)",
+            "modifiers": [
+              {
+                "name": "Below 80 stats",
+                "modifierType": "PERCENTAGE",
+                "value": 40,
+                "displayType": "UPCHARGE",
+                "priority": 0,
+                "active": true
+              }
+            ]
+          },
+          {
+            "name": "None to Dragon Defender",
+            "basePrice": 4.25,
+            "pricingUnit": "FIXED",
+            "displayOrder": 2,
+            "active": true,
+            "description": "Req: (80+ Att/Str/Def)",
+            "modifiers": [
+              {
+                "name": "Below 80 stats",
+                "modifierType": "PERCENTAGE",
+                "value": 20,
+                "displayType": "UPCHARGE",
+                "priority": 0,
+                "active": true
+              }
+            ]
+          }
+        ],
+        "notes": []
+      },
+      {
+        "name": "Giants Foundry",
+        "emoji": "🔨",
+        "slug": "giants-foundry",
+        "description": "Giants Foundry smithing points",
+        "serviceModifiers": [
+          {
+            "name": "Using Metal Items",
+            "modifierType": "PERCENTAGE",
+            "value": 5,
+            "displayType": "UPCHARGE",
+            "priority": 0,
+            "active": true
+          }
+        ],
+        "pricingMethods": [
+          {
+            "name": "Giants Foundry Points",
+            "basePrice": 0.0034,
+            "pricingUnit": "PER_ITEM",
+            "startLevel": 30,
+            "endLevel": 50,
+            "displayOrder": 1,
+            "active": true,
+            "description": "Iron & Steel",
+            "modifiers": []
+          },
+          {
+            "name": "Giants Foundry Points",
+            "basePrice": 0.003,
+            "pricingUnit": "PER_ITEM",
+            "startLevel": 50,
+            "endLevel": 70,
+            "displayOrder": 2,
+            "active": true,
+            "description": "Steel & Mithril",
+            "modifiers": []
+          },
+          {
+            "name": "Giants Foundry Points",
+            "basePrice": 0.0026,
+            "pricingUnit": "PER_ITEM",
+            "startLevel": 70,
+            "endLevel": 85,
+            "displayOrder": 3,
+            "active": true,
+            "description": "Mithril & Adamant",
+            "modifiers": []
+          },
+          {
+            "name": "Giants Foundry Points",
+            "basePrice": 0.0022,
+            "pricingUnit": "PER_ITEM",
+            "startLevel": 85,
+            "endLevel": null,
+            "displayOrder": 4,
+            "active": true,
+            "description": "Adamant & Rune",
+            "modifiers": []
+          }
+        ],
+        "notes": []
+      },
+      {
+        "name": "Guardians of the Rift",
+        "emoji": "🌀",
+        "slug": "guardians-of-the-rift",
+        "description": "GOTR runecrafting reward points",
+        "serviceModifiers": [],
+        "pricingMethods": [
+          {"name": "GOTR Per Reward Point", "basePrice": 0.2, "pricingUnit": "PER_ITEM", "startLevel": 27, "endLevel": 44, "displayOrder": 1, "active": true, "modifiers": []},
+          {"name": "GOTR Per Reward Point", "basePrice": 0.17, "pricingUnit": "PER_ITEM", "startLevel": 44, "endLevel": 54, "displayOrder": 2, "active": true, "modifiers": []},
+          {"name": "GOTR Per Reward Point", "basePrice": 0.15, "pricingUnit": "PER_ITEM", "startLevel": 54, "endLevel": 65, "displayOrder": 3, "active": true, "modifiers": []},
+          {"name": "GOTR Per Reward Point", "basePrice": 0.14, "pricingUnit": "PER_ITEM", "startLevel": 65, "endLevel": 77, "displayOrder": 4, "active": true, "modifiers": []},
+          {"name": "GOTR Per Reward Point", "basePrice": 0.12, "pricingUnit": "PER_ITEM", "startLevel": 77, "endLevel": 99, "displayOrder": 5, "active": true, "modifiers": []}
+        ],
+        "notes": []
+      },
+      {
+        "name": "Hallowed Sepulchre",
+        "emoji": "⚰️",
+        "slug": "hallowed-sepulchre",
+        "description": "Hallowed Sepulchre rewards",
+        "serviceModifiers": [],
+        "pricingMethods": [
+          {"name": "Dark Acorn With 92+ Agility", "basePrice": 78, "pricingUnit": "FIXED", "displayOrder": 1, "active": true, "modifiers": []},
+          {"name": "Dark dye - Black Graceful With 92+ Agility", "basePrice": 46.8, "pricingUnit": "FIXED", "displayOrder": 2, "active": true, "modifiers": []},
+          {"name": "Ring of Endurance - Per Grand Chest", "basePrice": 0.6, "pricingUnit": "PER_ITEM", "displayOrder": 3, "active": true, "modifiers": []},
+          {"name": "Hallowed mark", "basePrice": 0.026, "pricingUnit": "PER_ITEM", "displayOrder": 4, "active": true, "modifiers": []}
+        ],
+        "notes": []
+      },
+      {
+        "name": "Herbiboar",
+        "emoji": "🦔",
+        "slug": "herbiboar",
+        "description": "Herbiboar hunting",
+        "serviceModifiers": [
+          {
+            "name": "No stamina",
+            "modifierType": "PERCENTAGE",
+            "value": 20,
+            "displayType": "UPCHARGE",
+            "priority": 0,
+            "active": true
+          },
+          {
+            "name": "No Graceful",
+            "modifierType": "PERCENTAGE",
+            "value": 20,
+            "displayType": "UPCHARGE",
+            "priority": 1,
+            "active": true
+          }
+        ],
+        "pricingMethods": [
+          {
+            "name": "Herbiboar Harvest With Stamina",
+            "basePrice": 0.05,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 1,
+            "active": true,
+            "description": "Full Graceful",
+            "modifiers": []
+          }
+        ],
+        "notes": []
+      },
+      {
+        "name": "Mage Training Arena",
+        "emoji": "🧙",
+        "slug": "mage-training-arena",
+        "description": "Mage Training Arena rewards",
+        "serviceModifiers": [],
+        "pricingMethods": [
+          {"name": "Bones to Peaches", "basePrice": 9.5, "pricingUnit": "FIXED", "displayOrder": 1, "active": true, "modifiers": []},
+          {"name": "Infinity Hat", "basePrice": 13.5, "pricingUnit": "FIXED", "displayOrder": 2, "active": true, "modifiers": []},
+          {"name": "Infinity top", "basePrice": 15.5, "pricingUnit": "FIXED", "displayOrder": 3, "active": true, "modifiers": []},
+          {"name": "Infinity bottoms", "basePrice": 17, "pricingUnit": "FIXED", "displayOrder": 4, "active": true, "modifiers": []},
+          {"name": "Infinity gloves", "basePrice": 7, "pricingUnit": "FIXED", "displayOrder": 5, "active": true, "modifiers": []},
+          {"name": "Infinity boots", "basePrice": 4.25, "pricingUnit": "FIXED", "displayOrder": 6, "active": true, "modifiers": []},
+          {"name": "Mage's book", "basePrice": 20.5, "pricingUnit": "FIXED", "displayOrder": 7, "active": true, "modifiers": []},
+          {"name": "Master wand", "basePrice": 17.5, "pricingUnit": "FIXED", "displayOrder": 8, "active": true, "modifiers": []}
+        ],
+        "notes": []
+      },
+      {
+        "name": "Mahogany Homes",
+        "emoji": "🏠",
+        "slug": "mahogany-homes",
+        "description": "Mahogany Homes construction training",
+        "serviceModifiers": [],
+        "pricingMethods": [
+          {"name": "Mahogany Homes (Teak)", "basePrice": 0.000024, "pricingUnit": "PER_LEVEL", "startLevel": 50, "endLevel": 99, "displayOrder": 1, "active": true, "modifiers": []},
+          {"name": "Mahogany Homes (Mahogany)", "basePrice": 0.00002, "pricingUnit": "PER_LEVEL", "startLevel": 70, "endLevel": 99, "displayOrder": 2, "active": true, "modifiers": []}
+        ],
+        "notes": []
+      },
+      {
+        "name": "Minigame Outfits",
+        "emoji": "👕",
+        "slug": "minigame-outfits",
+        "description": "Various minigame outfit unlocks",
+        "serviceModifiers": [],
+        "pricingMethods": [
+          {
+            "name": "Rogue Outfit 80+ Thiev",
+            "basePrice": 4.50,
+            "pricingUnit": "FIXED",
+            "displayOrder": 1,
+            "active": true,
+            "modifiers": [
+              {
+                "name": "Below 80 Thiev",
+                "modifierType": "PERCENTAGE",
+                "value": 80,
+                "displayType": "UPCHARGE",
+                "priority": 0,
+                "active": true
+              }
+            ]
+          },
+          {"name": "Carpenters Outfit", "basePrice": 48, "pricingUnit": "FIXED", "displayOrder": 2, "active": true, "modifiers": []},
+          {"name": "Lumberjack Outfit", "basePrice": 4, "pricingUnit": "FIXED", "displayOrder": 3, "active": true, "modifiers": []},
+          {"name": "Full Graceful", "basePrice": 28, "pricingUnit": "FIXED", "displayOrder": 4, "active": true, "modifiers": []},
+          {"name": "Angler Outfit", "basePrice": 10, "pricingUnit": "FIXED", "displayOrder": 5, "active": true, "description": "Fishing Trawler", "modifiers": []},
+          {"name": "Farming Outfit", "basePrice": 16, "pricingUnit": "FIXED", "displayOrder": 6, "active": true, "modifiers": []},
+          {"name": "Prospector Outfit Upper Level", "basePrice": 17.50, "pricingUnit": "FIXED", "displayOrder": 7, "active": true, "modifiers": []},
+          {"name": "Prospector Outfit Lower Level", "basePrice": 22, "pricingUnit": "FIXED", "displayOrder": 8, "active": true, "modifiers": []}
+        ],
+        "notes": []
+      },
+      {
+        "name": "Mastering Mixology",
+        "emoji": "🧪",
+        "slug": "mastering-mixology",
+        "description": "Mastering Mixology herblore rewards",
+        "serviceModifiers": [],
+        "pricingMethods": [
+          {"name": "Prescription goggles", "basePrice": 20, "pricingUnit": "FIXED", "displayOrder": 1, "active": true, "modifiers": []},
+          {"name": "Alchemist labcoat", "basePrice": 9, "pricingUnit": "FIXED", "displayOrder": 2, "active": true, "modifiers": []},
+          {"name": "Alchemist pants", "basePrice": 9, "pricingUnit": "FIXED", "displayOrder": 3, "active": true, "modifiers": []},
+          {"name": "Alchemist gloves", "basePrice": 9, "pricingUnit": "FIXED", "displayOrder": 4, "active": true, "modifiers": []},
+          {"name": "Reagent pouch", "basePrice": 30, "pricingUnit": "FIXED", "displayOrder": 5, "active": true, "modifiers": []},
+          {"name": "Potion storage", "basePrice": 24, "pricingUnit": "FIXED", "displayOrder": 6, "active": true, "modifiers": []},
+          {"name": "Chugging barrel (disassembled)", "basePrice": 45, "pricingUnit": "FIXED", "displayOrder": 7, "active": true, "modifiers": []},
+          {"name": "Alchemist's amulet", "basePrice": 18, "pricingUnit": "FIXED", "displayOrder": 8, "active": true, "modifiers": []},
+          {"name": "Aldarium", "basePrice": 0.25, "pricingUnit": "PER_ITEM", "displayOrder": 9, "active": true, "modifiers": []}
+        ],
+        "notes": []
+      },
+      {
+        "name": "Shooting Stars",
+        "emoji": "⭐",
+        "slug": "shooting-stars",
+        "description": "Shooting stars mining rewards",
+        "serviceModifiers": [],
+        "pricingMethods": [
+          {"name": "Stardust", "basePrice": 0.002, "pricingUnit": "PER_ITEM", "displayOrder": 1, "active": true, "modifiers": []},
+          {"name": "Celestial ring (uncharged)", "basePrice": 4, "pricingUnit": "FIXED", "displayOrder": 2, "active": true, "modifiers": []},
+          {"name": "Star fragment", "basePrice": 6, "pricingUnit": "FIXED", "displayOrder": 3, "active": true, "modifiers": []},
+          {"name": "Shooting Stars: Bag full of gems", "basePrice": 0.6, "pricingUnit": "PER_ITEM", "displayOrder": 4, "active": true, "modifiers": []},
+          {"name": "Shooting Stars: Soft clay pack", "basePrice": 0.3, "pricingUnit": "PER_ITEM", "displayOrder": 5, "active": true, "modifiers": []}
+        ],
+        "notes": []
+      },
+      {
+        "name": "PvP Arena",
+        "emoji": "⚔️",
+        "slug": "pvp-arena",
+        "description": "PvP Arena rewards",
+        "serviceModifiers": [],
+        "pricingMethods": [
+          {"name": "Imbue scroll", "basePrice": 5, "pricingUnit": "FIXED", "displayOrder": 1, "active": true, "modifiers": []}
+        ],
+        "notes": []
+      },
+      {
+        "name": "Tempoross",
+        "emoji": "🌊",
+        "slug": "tempoross",
+        "description": "Tempoross fishing rewards",
+        "serviceModifiers": [],
+        "pricingMethods": [
+          {
+            "name": "Each Tempoross Permit Using Dragon Harpoon",
+            "basePrice": 0.07,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 1,
+            "active": true,
+            "modifiers": []
+          },
+          {
+            "name": "Each Tempoross Permit Using Regular Harpoon",
+            "basePrice": 0.08,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 2,
+            "active": true,
+            "modifiers": []
+          }
+        ],
+        "notes": ["100+: 10% OFF"]
+      }
+    ]
+  }
+}

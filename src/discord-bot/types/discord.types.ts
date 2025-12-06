@@ -61,6 +61,18 @@ export interface ServiceCategory {
     services?: Service[];
 }
 
+// Service modifier type (applies to all methods in the service)
+export interface ServiceModifier {
+    id: string;
+    name: string;
+    modifierType: "PERCENTAGE" | "FIXED";
+    value: number;
+    displayType: "NORMAL" | "UPCHARGE" | "NOTE" | "WARNING";
+    priority: number;
+    condition?: string;
+    active: boolean;
+}
+
 // Service type
 export interface Service {
     id: string;
@@ -71,6 +83,7 @@ export interface Service {
     active: boolean;
     displayOrder: number;
     category?: ServiceCategory;
+    serviceModifiers?: ServiceModifier[];
     pricingMethods?: PricingMethod[];
 }
 
@@ -128,6 +141,24 @@ export interface PriceCalculationRequest {
 export interface PriceCalculationResult {
     basePrice: number;
     finalPrice: number;
+    serviceModifiers?: Array<{
+        name: string;
+        type: string;
+        displayType: string;
+        value: number;
+        applied: boolean;
+        appliedAmount?: number;
+        reason?: string;
+    }>;
+    methodModifiers?: Array<{
+        name: string;
+        type: string;
+        displayType: string;
+        value: number;
+        applied: boolean;
+        appliedAmount?: number;
+        reason?: string;
+    }>;
     modifiers: Array<{
         name: string;
         type: string;
@@ -142,6 +173,8 @@ export interface PriceCalculationResult {
     };
     breakdown: {
         subtotal: number;
+        serviceModifiersTotal?: number;
+        methodModifiersTotal?: number;
         totalModifiers: number;
         finalPrice: number;
     };

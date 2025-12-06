@@ -88,6 +88,7 @@ export default class AuthService {
             token: await jwtSign(API_Token),
             user: {
                 fullname: user.fullname,
+                role: user.role,
                 profile: {
                     title: user.profile?.title,
                     folder: user.profile?.folder,

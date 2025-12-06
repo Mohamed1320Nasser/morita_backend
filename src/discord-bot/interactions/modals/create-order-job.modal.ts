@@ -1,0 +1,354 @@
+import { ModalSubmitInteraction, EmbedBuilder, TextChannel } from "discord.js";
+import logger from "../../../common/loggers";
+import { discordConfig } from "../../config/discord.config";
+import axios from "axios";
+import { createJobClaimingEmbed, createClaimButton } from "../../utils/jobClaimingEmbed";
+import { getOrderChannelService } from "../../services/orderChannel.service";
+
+// Temporary storage for order data (in production, use Redis or database)
+const orderDataCache = new Map<string, any>();
+
+export function storeOrderData(key: string, data: any) {
+    orderDataCache.set(key, data);
+    // Auto-cleanup after 10 minutes
+    setTimeout(() => orderDataCache.delete(key), 600000);
+}
+
+export async function handleCreateOrderJobModal(
+    interaction: ModalSubmitInteraction
+): Promise<void> {
+    try {
+        await interaction.deferReply({ ephemeral: true });
+
+        // Parse custom ID: create_order_job_order_{customerId}_{timestamp}
+        const orderKey = interaction.customId.replace("create_order_job_", "");
+
+        // Get stored order data
+        const orderData = orderDataCache.get(orderKey);
+
+        if (!orderData) {
+            await interaction.editReply({
+                content: `❌ **Order data expired**\n\nPlease try creating the order again.`,
+            });
+            return;
+        }
+
+        // Delete from cache
+        orderDataCache.delete(orderKey);
+
+        // Get job details from modal
+        const jobDetails = interaction.fields.getTextInputValue("job_details").trim() || null;
+
+        logger.info(`[CreateOrderJob] Processing order for customer ${orderData.customerDiscordId}`);
+
+        // Create API client
+        const apiClient = axios.create({
+            baseURL: discordConfig.apiBaseUrl,
+            timeout: 30000,
+        });
+
+        // Check customer wallet balance
+        const balanceResponse = await apiClient.get(
+            `/discord/wallets/balance/${orderData.customerDiscordId}`
+        );
+
+        const responseData = balanceResponse.data.data || balanceResponse.data;
+        const balanceData = responseData.data || responseData;
+
+        if (!balanceData.hasWallet) {
+            const embed = new EmbedBuilder()
+                .setTitle("❌ Customer Has No Wallet")
+                .setDescription(
+                    `Customer <@${orderData.customerDiscordId}> does not have a wallet yet.\n\n` +
+                    `**Please add balance first using /add-balance**`
+                )
+                .setColor(0xed4245)
+                .setTimestamp();
+
+            await interaction.editReply({
+                embeds: [embed.toJSON() as any],
+            });
+            return;
+        }
+
+        const availableBalance = balanceData.balance - balanceData.pendingBalance;
+
+        // Check if customer has sufficient balance
+        if (availableBalance < orderData.deposit) {
+            const embed = new EmbedBuilder()
+                .setTitle("❌ Insufficient Balance")
+                .setDescription(
+                    `Customer <@${orderData.customerDiscordId}> has insufficient balance.\n\n` +
+                    `**Required:** $${orderData.deposit.toFixed(2)}\n` +
+                    `**Available:** $${availableBalance.toFixed(2)}\n\n` +
+                    `Please add more balance using /add-balance first.`
+                )
+                .setColor(0xed4245)
+                .setTimestamp();
+
+            await interaction.editReply({
+                embeds: [embed.toJSON() as any],
+            });
+            return;
+        }
+
+        // Create the order
+        const createOrderData = {
+            customerDiscordId: orderData.customerDiscordId,
+            workerDiscordId: orderData.workerDiscordId,
+            supportDiscordId: orderData.supportDiscordId,
+            ticketId: orderData.ticketId || null,
+            serviceId: null,
+            methodId: null,
+            paymentMethodId: null,
+            orderValue: orderData.orderValue,
+            depositAmount: orderData.deposit,
+            currency: orderData.currency,
+            jobDetails: jobDetails ? { description: jobDetails } : null,
+        };
+
+        logger.info(`[CreateOrderJob] Creating order with ticketId: ${orderData.ticketId || 'NULL'}`);
+        logger.info(`[CreateOrderJob] Order data:`, createOrderData);
+
+        const response = await apiClient.post("/discord/orders/create", createOrderData);
+
+        logger.info(`[CreateOrderJob] Raw API Response: ${JSON.stringify(response.data)}`);
+
+        // Handle triple-nested response structure (similar to add-balance command)
+        const outerData = response.data.data || response.data;
+        const order = outerData.data || outerData;
+
+        logger.info(`[CreateOrderJob] Extracted - OrderNumber: ${order.orderNumber}, OrderId: ${order.orderId || order.id}, Status: ${order.status}`);
+
+        // Extract order properties
+        const orderNumber = order.orderNumber;
+        const orderId = order.orderId || order.id;
+        const orderStatus = order.status || "PENDING";
+
+        if (!orderNumber) {
+            logger.error(`[CreateOrderJob] OrderNumber is missing from response!`);
+            logger.error(`[CreateOrderJob] Full response.data:`, response.data);
+        }
+        if (!orderId) {
+            logger.error(`[CreateOrderJob] OrderId is missing from response!`);
+            logger.error(`[CreateOrderJob] Full response.data:`, response.data);
+        }
+
+        // Send confirmation embed
+        const confirmEmbed = new EmbedBuilder()
+            .setTitle("✅ Order Created Successfully")
+            .setDescription(
+                orderNumber ? `Order #${orderNumber} has been created!` : `Order has been created!`
+            )
+            .addFields([
+                { name: "👤 Customer", value: `<@${orderData.customerDiscordId}>`, inline: true },
+                {
+                    name: "👷 Worker",
+                    value: orderData.workerDiscordId ? `<@${orderData.workerDiscordId}>` : "⏳ Unassigned (Job Claiming)",
+                    inline: true,
+                },
+                { name: "💰 Order Value", value: `$${orderData.orderValue.toFixed(2)} ${orderData.currency}`, inline: true },
+                { name: "🔒 Deposit Locked", value: `$${orderData.deposit.toFixed(2)} ${orderData.currency}`, inline: true },
+                { name: "📊 Status", value: orderStatus, inline: true },
+                { name: "💵 Available Balance", value: `$${(availableBalance - orderData.deposit).toFixed(2)} ${orderData.currency}`, inline: true },
+            ])
+            .setColor(orderData.workerDiscordId ? 0x57f287 : 0xf59e0b)
+            .setTimestamp()
+            .setFooter({
+                text: orderNumber
+                    ? `Order #${orderNumber} • ID: ${orderId}`
+                    : `Order ID: ${orderId}`
+            });
+
+        if (jobDetails) {
+            confirmEmbed.addFields([
+                {
+                    name: "📋 Job Details",
+                    value: jobDetails.substring(0, 1024), // Discord field limit
+                },
+            ]);
+        }
+
+        // If no worker assigned, post to job claiming channel
+        if (!orderData.workerDiscordId) {
+            confirmEmbed.addFields([
+                {
+                    name: "ℹ️ Next Steps",
+                    value:
+                        "This order has been posted to the job claiming channel.\n" +
+                        "Workers with sufficient balance can claim it.",
+                },
+            ]);
+
+            // Post to job claiming channel
+            try {
+                if (discordConfig.jobClaimingChannelId) {
+                    logger.info(`[CreateOrderJob] Posting job to claiming channel - Order #${orderNumber}, ID: ${orderId}, Value: $${orderData.orderValue}, Deposit: $${orderData.deposit}`);
+
+                    const claimingChannel = await interaction.client.channels.fetch(
+                        discordConfig.jobClaimingChannelId
+                    ) as TextChannel;
+
+                    if (claimingChannel) {
+                        const jobClaimingEmbed = createJobClaimingEmbed({
+                            orderId,
+                            orderNumber,
+                            orderValue: orderData.orderValue,
+                            depositAmount: orderData.deposit,
+                            currency: orderData.currency,
+                            jobDetails: jobDetails || undefined,
+                            customerDiscordId: orderData.customerDiscordId,
+                        });
+
+                        const claimButton = createClaimButton(orderId);
+
+                        const claimMessage = await claimingChannel.send({
+                            content: `<@&${discordConfig.workersRoleId}>`, // Mention all workers
+                            embeds: [jobClaimingEmbed.toJSON() as any],
+                            components: [claimButton.toJSON() as any],
+                        });
+
+                        logger.info(`[CreateOrderJob] Job posted to claiming channel, message ID: ${claimMessage.id}`);
+
+                        // TODO: Store claimMessageId in database for future reference
+                    }
+                } else {
+                    logger.warn(`[CreateOrderJob] Job claiming channel ID not configured`);
+                }
+            } catch (err: any) {
+                logger.error(`[CreateOrderJob] Failed to post to job claiming channel:`, err);
+                // Don't fail the order creation if posting to claiming channel fails
+            }
+        } else {
+            // Worker is assigned directly - add worker to ticket channel
+            confirmEmbed.addFields([
+                {
+                    name: "ℹ️ Next Steps",
+                    value:
+                        `Worker <@${orderData.workerDiscordId}> has been assigned.\n` +
+                        `Worker will be added to this ticket channel for communication.`,
+                },
+            ]);
+
+            logger.info(`[CreateOrderJob] Worker assigned directly, adding to ticket channel...`);
+
+            try {
+                // Order should have the ticket from creation (ticketId is passed in orderData)
+                // The channel ID is available from orderData.channelId (the ticket channel)
+                if (orderData.channelId) {
+                    const orderChannelService = getOrderChannelService(interaction.client);
+                    const ticketChannel = await orderChannelService.addWorkerToTicketChannel({
+                        ticketChannelId: orderData.channelId,
+                        workerDiscordId: orderData.workerDiscordId,
+                        orderNumber,
+                        orderId,
+                        orderValue: orderData.orderValue,
+                        depositAmount: orderData.deposit,
+                        currency: orderData.currency,
+                        customerDiscordId: orderData.customerDiscordId,
+                        serviceName: order.service?.name,
+                        jobDetails: jobDetails || undefined,
+                        status: order.status,
+                    });
+
+                    if (ticketChannel) {
+                        logger.info(`[CreateOrderJob] Worker added to ticket channel: ${ticketChannel.name}`);
+
+                        // Add channel link to confirmation embed
+                        confirmEmbed.addFields([
+                            {
+                                name: "📁 Ticket Channel",
+                                value: `<#${ticketChannel.id}>`,
+                                inline: false,
+                            }
+                        ]);
+                    }
+                } else {
+                    logger.warn(`[CreateOrderJob] No channel ID available to add worker to`);
+                }
+            } catch (err: any) {
+                logger.error(`[CreateOrderJob] Failed to add worker to ticket channel:`, err);
+            }
+        }
+
+        // Log embed details
+        logger.info(`[CreateOrderJob] Preparing to send order confirmation embed`);
+
+        // Send to ticket channel
+        if (orderData.channelId) {
+            try {
+                logger.info(`[CreateOrderJob] Attempting to send to channel ${orderData.channelId}`);
+                const channel = await interaction.client.channels.fetch(orderData.channelId);
+                if (channel && "send" in channel) {
+                    logger.info(`[CreateOrderJob] Sending embed to channel...`);
+                    await (channel as any).send({
+                        embeds: [confirmEmbed.toJSON() as any],
+                    });
+                    logger.info(`[CreateOrderJob] Successfully sent to channel`);
+                }
+            } catch (err: any) {
+                logger.error(`[CreateOrderJob] Failed to send to channel ${orderData.channelId}:`, err);
+                if (err?.rawError) {
+                    logger.error(`[CreateOrderJob] Channel send Discord API error:`, err.rawError);
+                }
+            }
+        }
+
+        // Send confirmation to support
+        logger.info(`[CreateOrderJob] Attempting to send confirmation to support...`);
+        try {
+            await interaction.editReply({
+                content: orderNumber
+                    ? `✅ Order #${orderNumber} created successfully!`
+                    : `✅ Order created successfully!`,
+                embeds: [confirmEmbed.toJSON() as any],
+            });
+            logger.info(`[CreateOrderJob] Successfully sent confirmation to support`);
+        } catch (err: any) {
+            logger.error(`[CreateOrderJob] Failed to send confirmation to support:`, err);
+            if (err?.rawError) {
+                logger.error(`[CreateOrderJob] EditReply Discord API error:`, err.rawError);
+            }
+            if (err?.errors) {
+                logger.error(`[CreateOrderJob] EditReply validation errors:`, err.errors);
+            }
+            throw err; // Re-throw to be caught by outer catch
+        }
+
+        logger.info(
+            `Order ${orderNumber ? `#${orderNumber}` : orderId} created by ${orderData.supportDiscordId} for customer ${orderData.customerDiscordId}`
+        );
+    } catch (error: any) {
+        logger.error("[CreateOrderJob] Error handling create order job modal:", error);
+
+        // Check for Discord API error
+        if (error.rawError) {
+            logger.error("[CreateOrderJob] Discord API Error:", error.rawError);
+        }
+
+        if (error.code) {
+            logger.error("[CreateOrderJob] Error code:", error.code);
+        }
+
+        if (error.errors) {
+            logger.error("[CreateOrderJob] Validation errors:", error.errors);
+        }
+
+        const errorMessage = error?.message || String(error) || "Unknown error occurred";
+
+        try {
+            if (interaction.replied || interaction.deferred) {
+                await interaction.editReply({
+                    content: `❌ **Failed to create order**\n\n${errorMessage}\n\nPlease try again or contact an administrator.`,
+                });
+            } else {
+                await interaction.reply({
+                    content: `❌ **Failed to create order**\n\n${errorMessage}\n\nPlease try again or contact an administrator.`,
+                    ephemeral: true,
+                });
+            }
+        } catch (replyError) {
+            logger.error("[CreateOrderJob] Failed to send error message:", replyError);
+        }
+    }
+}

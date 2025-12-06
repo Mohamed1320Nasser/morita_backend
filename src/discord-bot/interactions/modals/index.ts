@@ -5,6 +5,13 @@ import logger from "../../../common/loggers";
 // Import all modal handlers
 import { handleOrderDetailsModal } from "./order-details.modal";
 import { handleCalculatorModal } from "./calculator.modal";
+import {
+    handleTicketCreateModal,
+    handleTicketCloseConfirmModal,
+} from "./ticket-create.modal";
+import { handleCreateOrderJobModal } from "./create-order-job.modal";
+import { handleCompleteOrderModal } from "./complete-order.modal";
+import { handleReportIssueModal } from "./report-issue.modal";
 
 // Modal handler mapping (exact matches)
 const modalHandlers: {
@@ -22,6 +29,26 @@ const patternModalHandlers: Array<{
     {
         pattern: /^calculator_modal_/,
         handler: handleCalculatorModal,
+    },
+    {
+        pattern: /^ticket_create_modal_/,
+        handler: handleTicketCreateModal,
+    },
+    {
+        pattern: /^ticket_close_confirm_/,
+        handler: handleTicketCloseConfirmModal,
+    },
+    {
+        pattern: /^create_order_job_/,
+        handler: handleCreateOrderJobModal,
+    },
+    {
+        pattern: /^complete_order_/,
+        handler: handleCompleteOrderModal,
+    },
+    {
+        pattern: /^report_issue_/,
+        handler: handleReportIssueModal,
     },
 ];
 

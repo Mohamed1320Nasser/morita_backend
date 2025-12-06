@@ -269,6 +269,20 @@ export default class ServiceService {
                         emoji: true,
                     },
                 },
+                serviceModifiers: {
+                    where: { active: true },
+                    select: {
+                        id: true,
+                        name: true,
+                        modifierType: true,
+                        value: true,
+                        condition: true,
+                        displayType: true,
+                        priority: true,
+                        active: true,
+                    },
+                    orderBy: { priority: "asc" },
+                },
                 pricingMethods: {
                     where: { active: true, deletedAt: null },
                     select: {
@@ -314,6 +328,10 @@ export default class ServiceService {
                         slug: true,
                         emoji: true,
                     },
+                },
+                serviceModifiers: {
+                    where: { active: true },
+                    orderBy: { priority: "asc" },
                 },
                 pricingMethods: {
                     where: { active: true, deletedAt: null },
@@ -368,6 +386,20 @@ export default class ServiceService {
                         slug: true,
                         emoji: true,
                     },
+                },
+                serviceModifiers: {
+                    where: { active: true },
+                    select: {
+                        id: true,
+                        name: true,
+                        modifierType: true,
+                        value: true,
+                        condition: true,
+                        displayType: true,
+                        priority: true,
+                        active: true,
+                    },
+                    orderBy: { priority: "asc" },
                 },
                 pricingMethods: {
                     where: { active: true, deletedAt: null },

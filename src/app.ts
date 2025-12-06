@@ -108,7 +108,7 @@ import { startDiscordBot } from "./discord-bot/botStarter";
         );
 
         logger.info("Starting Discord bot...");
-        await startDiscordBot();
+        // await startDiscordBot();
         logger.info("Discord bot started successfully");
     });
 })();

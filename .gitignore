@@ -97,3 +97,6 @@ yarn-error.log*
 
 # Local Netlify folder
 .netlify
+
+# Documentation (internal development docs)
+docs/

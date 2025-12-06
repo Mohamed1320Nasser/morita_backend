@@ -28,14 +28,30 @@ export class ComponentBuilder {
             .setMinValues(1)
             .setMaxValues(1);
 
-        categories.forEach(category => {
+        // Discord limit: max 25 options
+        const limitedCategories = categories.slice(0, 25);
+
+        limitedCategories.forEach(category => {
+            // Discord limits: label 100 chars, description 100 chars, value 100 chars
+            const label = category.name.length > 100
+                ? category.name.substring(0, 97) + "..."
+                : category.name;
+
+            const description = category.description
+                ? (category.description.length > 100
+                    ? category.description.substring(0, 97) + "..."
+                    : category.description)
+                : "Click to view services";
+
+            const value = category.id.length > 100
+                ? category.id.substring(0, 100)
+                : category.id;
+
             selectMenu.addOptions(
                 new StringSelectMenuOptionBuilder()
-                    .setLabel(category.name)
-                    .setDescription(
-                        category.description || "Click to view services"
-                    )
-                    .setValue(category.id)
+                    .setLabel(label)
+                    .setDescription(description)
+                    .setValue(value)
                     .setEmoji(category.emoji || EMOJIS.SERVICE)
             );
         });
@@ -55,14 +71,30 @@ export class ComponentBuilder {
             .setMinValues(1)
             .setMaxValues(1);
 
-        services.forEach(service => {
+        // Discord limit: max 25 options
+        const limitedServices = services.slice(0, 25);
+
+        limitedServices.forEach(service => {
+            // Discord limits: label 100 chars, description 100 chars, value 100 chars
+            const label = service.name.length > 100
+                ? service.name.substring(0, 97) + "..."
+                : service.name;
+
+            const description = service.description
+                ? (service.description.length > 100
+                    ? service.description.substring(0, 97) + "..."
+                    : service.description)
+                : "Click to view details";
+
+            const value = service.id.length > 100
+                ? service.id.substring(0, 100)
+                : service.id;
+
             selectMenu.addOptions(
                 new StringSelectMenuOptionBuilder()
-                    .setLabel(service.name)
-                    .setDescription(
-                        service.description || "Click to view details"
-                    )
-                    .setValue(service.id)
+                    .setLabel(label)
+                    .setDescription(description)
+                    .setValue(value)
                     .setEmoji(service.emoji || EMOJIS.SERVICE)
             );
         });
@@ -82,20 +114,36 @@ export class ComponentBuilder {
             .setMinValues(1)
             .setMaxValues(1);
 
-        methods.forEach(method => {
+        // Discord limit: max 25 options
+        const limitedMethods = methods.slice(0, 25);
+
+        limitedMethods.forEach(method => {
             const unitText =
                 method.pricingUnit === "FIXED"
                     ? ""
                     : ` (${method.pricingUnit})`;
+
+            // Discord limits: label 100 chars, description 100 chars, value 100 chars
+            const labelText = `${method.name} - $${method.basePrice}${unitText}`;
+            const label = labelText.length > 100
+                ? labelText.substring(0, 97) + "..."
+                : labelText;
+
+            const description = method.description
+                ? (method.description.length > 100
+                    ? method.description.substring(0, 97) + "..."
+                    : method.description)
+                : "Select this pricing method";
+
+            const value = method.id.length > 100
+                ? method.id.substring(0, 100)
+                : method.id;
+
             selectMenu.addOptions(
                 new StringSelectMenuOptionBuilder()
-                    .setLabel(
-                        `${method.name} - $${method.basePrice}${unitText}`
-                    )
-                    .setDescription(
-                        method.description || "Select this pricing method"
-                    )
-                    .setValue(method.id)
+                    .setLabel(label)
+                    .setDescription(description)
+                    .setValue(value)
                     .setEmoji(EMOJIS.PRICE)
             );
         });
@@ -115,14 +163,32 @@ export class ComponentBuilder {
             .setMinValues(1)
             .setMaxValues(1);
 
-        paymentMethods.forEach(method => {
+        // Discord limit: max 25 options
+        const limitedPaymentMethods = paymentMethods.slice(0, 25);
+
+        limitedPaymentMethods.forEach(method => {
             const emoji =
                 method.type === "CRYPTO" ? EMOJIS.CRYPTO : EMOJIS.CREDIT_CARD;
+
+            // Discord limits: label 100 chars, description 100 chars, value 100 chars
+            const label = method.name.length > 100
+                ? method.name.substring(0, 97) + "..."
+                : method.name;
+
+            const descriptionText = `${method.type} payment method`;
+            const description = descriptionText.length > 100
+                ? descriptionText.substring(0, 97) + "..."
+                : descriptionText;
+
+            const value = method.id.length > 100
+                ? method.id.substring(0, 100)
+                : method.id;
+
             selectMenu.addOptions(
                 new StringSelectMenuOptionBuilder()
-                    .setLabel(method.name)
-                    .setDescription(`${method.type} payment method`)
-                    .setValue(method.id)
+                    .setLabel(label)
+                    .setDescription(description)
+                    .setValue(value)
                     .setEmoji(emoji)
             );
         });

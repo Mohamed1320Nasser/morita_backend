@@ -188,6 +188,82 @@ export class EnhancedPricingBuilder {
             this.addPricingSectionsToEmbed(embed, service.pricingMethods);
         }
 
+        // Add service modifiers at the end (applies to ALL pricing methods)
+        // Group modifiers by displayType for better organization
+        if (service.serviceModifiers && service.serviceModifiers.length > 0) {
+            // Group modifiers by display type
+            const upcharges = service.serviceModifiers.filter(m => m.displayType === 'UPCHARGE');
+            const notes = service.serviceModifiers.filter(m => m.displayType === 'NOTE');
+            const warnings = service.serviceModifiers.filter(m => m.displayType === 'WARNING');
+            const normal = service.serviceModifiers.filter(m => m.displayType === 'NORMAL' || !m.displayType);
+
+            // Check if there are bulk discount modifiers
+            const bulkDiscounts = notes.filter(m =>
+                m.name.toLowerCase().includes('bulk') ||
+                m.name.toLowerCase().includes('discount')
+            );
+            const otherNotes = notes.filter(m =>
+                !m.name.toLowerCase().includes('bulk') &&
+                !m.name.toLowerCase().includes('discount')
+            );
+
+            // Helper function to format modifiers
+            const formatModifiers = (modifiers: any[], colorCode: string, icon: string) => {
+                return modifiers.map(modifier => {
+                    const sign = Number(modifier.value) >= 0 ? '+' : '';
+                    const value = modifier.modifierType === 'PERCENTAGE'
+                        ? `${sign}${modifier.value}%`
+                        : `${sign}$${modifier.value}`;
+                    return `\`\`\`ansi\n${colorCode}${icon} ${value} ${modifier.name}\u001b[0m\n\`\`\``;
+                }).join('\n');
+            };
+
+            // Add Upcharges section (red)
+            if (upcharges.length > 0) {
+                embed.addFields({
+                    name: "🔺 **Upcharges** (Additional Costs)",
+                    value: formatModifiers(upcharges, '\u001b[31m', '🔺'),
+                    inline: false,
+                });
+            }
+
+            // Add Bulk Discounts section (green) if any
+            if (bulkDiscounts.length > 0) {
+                embed.addFields({
+                    name: "💰 **Bulk Discounts**",
+                    value: formatModifiers(bulkDiscounts, '\u001b[32m', '📝'),
+                    inline: false,
+                });
+            }
+
+            // Add Other Notes section (green) if any
+            if (otherNotes.length > 0) {
+                embed.addFields({
+                    name: "📝 **Additional Notes**",
+                    value: formatModifiers(otherNotes, '\u001b[32m', '📝'),
+                    inline: false,
+                });
+            }
+
+            // Add Warnings section (yellow)
+            if (warnings.length > 0) {
+                embed.addFields({
+                    name: "⚠️ **Warnings**",
+                    value: formatModifiers(warnings, '\u001b[33m', '⚠️'),
+                    inline: false,
+                });
+            }
+
+            // Add Other Modifiers section (yellow) for NORMAL type
+            if (normal.length > 0) {
+                embed.addFields({
+                    name: "⚙️ **Available Modifiers**",
+                    value: formatModifiers(normal, '\u001b[33m', '⚙️'),
+                    inline: false,
+                });
+            }
+        }
+
         return embed;
     }
 
@@ -893,8 +969,8 @@ export class EnhancedPricingBuilder {
     ): ActionRowBuilder<ButtonBuilder> {
         return new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
-                .setCustomId(`order_service_${serviceId}`)
-                .setLabel("🛒 Order Now")
+                .setCustomId(`open_ticket_${serviceId}_${categoryId}_0`)
+                .setLabel("🎫 Open Ticket")
                 .setStyle(ButtonStyle.Success),
             new ButtonBuilder()
                 .setCustomId(`calculate_price_${serviceId}`)

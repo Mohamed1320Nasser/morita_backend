@@ -15,6 +15,13 @@ enum Role {
   user
 }
 
+enum DiscordRole {
+  admin
+  support
+  worker
+  customer
+}
+
 enum OtpType {
   verify_email
   forget_email
@@ -38,16 +45,34 @@ model User {
   updatedAt           DateTime  @default(now()) @updatedAt() @db.DateTime(0)
   deletedAt           DateTime?
 
+  // Discord integration
+  discordId           String?       @unique // Discord user ID
+  discordRole         DiscordRole?  @default(customer) // Discord server role
+
   sessions     Session[]
   otpRequests  OtpRequest[]
   files        File[]        @relation("fileUploader")
   profile      File?         @relation("userProfile", fields: [profileId], references: [id])
-  orders       Order[]       @relation("userOrders")
+
+  // Order relations
+  customerOrders    Order[]       @relation("customerOrders")
+  workerOrders      Order[]       @relation("workerOrders")
+  supportOrders     Order[]       @relation("supportOrders")
+  statusChangeHistory OrderStatusHistory[] @relation("statusChangeHistory")
+
   transactions Transaction[] @relation("userTransactions")
   wallet       Wallet?       @relation("userWallet")
+  walletTransactionsCreated WalletTransaction[] @relation("transactionCreator")
+
+  // Ticket relations
+  customerTickets    Ticket[]        @relation("customerTickets")
+  supportTickets     Ticket[]        @relation("supportTickets")
+  ticketMessages     TicketMessage[] @relation("ticketMessageAuthor")
 
   @@index([email])
   @@index([role])
+  @@index([discordId])
+  @@index([discordRole])
 }
 
 model Session {
@@ -133,11 +158,28 @@ enum AccountStatus {
 }
 
 enum OrderStatus {
-  PENDING // Order created, awaiting processing
-  IN_PROGRESS // Worker assigned, in progress
-  COMPLETED // Service completed
+  PENDING // Created, awaiting assignment
+  CLAIMING // Posted to job claiming channel
+  ASSIGNED // Worker assigned
+  IN_PROGRESS // Worker actively working
+  AWAITING_CONFIRM // Worker marked complete
+  COMPLETED // Customer confirmed
   CANCELLED // Order cancelled
-  REFUNDED // Order refunded
+  DISPUTED // Issue reported
+  REFUNDED // Refund issued
+}
+
+// ============================================
+// TICKET SYSTEM ENUMS
+// ============================================
+
+enum TicketStatus {
+  OPEN // Just created, waiting for support
+  IN_PROGRESS // Order created, work ongoing
+  AWAITING_CONFIRMATION // Worker marked complete
+  COMPLETED // Customer confirmed, payouts done
+  CANCELLED // Order cancelled
+  CLOSED // Ticket closed without order
 }
 
 enum TransactionType {
@@ -165,6 +207,10 @@ model ServiceCategory {
   services Service[] @relation("serviceCategory")
   accounts Account[] @relation("accountCategory")
 
+  // Ticket relations
+  tickets        Ticket[]                @relation("categoryTickets")
+  ticketSettings CategoryTicketSettings? @relation("categoryTicketSettings")
+
   @@index([slug])
   @@index([active])
   @@index([displayOrder])
@@ -183,15 +229,37 @@ model Service {
   updatedAt    DateTime  @default(now()) @updatedAt() @db.DateTime(0)
   deletedAt    DateTime?
 
-  category       ServiceCategory @relation("serviceCategory", fields: [categoryId], references: [id])
-  pricingMethods PricingMethod[] @relation("servicePricingMethods")
-  accounts       Account[]       @relation("accountService")
-  orders         Order[]         @relation("serviceOrders")
+  category         ServiceCategory  @relation("serviceCategory", fields: [categoryId], references: [id])
+  serviceModifiers ServiceModifier[] @relation("serviceModifiers")
+  pricingMethods   PricingMethod[]  @relation("servicePricingMethods")
+  accounts         Account[]        @relation("accountService")
+  orders           Order[]          @relation("serviceOrders")
+  tickets          Ticket[]         @relation("serviceTickets")
 
   @@unique([categoryId, slug])
   @@index([categoryId])
   @@index([active])
   @@index([displayOrder])
+}
+
+model ServiceModifier {
+  id           String              @id @default(uuid())
+  serviceId    String
+  name         String
+  modifierType ModifierType
+  value        Decimal             @db.Decimal(10, 2)
+  displayType  ModifierDisplayType @default(NORMAL)
+  priority     Int                 @default(0)
+  condition    String?             @db.Text
+  active       Boolean             @default(true)
+  createdAt    DateTime            @default(now()) @db.DateTime(0)
+  updatedAt    DateTime            @default(now()) @updatedAt() @db.DateTime(0)
+
+  service Service @relation("serviceModifiers", fields: [serviceId], references: [id])
+
+  @@index([serviceId])
+  @@index([priority])
+  @@index([active])
 }
 
 model PricingMethod {
@@ -249,8 +317,10 @@ model PaymentMethod {
   updatedAt DateTime    @default(now()) @updatedAt() @db.DateTime(0)
   deletedAt DateTime?
 
-  methodPrices MethodPrice[] @relation("paymentMethodPrices")
-  orders       Order[]       @relation("paymentMethodOrders")
+  methodPrices       MethodPrice[]       @relation("paymentMethodPrices")
+  orders             Order[]             @relation("paymentMethodOrders")
+  tickets            Ticket[]            @relation("paymentMethodTickets")
+  walletTransactions WalletTransaction[] @relation("transactionPaymentMethod")
 
   @@index([type])
   @@index([active])
@@ -294,30 +364,88 @@ model Account {
 }
 
 model Order {
-  id              String      @id @default(uuid())
-  userId          Int         @db.UnsignedInt
-  serviceId       String
-  methodId        String
-  paymentMethodId String
+  id              String        @id @default(uuid())
+  orderNumber     Int           @unique @default(0)
+
+  // Participants
+  customerId      Int           @db.UnsignedInt
+  workerId        Int?          @db.UnsignedInt    // Null if unassigned
+  supportId       Int?          @db.UnsignedInt    // Support who created order
+
+  // Links
+  ticketId        String?
+  serviceId       String?
+  methodId        String?
+  paymentMethodId String?
   accountId       String?
-  totalPrice      Decimal     @db.Decimal(10, 2)
-  status          OrderStatus @default(PENDING)
-  metadata        Json? // Additional order data
+
+  // Discord
+  orderChannelId  String?       @unique // Order channel ID
+  claimMessageId  String?       // Message in job claiming channel
+
+  // Financials
+  orderValue      Decimal       @db.Decimal(18, 8)
+  depositAmount   Decimal       @db.Decimal(18, 8)
+  currency        String        @default("USD")
+
+  // Payout tracking
+  workerPayout    Decimal?      @db.Decimal(18, 8)  // 80%
+  supportPayout   Decimal?      @db.Decimal(18, 8)  // 5%
+  systemPayout    Decimal?      @db.Decimal(18, 8)  // 15%
+
+  // Status
+  status          OrderStatus   @default(PENDING)
+
+  // Job details (for worker)
+  jobDetails      Json?
+
+  // Notes
+  completionNotes   String?       @db.Text
+  cancellationReason String?      @db.Text
+
+  // Timestamps
+  createdAt       DateTime      @default(now()) @db.DateTime(0)
+  updatedAt       DateTime      @default(now()) @updatedAt @db.DateTime(0)
+  assignedAt      DateTime?
+  claimedAt       DateTime?
+  startedAt       DateTime?
   completedAt     DateTime?
-  createdAt       DateTime    @default(now()) @db.DateTime(0)
-  updatedAt       DateTime    @default(now()) @updatedAt() @db.DateTime(0)
+  confirmedAt     DateTime?
+  cancelledAt     DateTime?
 
-  user          User          @relation("userOrders", fields: [userId], references: [id])
-  service       Service       @relation("serviceOrders", fields: [serviceId], references: [id])
-  method        PricingMethod @relation("pricingMethodOrders", fields: [methodId], references: [id])
-  paymentMethod PaymentMethod @relation("paymentMethodOrders", fields: [paymentMethodId], references: [id])
-  account       Account?      @relation("accountOrders", fields: [accountId], references: [id])
-  transactions  Transaction[] @relation("orderTransactions")
+  // Relations
+  customer          User           @relation("customerOrders", fields: [customerId], references: [id])
+  worker            User?          @relation("workerOrders", fields: [workerId], references: [id])
+  support           User?          @relation("supportOrders", fields: [supportId], references: [id])
+  ticket            Ticket?        @relation("ticketOrders", fields: [ticketId], references: [id])
+  service           Service?       @relation("serviceOrders", fields: [serviceId], references: [id])
+  method            PricingMethod? @relation("pricingMethodOrders", fields: [methodId], references: [id])
+  paymentMethod     PaymentMethod? @relation("paymentMethodOrders", fields: [paymentMethodId], references: [id])
+  account           Account?       @relation("accountOrders", fields: [accountId], references: [id])
+  legacyTransactions Transaction[] @relation("orderTransactions")
+  walletTransactions WalletTransaction[] @relation("orderWalletTransactions")
+  statusHistory     OrderStatusHistory[]
 
-  @@index([userId])
-  @@index([serviceId])
+  @@index([customerId])
+  @@index([workerId])
   @@index([status])
+  @@index([ticketId])
   @@index([createdAt])
+}
+
+model OrderStatusHistory {
+  id          String       @id @default(uuid())
+  orderId     String
+  fromStatus  OrderStatus?
+  toStatus    OrderStatus
+  changedById Int          @db.UnsignedInt
+  reason      String?      @db.Text
+  createdAt   DateTime     @default(now()) @db.DateTime(0)
+
+  order       Order        @relation(fields: [orderId], references: [id])
+  changedBy   User         @relation("statusChangeHistory", fields: [changedById], references: [id])
+
+  @@index([orderId])
 }
 
 model Transaction {
@@ -339,17 +467,90 @@ model Transaction {
   @@index([createdAt])
 }
 
-model Wallet {
-  id        String   @id @default(uuid())
-  userId    Int      @unique @db.UnsignedInt
-  balance   Decimal  @default(0) @db.Decimal(10, 2)
-  currency  String   @default("USD")
-  createdAt DateTime @default(now()) @db.DateTime(0)
-  updatedAt DateTime @default(now()) @updatedAt() @db.DateTime(0)
+// Wallet Types
+enum WalletType {
+  CUSTOMER
+  WORKER
+  SUPPORT
+}
 
-  user User @relation("userWallet", fields: [userId], references: [id])
+// Wallet Transaction Types
+enum WalletTransactionType {
+  DEPOSIT           // Customer adds funds
+  WITHDRAWAL        // User withdraws funds
+  PAYMENT           // Payment for order (locks funds)
+  REFUND            // Order refunded
+  EARNING           // Worker payout (80%)
+  COMMISSION        // Support commission (5%)
+  SYSTEM_FEE        // System takes cut (15%)
+  ADJUSTMENT        // Manual correction
+  RELEASE           // Release locked funds after order complete
+}
+
+// Wallet Transaction Status
+enum WalletTransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REVERSED
+}
+
+model Wallet {
+  id              String      @id @default(uuid())
+  userId          Int         @unique @db.UnsignedInt
+  walletType      WalletType  @default(CUSTOMER)
+  balance         Decimal     @default(0) @db.Decimal(18, 8)
+  pendingBalance  Decimal     @default(0) @db.Decimal(18, 8) // Locked for orders
+  currency        String      @default("USD")
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now()) @db.DateTime(0)
+  updatedAt       DateTime    @default(now()) @updatedAt() @db.DateTime(0)
+
+  user            User        @relation("userWallet", fields: [userId], references: [id])
+  transactions    WalletTransaction[]
 
   @@index([userId])
+  @@index([walletType])
+}
+
+model WalletTransaction {
+  id              String                    @id @default(uuid())
+  walletId        String
+  orderId         String?
+  type            WalletTransactionType
+  amount          Decimal                   @db.Decimal(18, 8)
+  balanceBefore   Decimal                   @db.Decimal(18, 8)
+  balanceAfter    Decimal                   @db.Decimal(18, 8)
+  currency        String                    @default("USD")
+  status          WalletTransactionStatus   @default(COMPLETED)
+
+  // Payment details
+  paymentMethodId String?
+  reference       String?                   // External transaction ID
+  notes           String?                   @db.Text
+
+  // Actor who created this transaction
+  createdById     Int                       @db.UnsignedInt
+
+  createdAt       DateTime                  @default(now()) @db.DateTime(0)
+
+  wallet          Wallet                    @relation(fields: [walletId], references: [id])
+  order           Order?                    @relation("orderWalletTransactions", fields: [orderId], references: [id])
+  paymentMethod   PaymentMethod?            @relation("transactionPaymentMethod", fields: [paymentMethodId], references: [id])
+  createdBy       User                      @relation("transactionCreator", fields: [createdById], references: [id])
+
+  @@index([walletId])
+  @@index([orderId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+// System Wallet (singleton for system funds)
+model SystemWallet {
+  id        String   @id @default("system-wallet")
+  balance   Decimal  @default(0) @db.Decimal(18, 8)
+  currency  String   @default("USD")
+  updatedAt DateTime @default(now()) @updatedAt @db.DateTime(0)
 }
 
 model DiscordMessage {
@@ -373,6 +574,118 @@ model ExperienceTable {
   level      Int @id @db.UnsignedTinyInt // 1-99
   experience BigInt // Total XP required for this level
   difference Int // XP difference from previous level
-  
+
   @@index([level])
+}
+
+// ============================================
+// TICKET SYSTEM MODELS
+// ============================================
+
+model Ticket {
+  id              String        @id @default(uuid())
+  ticketNumber    Int           @unique @default(autoincrement())
+
+  // Customer who opened the ticket
+  customerId      Int           @db.UnsignedInt
+  customerDiscordId String      // Discord user ID of customer
+
+  // Category and service context
+  categoryId      String
+  serviceId       String?
+
+  // Discord channel info
+  channelId       String        @unique // Discord channel ID for this ticket
+
+  // Pricing info from calculator (optional)
+  calculatedPrice Decimal?      @db.Decimal(18, 8)
+  paymentMethodId String?
+  currency        String        @default("USD")
+
+  // Status tracking
+  status          TicketStatus  @default(OPEN)
+
+  // Support who handled the ticket
+  supportId       Int?          @db.UnsignedInt
+  supportDiscordId String?
+
+  // Additional notes from customer
+  customerNotes   String?       @db.Text
+
+  // Timestamps
+  createdAt       DateTime      @default(now()) @db.DateTime(0)
+  updatedAt       DateTime      @default(now()) @updatedAt @db.DateTime(0)
+  closedAt        DateTime?     @db.DateTime(0)
+
+  // Relations
+  customer        User          @relation("customerTickets", fields: [customerId], references: [id])
+  support         User?         @relation("supportTickets", fields: [supportId], references: [id])
+  category        ServiceCategory @relation("categoryTickets", fields: [categoryId], references: [id])
+  service         Service?      @relation("serviceTickets", fields: [serviceId], references: [id])
+  paymentMethod   PaymentMethod? @relation("paymentMethodTickets", fields: [paymentMethodId], references: [id])
+  messages        TicketMessage[]
+  orders          Order[]       @relation("ticketOrders")
+
+  @@index([customerId])
+  @@index([categoryId])
+  @@index([serviceId])
+  @@index([status])
+  @@index([channelId])
+  @@index([createdAt])
+}
+
+model TicketMessage {
+  id        String   @id @default(uuid())
+  ticketId  String
+
+  // Message author
+  authorId  Int      @db.UnsignedInt
+  authorDiscordId String // Discord user ID
+  authorName String   // Display name at time of message
+
+  // Message content
+  content   String   @db.Text
+
+  // Message type
+  isSystem  Boolean  @default(false) // Auto-generated system messages
+  isWelcome Boolean  @default(false) // Welcome message
+
+  // Discord message reference
+  discordMessageId String? @unique
+
+  createdAt DateTime @default(now()) @db.DateTime(0)
+
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author    User     @relation("ticketMessageAuthor", fields: [authorId], references: [id])
+
+  @@index([ticketId])
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+// Category-specific ticket welcome message settings
+model CategoryTicketSettings {
+  id              String    @id @default(uuid())
+  categoryId      String    @unique
+
+  // Banner image
+  bannerUrl       String?   @db.Text
+
+  // Welcome message content
+  welcomeTitle    String?   @db.VarChar(255)
+  welcomeMessage  String    @db.Text  // Rich text / Markdown supported
+
+  // Footer text
+  footerText      String?   @db.Text
+
+  // Embed color (hex without #)
+  embedColor      String?   @db.VarChar(6) @default("5865F2")
+
+  // Toggle
+  isActive        Boolean   @default(true)
+
+  createdAt       DateTime  @default(now()) @db.DateTime(0)
+  updatedAt       DateTime  @default(now()) @updatedAt @db.DateTime(0)
+
+  category        ServiceCategory @relation("categoryTicketSettings", fields: [categoryId], references: [id], onDelete: Cascade)
 }

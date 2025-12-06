@@ -1,0 +1,931 @@
+{
+  "categories": [
+    {
+      "name": "Megascale",
+      "emoji": "⚡",
+      "slug": "megascale",
+      "description": "Megascale raids and training services",
+      "services": [
+        {
+          "name": "MegaScale & Mystics Chinning",
+          "emoji": "⚡",
+          "slug": "megascale-mystics-chinning",
+          "description": "Requires 55+ Farming and 60+ Fishing/Cooking",
+          "serviceModifiers": [
+            {
+              "name": "No Fish Eater",
+              "modifierType": "PERCENTAGE",
+              "value": 2,
+              "displayType": "UPCHARGE",
+              "priority": 0,
+              "active": true
+            },
+            {
+              "name": "We Login",
+              "modifierType": "PERCENTAGE",
+              "value": 10,
+              "displayType": "UPCHARGE",
+              "priority": 1,
+              "active": true
+            },
+            {
+              "name": "No Chins",
+              "modifierType": "PERCENTAGE",
+              "value": 20,
+              "displayType": "UPCHARGE",
+              "priority": 2,
+              "active": true
+            }
+          ],
+          "pricingMethods": [
+            {
+              "name": "MegaScale - 100% Purple Chance",
+              "basePrice": 135,
+              "pricingUnit": "FIXED",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "MegaScale - 100% Purple Chance + Single Scroll Protection",
+              "basePrice": 240,
+              "pricingUnit": "FIXED",
+              "displayOrder": 2,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "MegaScale - 100% Purple Chance + Double Scroll Protection",
+              "basePrice": 380,
+              "pricingUnit": "FIXED",
+              "displayOrder": 3,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "[3+12] Scaled Around 15% Purple Chance",
+              "basePrice": 20,
+              "pricingUnit": "FIXED",
+              "displayOrder": 4,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Ranged Training - Mystics Chinning",
+              "basePrice": 18,
+              "pricingUnit": "FIXED",
+              "displayOrder": 5,
+              "active": true,
+              "modifiers": []
+            }
+          ],
+          "notes": [
+            "Bulk Discount: 3% discount for 3 raids",
+            "Bulk Discount: 5% discount for 5 raids",
+            "Bulk Discount: 12% discount for 10 raids"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Capes, Quiver & 6 Jad",
+      "emoji": "🌋",
+      "slug": "capes-quiver-6jad",
+      "description": "Fire capes, infernal capes, and related services",
+      "services": [
+        {
+          "name": "Infernal Cape",
+          "emoji": "🔥",
+          "slug": "infernal-cape",
+          "description": "Professional infernal cape service",
+          "serviceModifiers": [
+            {
+              "name": "No Rigour",
+              "modifierType": "FIXED",
+              "value": 5,
+              "displayType": "UPCHARGE",
+              "priority": 0,
+              "active": true
+            },
+            {
+              "name": "Magic level below 94",
+              "modifierType": "FIXED",
+              "value": 10,
+              "displayType": "UPCHARGE",
+              "priority": 1,
+              "active": true
+            }
+          ],
+          "pricingMethods": [
+            {
+              "name": "Parsec - Main - Twisted Bow",
+              "basePrice": 70,
+              "pricingUnit": "FIXED",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Parsec - Main - Armadyl Crossbow",
+              "basePrice": 85,
+              "pricingUnit": "FIXED",
+              "displayOrder": 2,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Parsec - Main - Bowfa",
+              "basePrice": 85,
+              "pricingUnit": "FIXED",
+              "displayOrder": 3,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Parsec - Zerker - Twisted Bow",
+              "basePrice": 85,
+              "pricingUnit": "FIXED",
+              "displayOrder": 4,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Parsec - Zerker - Armadyl Crossbow",
+              "basePrice": 95,
+              "pricingUnit": "FIXED",
+              "displayOrder": 5,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Parsec - Pure - Twisted Bow",
+              "basePrice": 90,
+              "pricingUnit": "FIXED",
+              "displayOrder": 6,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Parsec - Pure - Armadyl Crossbow",
+              "basePrice": 130,
+              "pricingUnit": "FIXED",
+              "displayOrder": 7,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "VPN - Main - Twisted Bow",
+              "basePrice": 40,
+              "pricingUnit": "FIXED",
+              "displayOrder": 8,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "VPN - Main - Armadyl Crossbow",
+              "basePrice": 50,
+              "pricingUnit": "FIXED",
+              "displayOrder": 9,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "VPN - Bowfa",
+              "basePrice": 50,
+              "pricingUnit": "FIXED",
+              "displayOrder": 10,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "VPN - Zerker - Twisted Bow",
+              "basePrice": 55,
+              "pricingUnit": "FIXED",
+              "displayOrder": 11,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "VPN - Zerker - Armadyl Crossbow",
+              "basePrice": 70,
+              "pricingUnit": "FIXED",
+              "displayOrder": 12,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "VPN - Pure - Twisted Bow",
+              "basePrice": 70,
+              "pricingUnit": "FIXED",
+              "displayOrder": 13,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "VPN - Pure - Armadyl Crossbow",
+              "basePrice": 85,
+              "pricingUnit": "FIXED",
+              "displayOrder": 14,
+              "active": true,
+              "modifiers": [
+                {
+                  "name": "Task discount",
+                  "modifierType": "PERCENTAGE",
+                  "value": -15,
+                  "displayType": "NOTE",
+                  "priority": 0,
+                  "active": true
+                }
+              ]
+            }
+          ],
+          "notes": [
+            "Task are 15% off",
+            "Parsec available EU, UK, AUS & US"
+          ]
+        },
+        {
+          "name": "Fire Cape",
+          "emoji": "🔥",
+          "slug": "fire-cape",
+          "description": "Classic fire cape service",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Blowpipe - Main - Capes",
+              "basePrice": 25,
+              "pricingUnit": "PER_ITEM",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": [],
+              "description": "25M OSRS Gold"
+            },
+            {
+              "name": "Blowpipe - Zerker - Capes",
+              "basePrice": 35,
+              "pricingUnit": "PER_ITEM",
+              "displayOrder": 2,
+              "active": true,
+              "modifiers": [],
+              "description": "35M OSRS Gold"
+            },
+            {
+              "name": "Blowpipe - Pure - Capes",
+              "basePrice": 40,
+              "pricingUnit": "PER_ITEM",
+              "displayOrder": 3,
+              "active": true,
+              "modifiers": [],
+              "description": "40M OSRS Gold"
+            },
+            {
+              "name": "MSB/RCB",
+              "basePrice": 95,
+              "pricingUnit": "PER_ITEM",
+              "startLevel": 70,
+              "endLevel": 99,
+              "displayOrder": 4,
+              "active": true,
+              "modifiers": [],
+              "description": "95M OSRS Gold"
+            },
+            {
+              "name": "MSB/RCB",
+              "basePrice": 120,
+              "pricingUnit": "PER_ITEM",
+              "startLevel": 61,
+              "endLevel": 99,
+              "displayOrder": 5,
+              "active": true,
+              "modifiers": [],
+              "description": "120M OSRS Gold"
+            },
+            {
+              "name": "Bone crossbow Under 61 Ranged",
+              "basePrice": 175,
+              "pricingUnit": "PER_ITEM",
+              "displayOrder": 6,
+              "active": true,
+              "modifiers": [],
+              "description": "175M OSRS Gold"
+            },
+            {
+              "name": "Range - 1 Prayer",
+              "basePrice": 150,
+              "pricingUnit": "PER_ITEM",
+              "startLevel": 90,
+              "endLevel": 99,
+              "displayOrder": 7,
+              "active": true,
+              "modifiers": [],
+              "description": "150M OSRS Gold"
+            },
+            {
+              "name": "Range - 1 Prayer",
+              "basePrice": 200,
+              "pricingUnit": "PER_ITEM",
+              "startLevel": 75,
+              "endLevel": 89,
+              "displayOrder": 8,
+              "active": true,
+              "modifiers": [],
+              "description": "200M OSRS Gold"
+            },
+            {
+              "name": "Range - 1 Prayer",
+              "basePrice": 300,
+              "pricingUnit": "PER_ITEM",
+              "startLevel": 70,
+              "endLevel": 74,
+              "displayOrder": 9,
+              "active": true,
+              "modifiers": [],
+              "description": "300M OSRS Gold"
+            },
+            {
+              "name": "Range - 1 Prayer",
+              "basePrice": 350,
+              "pricingUnit": "PER_ITEM",
+              "startLevel": 60,
+              "endLevel": 69,
+              "displayOrder": 10,
+              "active": true,
+              "modifiers": [],
+              "description": "350M OSRS Gold"
+            },
+            {
+              "name": "Range - 1 Prayer",
+              "basePrice": 500,
+              "pricingUnit": "PER_ITEM",
+              "startLevel": 50,
+              "endLevel": 59,
+              "displayOrder": 11,
+              "active": true,
+              "modifiers": [],
+              "description": "500M OSRS Gold"
+            }
+          ],
+          "notes": [
+            "Parsec available EU, UK, AUS & US"
+          ]
+        },
+        {
+          "name": "Mage Arena",
+          "emoji": "🧙",
+          "slug": "mage-arena",
+          "description": "Mage Arena 1 & 2 completion",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Mage Arena 1",
+              "basePrice": 5,
+              "pricingUnit": "FIXED",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Unlocking Spells",
+              "basePrice": 3,
+              "pricingUnit": "FIXED",
+              "displayOrder": 2,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Mage Arena 2",
+              "basePrice": 9,
+              "pricingUnit": "FIXED",
+              "displayOrder": 3,
+              "active": true,
+              "modifiers": []
+            }
+          ],
+          "notes": []
+        },
+        {
+          "name": "Dizana's quiver",
+          "emoji": "🏹",
+          "slug": "dizanas-quiver",
+          "description": "New Best in slot Quiver that stores both arrows & bolts with increased ranged stats!",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Login - Max Main",
+              "basePrice": 30,
+              "pricingUnit": "FIXED",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Login - Budget Main",
+              "basePrice": 35,
+              "pricingUnit": "FIXED",
+              "displayOrder": 2,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Login - Max Zerker",
+              "basePrice": 50,
+              "pricingUnit": "FIXED",
+              "displayOrder": 3,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Login - Budget Zerker",
+              "basePrice": 57,
+              "pricingUnit": "FIXED",
+              "displayOrder": 4,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Login - Max Pure",
+              "basePrice": 60,
+              "pricingUnit": "FIXED",
+              "displayOrder": 5,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Login - Budget Pure",
+              "basePrice": 70,
+              "pricingUnit": "FIXED",
+              "displayOrder": 6,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Parsec - Max Main",
+              "basePrice": 45,
+              "pricingUnit": "FIXED",
+              "displayOrder": 7,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Parsec - Budget Main",
+              "basePrice": 52,
+              "pricingUnit": "FIXED",
+              "displayOrder": 8,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Parsec - Max Zerker",
+              "basePrice": 75,
+              "pricingUnit": "FIXED",
+              "displayOrder": 9,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Parsec - Budget Zerker",
+              "basePrice": 85,
+              "pricingUnit": "FIXED",
+              "displayOrder": 10,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Parsec - Max Pure",
+              "basePrice": 90,
+              "pricingUnit": "FIXED",
+              "displayOrder": 11,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Parsec - Budget Pure",
+              "basePrice": 100,
+              "pricingUnit": "FIXED",
+              "displayOrder": 12,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Splinters farm - Wave 1 farm",
+              "basePrice": 0.10,
+              "pricingUnit": "PER_ITEM",
+              "displayOrder": 13,
+              "active": true,
+              "modifiers": []
+            }
+          ],
+          "notes": [
+            "Parsec available EU, UK, AUS & US"
+          ]
+        },
+        {
+          "name": "The VI Jad Challenge",
+          "emoji": "🔥",
+          "slug": "six-jad-challenge",
+          "description": "Complete the six Jad challenge",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Main - Twisted Bow",
+              "basePrice": 28,
+              "pricingUnit": "FIXED",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Main - BowFa",
+              "basePrice": 62,
+              "pricingUnit": "FIXED",
+              "displayOrder": 2,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Main - Blowpipe",
+              "basePrice": 36,
+              "pricingUnit": "FIXED",
+              "displayOrder": 3,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Zerker - Twisted Bow",
+              "basePrice": 40,
+              "pricingUnit": "FIXED",
+              "displayOrder": 4,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Zerker - Blowpipe",
+              "basePrice": 61,
+              "pricingUnit": "FIXED",
+              "displayOrder": 5,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Pure - Twisted Bow",
+              "basePrice": 63,
+              "pricingUnit": "FIXED",
+              "displayOrder": 6,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Pure - Blowpipe",
+              "basePrice": 80,
+              "pricingUnit": "FIXED",
+              "displayOrder": 7,
+              "active": true,
+              "modifiers": []
+            }
+          ],
+          "notes": [
+            "Parsec available EU, UK, AUS & US"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Blood Torva & Radiant Kit",
+      "emoji": "♨️",
+      "slug": "blood-torva-radiant-kit",
+      "description": "Blood Torva and Radiant armor upgrades",
+      "services": [
+        {
+          "name": "Blood Torva",
+          "emoji": "🩸",
+          "slug": "blood-torva",
+          "description": "We assume that you have Max stats & gear. Prices include that you keep all the loot in your name.",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Duke Sucellus",
+              "basePrice": 18,
+              "pricingUnit": "FIXED",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "The Whisperer",
+              "basePrice": 18,
+              "pricingUnit": "FIXED",
+              "displayOrder": 2,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Vardorvis",
+              "basePrice": 20,
+              "pricingUnit": "FIXED",
+              "displayOrder": 3,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "The Leviathan",
+              "basePrice": 34,
+              "pricingUnit": "FIXED",
+              "displayOrder": 4,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Buy all 4 - Login",
+              "basePrice": 80,
+              "pricingUnit": "FIXED",
+              "displayOrder": 5,
+              "active": true,
+              "modifiers": [],
+              "description": "Instead of $90"
+            },
+            {
+              "name": "Buy all 4 - Parsec",
+              "basePrice": 100,
+              "pricingUnit": "FIXED",
+              "displayOrder": 6,
+              "active": true,
+              "modifiers": [],
+              "description": "Instead of $90"
+            }
+          ],
+          "notes": [
+            "Parsec available EU, UK, AUS & US"
+          ]
+        },
+        {
+          "name": "Radiant Oathplate",
+          "emoji": "✨",
+          "slug": "radiant-oathplate",
+          "description": "We assume that you have Max stats & gear. Prices include that you keep all the loot in your name.",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Contract of bloodied blows",
+              "basePrice": 16,
+              "pricingUnit": "FIXED",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Contract of divine severance",
+              "basePrice": 15,
+              "pricingUnit": "FIXED",
+              "displayOrder": 2,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Contract of forfeit breath",
+              "basePrice": 15,
+              "pricingUnit": "FIXED",
+              "displayOrder": 3,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Contract of glyphic attenuation",
+              "basePrice": 16,
+              "pricingUnit": "FIXED",
+              "displayOrder": 4,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Contract of sensory clouding",
+              "basePrice": 18,
+              "pricingUnit": "FIXED",
+              "displayOrder": 5,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Buy all 5 - Login",
+              "basePrice": 70,
+              "pricingUnit": "FIXED",
+              "displayOrder": 6,
+              "active": true,
+              "modifiers": [],
+              "description": "Instead of $80"
+            },
+            {
+              "name": "Buy all 5 - Parsec",
+              "basePrice": 100,
+              "pricingUnit": "FIXED",
+              "displayOrder": 7,
+              "active": true,
+              "modifiers": [],
+              "description": "Instead of $80"
+            }
+          ],
+          "notes": [
+            "Parsec available EU, UK, AUS & US"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Raids 1, 2 & 3",
+      "emoji": "🐉",
+      "slug": "raids-1-2-3",
+      "description": "Chambers of Xeric, Theatre of Blood, and Tombs of Amascut",
+      "services": [
+        {
+          "name": "Chambers of Xeric",
+          "emoji": "⚔️",
+          "slug": "chambers-of-xeric",
+          "description": "Prices include keeping all loot in your name. Additional upcharges may apply based on gear, stats, and prayers.",
+          "serviceModifiers": [
+            {
+              "name": "80-90 Stats",
+              "modifierType": "PERCENTAGE",
+              "value": 15,
+              "displayType": "UPCHARGE",
+              "priority": 0,
+              "active": true
+            },
+            {
+              "name": "Under 80 Stats",
+              "modifierType": "PERCENTAGE",
+              "value": 25,
+              "displayType": "UPCHARGE",
+              "priority": 1,
+              "active": true
+            },
+            {
+              "name": "No BGS or DWH",
+              "modifierType": "PERCENTAGE",
+              "value": 15,
+              "displayType": "UPCHARGE",
+              "priority": 2,
+              "active": true
+            }
+          ],
+          "pricingMethods": [
+            {
+              "name": "CoX - Login - Solo - TBow + Lance/Scythe",
+              "basePrice": 2.75,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "CoX - Login - Solo - Bowfa + Lance",
+              "basePrice": 3.50,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 2,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "CoX - Login - Solo - Bowfa + Tent/Fang",
+              "basePrice": 4.00,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 3,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "CoX - Login - Solo - Budget Gear Trio Or Duo",
+              "basePrice": 2.50,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 4,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "CoX - Mass",
+              "basePrice": 1.80,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 5,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Cox CM - TBow + Lance",
+              "basePrice": 6.25,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 6,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Cox CM - Bowfa + Lance",
+              "basePrice": 7.50,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 7,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Cox CM - Max Gear (3-5 Man)",
+              "basePrice": 5.00,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 8,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Cox CM - Budget Gear (3-5 Man)",
+              "basePrice": 7.00,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 9,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Cox CM - Mass",
+              "basePrice": 2.50,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 10,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "CoX Boosting (2+1)",
+              "basePrice": 3.25,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 11,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "CoX Teaching (2+1)",
+              "basePrice": 3.75,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 12,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "CoX Teaching (3+1)",
+              "basePrice": 5.70,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 13,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "CoX CM - Boosting (2+1)",
+              "basePrice": 7.00,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 14,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "CoX CM - Teaching (2+1)",
+              "basePrice": 10.00,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 15,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "CoX CM - Full Leeching",
+              "basePrice": 9.00,
+              "pricingUnit": "PER_KILL",
+              "displayOrder": 16,
+              "active": true,
+              "modifiers": []
+            }
+          ],
+          "notes": [
+            "Bulk Discount: 25+ Kc = 3% OFF",
+            "Bulk Discount: 50+ Kc = 5% OFF",
+            "Bulk Discount: 150+ Kc = 10% OFF",
+            "Bulk Discount: 250+ Kc = 15% OFF",
+            "Parsec available EU, UK, AUS & US"
+          ]
+        }
+      ]
+    }
+  ],
+  "documentation": {
+    "modifierTypes": {
+      "PERCENTAGE": "Value is a percentage (e.g., 10 means +10%)",
+      "FIXED": "Value is a fixed USD amount (e.g., 5 means +$5)"
+    },
+    "displayTypes": {
+      "NORMAL": "Regular modifier (Yellow color in Discord)",
+      "UPCHARGE": "Additional cost (Red color in Discord)",
+      "NOTE": "Information/discount (Green color in Discord)",
+      "WARNING": "Important notice (Yellow color in Discord)"
+    },
+    "pricingUnits": {
+      "FIXED": "One-time fixed price per service",
+      "PER_LEVEL": "Price per XP/level gained",
+      "PER_KILL": "Price per kill count",
+      "PER_ITEM": "Price per item (can be OSRS gold 'M' or USD)",
+      "PER_HOUR": "Price per hour of service"
+    },
+    "serviceModifiers": "Apply to ALL pricing methods in a service",
+    "methodModifiers": "Apply only to a specific pricing method"
+  }
+}

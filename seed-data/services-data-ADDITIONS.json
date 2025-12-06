@@ -1,0 +1,377 @@
+{
+  "newCategories": [
+    {
+      "name": "Accounts Bundle",
+      "emoji": "🤺",
+      "slug": "accounts-bundle",
+      "description": "Complete account packages with various achievements",
+      "services": [
+        {
+          "name": "Max Cape",
+          "emoji": "🏆",
+          "slug": "max-cape",
+          "description": "Max cape account service",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Regular - Crypto",
+              "basePrice": 2200,
+              "pricingUnit": "FIXED",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Regular - Non-Crypto",
+              "basePrice": 2400,
+              "pricingUnit": "FIXED",
+              "displayOrder": 2,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Iron - Crypto",
+              "basePrice": 5000,
+              "pricingUnit": "FIXED",
+              "displayOrder": 3,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Iron - Non-Crypto",
+              "basePrice": 5500,
+              "pricingUnit": "FIXED",
+              "displayOrder": 4,
+              "active": true,
+              "modifiers": []
+            }
+          ],
+          "notes": []
+        },
+        {
+          "name": "Quest Cape",
+          "emoji": "📜",
+          "slug": "quest-cape",
+          "description": "Quest cape completion service",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Regular - Crypto",
+              "basePrice": 350,
+              "pricingUnit": "FIXED",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Regular - Non-Crypto",
+              "basePrice": 385,
+              "pricingUnit": "FIXED",
+              "displayOrder": 2,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Ironman - Crypto",
+              "basePrice": 730,
+              "pricingUnit": "FIXED",
+              "displayOrder": 3,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Ironman - Non-Crypto",
+              "basePrice": 875,
+              "pricingUnit": "FIXED",
+              "displayOrder": 4,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "HCIM - Crypto",
+              "basePrice": 1000,
+              "pricingUnit": "FIXED",
+              "displayOrder": 5,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "HCIM - Non-Crypto",
+              "basePrice": 1150,
+              "pricingUnit": "FIXED",
+              "displayOrder": 6,
+              "active": true,
+              "modifiers": []
+            }
+          ],
+          "notes": []
+        },
+        {
+          "name": "Song of the Elves",
+          "emoji": "🧝",
+          "slug": "song-of-the-elves",
+          "description": "Song of the Elves quest completion",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Regular - Crypto",
+              "basePrice": 95,
+              "pricingUnit": "FIXED",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Regular - Non-Crypto",
+              "basePrice": 115,
+              "pricingUnit": "FIXED",
+              "displayOrder": 2,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Ironman - Crypto",
+              "basePrice": 250,
+              "pricingUnit": "FIXED",
+              "displayOrder": 3,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Ironman - Non-Crypto",
+              "basePrice": 300,
+              "pricingUnit": "FIXED",
+              "displayOrder": 4,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "HCIM - Crypto",
+              "basePrice": 325,
+              "pricingUnit": "FIXED",
+              "displayOrder": 5,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "HCIM - Non-Crypto",
+              "basePrice": 390,
+              "pricingUnit": "FIXED",
+              "displayOrder": 6,
+              "active": true,
+              "modifiers": []
+            }
+          ],
+          "notes": []
+        },
+        {
+          "name": "Dragon Slayer II",
+          "emoji": "🐉",
+          "slug": "dragon-slayer-2",
+          "description": "Dragon Slayer II quest completion",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Regular - Crypto",
+              "basePrice": 210,
+              "pricingUnit": "FIXED",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Regular - Non-Crypto",
+              "basePrice": 250,
+              "pricingUnit": "FIXED",
+              "displayOrder": 2,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Ironman - Crypto",
+              "basePrice": 285,
+              "pricingUnit": "FIXED",
+              "displayOrder": 3,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Ironman - Non-Crypto",
+              "basePrice": 345,
+              "pricingUnit": "FIXED",
+              "displayOrder": 4,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "HCIM - Crypto",
+              "basePrice": 430,
+              "pricingUnit": "FIXED",
+              "displayOrder": 5,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "HCIM - Non-Crypto",
+              "basePrice": 530,
+              "pricingUnit": "FIXED",
+              "displayOrder": 6,
+              "active": true,
+              "modifiers": []
+            }
+          ],
+          "notes": []
+        },
+        {
+          "name": "99 Firemaking & Agility",
+          "emoji": "🔥",
+          "slug": "99-firemaking-agility",
+          "description": "99 Firemaking and 99 Agility package",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Ironman - Crypto",
+              "basePrice": 325,
+              "pricingUnit": "FIXED",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Ironman - Non-Crypto",
+              "basePrice": 365,
+              "pricingUnit": "FIXED",
+              "displayOrder": 2,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "HCIM - Crypto",
+              "basePrice": 350,
+              "pricingUnit": "FIXED",
+              "displayOrder": 3,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "HCIM - Non-Crypto",
+              "basePrice": 380,
+              "pricingUnit": "FIXED",
+              "displayOrder": 4,
+              "active": true,
+              "modifiers": []
+            }
+          ],
+          "notes": []
+        },
+        {
+          "name": "Mithril Gloves & Adamant Gloves",
+          "emoji": "🧤",
+          "slug": "mithril-adamant-gloves",
+          "description": "Recipe for Disaster glove unlocks",
+          "serviceModifiers": [],
+          "pricingMethods": [
+            {
+              "name": "Mithril Gloves - Regular - Crypto",
+              "basePrice": 16,
+              "pricingUnit": "FIXED",
+              "displayOrder": 1,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Mithril Gloves - Regular - Non-Crypto",
+              "basePrice": 19,
+              "pricingUnit": "FIXED",
+              "displayOrder": 2,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Mithril Gloves - Ironman - Crypto",
+              "basePrice": 21,
+              "pricingUnit": "FIXED",
+              "displayOrder": 3,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Mithril Gloves - Ironman - Non-Crypto",
+              "basePrice": 25,
+              "pricingUnit": "FIXED",
+              "displayOrder": 4,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Mithril Gloves - HCIM - Crypto",
+              "basePrice": 25,
+              "pricingUnit": "FIXED",
+              "displayOrder": 5,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Mithril Gloves - HCIM - Non-Crypto",
+              "basePrice": 30,
+              "pricingUnit": "FIXED",
+              "displayOrder": 6,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Mithril to Adamant Gloves - Regular - Crypto",
+              "basePrice": 12,
+              "pricingUnit": "FIXED",
+              "displayOrder": 7,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Mithril to Adamant Gloves - Regular - Non-Crypto",
+              "basePrice": 14,
+              "pricingUnit": "FIXED",
+              "displayOrder": 8,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Mithril to Adamant Gloves - Ironman - Crypto",
+              "basePrice": 16,
+              "pricingUnit": "FIXED",
+              "displayOrder": 9,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Mithril to Adamant Gloves - Ironman - Non-Crypto",
+              "basePrice": 19,
+              "pricingUnit": "FIXED",
+              "displayOrder": 10,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Mithril to Adamant Gloves - HCIM - Crypto",
+              "basePrice": 21,
+              "pricingUnit": "FIXED",
+              "displayOrder": 11,
+              "active": true,
+              "modifiers": []
+            },
+            {
+              "name": "Mithril to Adamant Gloves - HCIM - Non-Crypto",
+              "basePrice": 26,
+              "pricingUnit": "FIXED",
+              "displayOrder": 12,
+              "active": true,
+              "modifiers": []
+            }
+          ],
+          "notes": []
+        }
+      ]
+    }
+  ],
+  "notes": "This file contains NEW categories to be added to services-data-structure.json. Due to size, data is split across multiple files for easier management."
+}

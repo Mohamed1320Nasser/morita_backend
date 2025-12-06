@@ -21,6 +21,7 @@ export const discordConfig = {
         process.env.DISCORD_ANNOUNCEMENTS_CHANNEL_ID || "1432045148795310233",
     pricingChannelId: process.env.DISCORD_PRICING_CHANNEL_ID || "",
     calculatorChannelId: process.env.DISCORD_CALCULATOR_CHANNEL_ID || "", // Price calculator (!s command)
+    jobClaimingChannelId: process.env.DISCORD_JOB_CLAIMING_CHANNEL_ID || "", // Channel where unclaimed jobs are posted
 
     // Bot settings
     prefix: process.env.BOT_PREFIX || "!",
@@ -41,8 +42,10 @@ export const discordConfig = {
     maxCommandUses: 5, // per user per minute
 
     // Ticket settings
-    ticketChannelPrefix: "order-",
+    ticketChannelPrefix: "ticket-",
     ticketAutoClose: 24 * 60 * 60 * 1000, // 24 hours in milliseconds
+    ticketCategoryId: process.env.DISCORD_TICKETS_CATEGORY_ID || "", // Parent category for ticket channels
+    ticketLogChannelId: process.env.DISCORD_TICKET_LOG_CHANNEL_ID || "", // Log channel for ticket events
 
     // Pricing channel settings
     serviceDetailExpiry:

@@ -1,0 +1,285 @@
+{
+  "category": {
+    "name": "Quests, Diaries & Misc",
+    "emoji": "🔎",
+    "slug": "quests-diaries-misc",
+    "description": "Quest completions, achievement diaries, and miscellaneous services",
+    "services": [
+      {
+        "name": "Free Quests",
+        "emoji": "📜",
+        "slug": "free-quests",
+        "description": "Prices may vary for certain quests based on stats and gear",
+        "serviceModifiers": [
+          {
+            "name": "Missing Items",
+            "modifierType": "PERCENTAGE",
+            "value": 20,
+            "displayType": "UPCHARGE",
+            "priority": 0,
+            "active": true
+          },
+          {
+            "name": "Missing Stamina or Super Energy",
+            "modifierType": "PERCENTAGE",
+            "value": 20,
+            "displayType": "UPCHARGE",
+            "priority": 1,
+            "active": true
+          }
+        ],
+        "pricingMethods": [
+          {"name": "Cook's Assistant", "basePrice": 0.25, "pricingUnit": "FIXED", "displayOrder": 1, "active": true, "modifiers": []},
+          {"name": "Demon Slayer", "basePrice": 0.75, "pricingUnit": "FIXED", "displayOrder": 2, "active": true, "modifiers": []},
+          {"name": "The Restless Ghost", "basePrice": 0.25, "pricingUnit": "FIXED", "displayOrder": 3, "active": true, "modifiers": []},
+          {"name": "Romeo & Juliet", "basePrice": 0.75, "pricingUnit": "FIXED", "displayOrder": 4, "active": true, "modifiers": []},
+          {"name": "Sheep Shearer", "basePrice": 0.25, "pricingUnit": "FIXED", "displayOrder": 5, "active": true, "modifiers": []},
+          {"name": "Shield of Arrav", "basePrice": 0.75, "pricingUnit": "FIXED", "displayOrder": 6, "active": true, "modifiers": []},
+          {"name": "Ernest the Chicken", "basePrice": 0.50, "pricingUnit": "FIXED", "displayOrder": 7, "active": true, "modifiers": []},
+          {"name": "Vampyre Slayer", "basePrice": 0.50, "pricingUnit": "FIXED", "displayOrder": 8, "active": true, "modifiers": []},
+          {"name": "Imp Catcher", "basePrice": 0.25, "pricingUnit": "FIXED", "displayOrder": 9, "active": true, "modifiers": []},
+          {"name": "Prince Ali Rescue", "basePrice": 0.75, "pricingUnit": "FIXED", "displayOrder": 10, "active": true, "modifiers": []},
+          {"name": "Doric's Quest", "basePrice": 0.25, "pricingUnit": "FIXED", "displayOrder": 11, "active": true, "modifiers": []},
+          {"name": "Black Knights' Fortress", "basePrice": 1, "pricingUnit": "FIXED", "displayOrder": 12, "active": true, "modifiers": []},
+          {"name": "Witch's Potion", "basePrice": 0.25, "pricingUnit": "FIXED", "displayOrder": 13, "active": true, "modifiers": []},
+          {"name": "The Knight's Sword", "basePrice": 1, "pricingUnit": "FIXED", "displayOrder": 14, "active": true, "modifiers": []},
+          {"name": "Goblin Diplomacy", "basePrice": 0.25, "pricingUnit": "FIXED", "displayOrder": 15, "active": true, "modifiers": []},
+          {"name": "Pirate's Treasure", "basePrice": 0.50, "pricingUnit": "FIXED", "displayOrder": 16, "active": true, "modifiers": []},
+          {"name": "Dragon Slayer I", "basePrice": 2, "pricingUnit": "FIXED", "displayOrder": 17, "active": true, "modifiers": []},
+          {"name": "Rune Mysteries", "basePrice": 0.50, "pricingUnit": "FIXED", "displayOrder": 18, "active": true, "modifiers": []},
+          {"name": "Misthalin Mystery", "basePrice": 1.25, "pricingUnit": "FIXED", "displayOrder": 19, "active": true, "modifiers": []},
+          {"name": "The Corsair Curse", "basePrice": 0.75, "pricingUnit": "FIXED", "displayOrder": 20, "active": true, "modifiers": []},
+          {"name": "X Marks the Spot", "basePrice": 0.50, "pricingUnit": "FIXED", "displayOrder": 21, "active": true, "modifiers": []},
+          {"name": "Below Ice Mountain", "basePrice": 0.50, "pricingUnit": "FIXED", "displayOrder": 22, "active": true, "modifiers": []}
+        ],
+        "notes": []
+      },
+      {
+        "name": "Members' Quests",
+        "emoji": "⭐",
+        "slug": "members-quests",
+        "description": "Prices may vary for certain quests based on stats and gear",
+        "serviceModifiers": [
+          {
+            "name": "Missing Items",
+            "modifierType": "PERCENTAGE",
+            "value": 20,
+            "displayType": "UPCHARGE",
+            "priority": 0,
+            "active": true
+          },
+          {
+            "name": "Missing Stamina or Super Energy",
+            "modifierType": "PERCENTAGE",
+            "value": 20,
+            "displayType": "UPCHARGE",
+            "priority": 1,
+            "active": true
+          }
+        ],
+        "pricingMethods": [
+          {"name": "Animal Magnetism", "basePrice": 1.2, "pricingUnit": "FIXED", "displayOrder": 1, "active": true, "modifiers": []},
+          {"name": "Another Slice of H.A.M.", "basePrice": 1.2, "pricingUnit": "FIXED", "displayOrder": 2, "active": true, "modifiers": []},
+          {"name": "The Ascent of Arceus", "basePrice": 1.4, "pricingUnit": "FIXED", "displayOrder": 3, "active": true, "modifiers": []},
+          {"name": "At First Light", "basePrice": 0.5, "pricingUnit": "FIXED", "displayOrder": 4, "active": true, "modifiers": []},
+          {"name": "Beneath Cursed Sands", "basePrice": 2.2, "pricingUnit": "FIXED", "displayOrder": 5, "active": true, "modifiers": []},
+          {"name": "Between a Rock...", "basePrice": 1.8, "pricingUnit": "FIXED", "displayOrder": 6, "active": true, "modifiers": []},
+          {"name": "Big Chompy Bird Hunting", "basePrice": 1.4, "pricingUnit": "FIXED", "displayOrder": 7, "active": true, "modifiers": []},
+          {"name": "Biohazard", "basePrice": 1.4, "pricingUnit": "FIXED", "displayOrder": 8, "active": true, "modifiers": []},
+          {"name": "Bone Voyage", "basePrice": 1.6, "pricingUnit": "FIXED", "displayOrder": 9, "active": true, "modifiers": []},
+          {"name": "Cabin Fever", "basePrice": 1.2, "pricingUnit": "FIXED", "displayOrder": 10, "active": true, "modifiers": []},
+          {"name": "Children Of The Sun", "basePrice": 0.5, "pricingUnit": "FIXED", "displayOrder": 11, "active": true, "modifiers": []},
+          {"name": "Client of Kourend", "basePrice": 1.2, "pricingUnit": "FIXED", "displayOrder": 12, "active": true, "modifiers": []},
+          {"name": "Clock Tower", "basePrice": 1, "pricingUnit": "FIXED", "displayOrder": 13, "active": true, "modifiers": []},
+          {"name": "Cold War", "basePrice": 1.8, "pricingUnit": "FIXED", "displayOrder": 14, "active": true, "modifiers": []},
+          {"name": "Contact!", "basePrice": 3, "pricingUnit": "FIXED", "displayOrder": 15, "active": true, "modifiers": []},
+          {"name": "Creature of Fenkenstrain", "basePrice": 1.6, "pricingUnit": "FIXED", "displayOrder": 16, "active": true, "modifiers": []}
+        ],
+        "notes": ["More quests available - contact for full list"]
+      },
+      {
+        "name": "Task Skipping",
+        "emoji": "⏭️",
+        "slug": "task-skipping",
+        "description": "Slayer task skipping services",
+        "serviceModifiers": [],
+        "pricingMethods": [
+          {
+            "name": "Wilderness Slayer - Per Point",
+            "basePrice": 0.02,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 1,
+            "active": true,
+            "modifiers": [],
+            "description": "Every task = 25 • Every 10th = 125 • Every 50th = 375"
+          },
+          {
+            "name": "Turael Skipping - Per Task",
+            "basePrice": 0.17,
+            "pricingUnit": "PER_ITEM",
+            "displayOrder": 2,
+            "active": true,
+            "modifiers": [],
+            "description": "The 10th Task is $2.70"
+          },
+          {
+            "name": "Turael Skipping - 10th Task",
+            "basePrice": 2.7,
+            "pricingUnit": "FIXED",
+            "displayOrder": 3,
+            "active": true,
+            "modifiers": [],
+            "description": "Regular Tasks are $0.17 each [9 Tasks = $1.53]"
+          }
+        ],
+        "notes": []
+      },
+      {
+        "name": "Miniquests",
+        "emoji": "📋",
+        "slug": "miniquests",
+        "description": "Miniquest completions",
+        "serviceModifiers": [
+          {
+            "name": "Missing Items",
+            "modifierType": "PERCENTAGE",
+            "value": 20,
+            "displayType": "UPCHARGE",
+            "priority": 0,
+            "active": true
+          },
+          {
+            "name": "Missing Stamina or Super Energy",
+            "modifierType": "PERCENTAGE",
+            "value": 20,
+            "displayType": "UPCHARGE",
+            "priority": 1,
+            "active": true
+          }
+        ],
+        "pricingMethods": [
+          {"name": "Alfred Grimhand's Barcrawl", "basePrice": 0.75, "pricingUnit": "FIXED", "displayOrder": 1, "active": true, "modifiers": []},
+          {"name": "Enter the Abyss", "basePrice": 0.50, "pricingUnit": "FIXED", "displayOrder": 2, "active": true, "modifiers": []},
+          {"name": "The General's Shadow", "basePrice": 1.25, "pricingUnit": "FIXED", "displayOrder": 3, "active": true, "modifiers": []},
+          {"name": "Barbarian Training", "basePrice": 2.5, "pricingUnit": "FIXED", "displayOrder": 4, "active": true, "modifiers": []},
+          {"name": "Skippy and the Mogres", "basePrice": 0.50, "pricingUnit": "FIXED", "displayOrder": 5, "active": true, "modifiers": []},
+          {"name": "Curse of the Empty Lord", "basePrice": 2.50, "pricingUnit": "FIXED", "displayOrder": 6, "active": true, "modifiers": []},
+          {"name": "Lair of Tarn Razorlor", "basePrice": 1, "pricingUnit": "FIXED", "displayOrder": 7, "active": true, "modifiers": []},
+          {"name": "Bear Your Soul", "basePrice": 1.25, "pricingUnit": "FIXED", "displayOrder": 8, "active": true, "modifiers": []},
+          {"name": "The Enchanted Key", "basePrice": 2, "pricingUnit": "FIXED", "displayOrder": 9, "active": true, "modifiers": []},
+          {"name": "Mage Arena 1", "basePrice": 2.50, "pricingUnit": "FIXED", "displayOrder": 10, "active": true, "modifiers": []},
+          {"name": "Family Pest", "basePrice": 0.75, "pricingUnit": "FIXED", "displayOrder": 11, "active": true, "modifiers": []},
+          {"name": "Mage Arena 2", "basePrice": 5, "pricingUnit": "FIXED", "displayOrder": 12, "active": true, "modifiers": []},
+          {"name": "In Search of Knowledge", "basePrice": 3.75, "pricingUnit": "FIXED", "displayOrder": 13, "active": true, "modifiers": []},
+          {"name": "Daddy's Home", "basePrice": 1, "pricingUnit": "FIXED", "displayOrder": 14, "active": true, "modifiers": []},
+          {"name": "The Frozen Door", "basePrice": 4.50, "pricingUnit": "FIXED", "displayOrder": 15, "active": true, "modifiers": []}
+        ],
+        "notes": ["Prices may vary for certain quests based on stats and gear"]
+      },
+      {
+        "name": "Achievement Diary",
+        "emoji": "📖",
+        "slug": "achievement-diary",
+        "description": "Achievement diary completions",
+        "serviceModifiers": [],
+        "pricingMethods": [
+          {
+            "name": "Ardougne Easy",
+            "basePrice": 1.25,
+            "pricingUnit": "FIXED",
+            "displayOrder": 1,
+            "active": true,
+            "modifiers": [],
+            "description": "REQ: Rusty Sword"
+          },
+          {
+            "name": "Ardougne Medium",
+            "basePrice": 1.50,
+            "pricingUnit": "FIXED",
+            "displayOrder": 2,
+            "active": true,
+            "modifiers": [],
+            "description": "REQ: CW Balloon Route Unlocked"
+          },
+          {
+            "name": "Ardougne Hard",
+            "basePrice": 2.25,
+            "pricingUnit": "FIXED",
+            "displayOrder": 3,
+            "active": true,
+            "modifiers": []
+          },
+          {
+            "name": "Ardougne Elite",
+            "basePrice": 4,
+            "pricingUnit": "FIXED",
+            "displayOrder": 4,
+            "active": true,
+            "modifiers": [],
+            "description": "REQ: 800k NMZ Points"
+          },
+          {
+            "name": "Desert Easy",
+            "basePrice": 1.25,
+            "pricingUnit": "FIXED",
+            "displayOrder": 5,
+            "active": true,
+            "modifiers": []
+          },
+          {
+            "name": "Desert Medium",
+            "basePrice": 1.50,
+            "pricingUnit": "FIXED",
+            "displayOrder": 6,
+            "active": true,
+            "modifiers": []
+          },
+          {
+            "name": "Desert Hard",
+            "basePrice": 3,
+            "pricingUnit": "FIXED",
+            "displayOrder": 7,
+            "active": true,
+            "modifiers": [],
+            "description": "REQ: Slayer Helm"
+          },
+          {
+            "name": "Desert Elite",
+            "basePrice": 4,
+            "pricingUnit": "FIXED",
+            "displayOrder": 8,
+            "active": true,
+            "modifiers": [],
+            "description": "REQ: KQ Head"
+          },
+          {
+            "name": "Falador Easy",
+            "basePrice": 1.25,
+            "pricingUnit": "FIXED",
+            "displayOrder": 9,
+            "active": true,
+            "modifiers": []
+          },
+          {
+            "name": "Falador Medium",
+            "basePrice": 2,
+            "pricingUnit": "FIXED",
+            "displayOrder": 10,
+            "active": true,
+            "modifiers": []
+          },
+          {
+            "name": "Falador Hard",
+            "basePrice": 4,
+            "pricingUnit": "FIXED",
+            "displayOrder": 11,
+            "active": true,
+            "modifiers": [],
+            "description": "REQ: Prospector"
+          }
+        ],
+        "notes": []
+      }
+    ]
+  }
+}
