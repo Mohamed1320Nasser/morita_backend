@@ -9,6 +9,7 @@ import {
 import { ApiService } from "../services/api.service";
 import { ChannelManagerService } from "../services/channelManager.service";
 import { ImprovedChannelManager } from "../services/improvedChannelManager.service";
+import { TicketCategoryManager } from "../services/ticketCategoryManager.service";
 
 // Extend Discord client with custom properties
 declare module "discord.js" {
@@ -17,6 +18,7 @@ declare module "discord.js" {
         apiService: ApiService;
         channelManager: ChannelManagerService; // Legacy (keep for compatibility)
         improvedChannelManager: ImprovedChannelManager; // New real-time system
+        ticketCategoryManager: TicketCategoryManager; // Multi-type ticket channels
     }
 }
 
@@ -80,6 +82,7 @@ export interface Service {
     slug: string;
     description?: string;
     emoji?: string;
+    imageUrl?: string;
     active: boolean;
     displayOrder: number;
     category?: ServiceCategory;
@@ -191,6 +194,18 @@ export interface OrderData {
     totalPrice: number;
 }
 
+// Ticket Type enum
+export enum TicketType {
+    PURCHASE_SERVICES_OSRS = "PURCHASE_SERVICES_OSRS",
+    PURCHASE_SERVICES_RS3 = "PURCHASE_SERVICES_RS3",
+    BUY_GOLD_OSRS = "BUY_GOLD_OSRS",
+    BUY_GOLD_RS3 = "BUY_GOLD_RS3",
+    SELL_GOLD_OSRS = "SELL_GOLD_OSRS",
+    SELL_GOLD_RS3 = "SELL_GOLD_RS3",
+    SWAP_CRYPTO = "SWAP_CRYPTO",
+    GENERAL = "GENERAL",
+}
+
 // Ticket data type
 export interface TicketData {
     orderId: string;
@@ -199,10 +214,29 @@ export interface TicketData {
     totalPrice: number;
     status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
     channelId?: string;
+    ticketType?: TicketType; // NEW
     accountData?: {
         username: string;
         password: string;
         email: string;
         bankPin?: string;
     };
+}
+
+// Ticket metadata for gold/crypto transactions
+export interface TicketMetadata {
+    goldAmount?: number;
+    goldRate?: number;
+    deliveryMethod?: string;
+    worldLocation?: string;
+    osrsUsername?: string;
+    cryptoType?: string;
+    cryptoAmount?: number;
+    walletAddress?: string;
+    swapDirection?: string;
+    paymentEmail?: string;
+    paymentProof?: string;
+    payoutAmount?: number;
+    specialNotes?: string;
+    internalNotes?: string;
 }

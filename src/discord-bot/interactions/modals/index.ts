@@ -9,6 +9,7 @@ import {
     handleTicketCreateModal,
     handleTicketCloseConfirmModal,
 } from "./ticket-create.modal";
+import { handleTicketModal } from "./ticket-modal.modal"; // NEW
 import { handleCreateOrderJobModal } from "./create-order-job.modal";
 import { handleCompleteOrderModal } from "./complete-order.modal";
 import { handleReportIssueModal } from "./report-issue.modal";
@@ -33,6 +34,10 @@ const patternModalHandlers: Array<{
     {
         pattern: /^ticket_create_modal_/,
         handler: handleTicketCreateModal,
+    },
+    {
+        pattern: /^ticket_modal_/, // NEW - handles all ticket types
+        handler: handleTicketModal,
     },
     {
         pattern: /^ticket_close_confirm_/,

@@ -173,6 +173,17 @@ enum OrderStatus {
 // TICKET SYSTEM ENUMS
 // ============================================
 
+enum TicketType {
+  PURCHASE_SERVICES_OSRS // Buy OSRS services (Sailing, Agility, etc.)
+  PURCHASE_SERVICES_RS3  // Buy RS3 services
+  BUY_GOLD_OSRS          // Purchase OSRS gold
+  BUY_GOLD_RS3           // Purchase RS3 gold
+  SELL_GOLD_OSRS         // Sell OSRS gold to us
+  SELL_GOLD_RS3          // Sell RS3 gold to us
+  SWAP_CRYPTO            // Swap cryptocurrency
+  GENERAL                // General support ticket
+}
+
 enum TicketStatus {
   OPEN // Just created, waiting for support
   IN_PROGRESS // Order created, work ongoing
@@ -587,6 +598,9 @@ model Ticket {
   id              String        @id @default(uuid())
   ticketNumber    Int           @unique @default(autoincrement())
 
+  // Ticket Type (NEW)
+  ticketType      TicketType    @default(GENERAL)
+
   // Customer who opened the ticket
   customerId      Int           @db.UnsignedInt
   customerDiscordId String      // Discord user ID of customer
@@ -626,12 +640,14 @@ model Ticket {
   paymentMethod   PaymentMethod? @relation("paymentMethodTickets", fields: [paymentMethodId], references: [id])
   messages        TicketMessage[]
   orders          Order[]       @relation("ticketOrders")
+  metadata        TicketMetadata? @relation("ticketMetadata")
 
   @@index([customerId])
   @@index([categoryId])
   @@index([serviceId])
   @@index([status])
   @@index([channelId])
+  @@index([ticketType])
   @@index([createdAt])
 }
 
@@ -689,4 +705,82 @@ model CategoryTicketSettings {
   updatedAt       DateTime  @default(now()) @updatedAt @db.DateTime(0)
 
   category        ServiceCategory @relation("categoryTicketSettings", fields: [categoryId], references: [id], onDelete: Cascade)
+}
+
+// Ticket metadata for gold/crypto transactions
+model TicketMetadata {
+  id              String    @id @default(uuid())
+  ticketId        String    @unique
+
+  // Gold transaction fields
+  goldAmount      Decimal?  @db.Decimal(15, 2)      // Amount in millions (e.g., 100M)
+  goldRate        Decimal?  @db.Decimal(10, 4)      // Rate per M (e.g., $0.45/M)
+  deliveryMethod  String?   @db.VarChar(100)        // F2P, P2P, Drop Trading, etc.
+  worldLocation   String?   @db.VarChar(200)        // "W301, Grand Exchange"
+  osrsUsername    String?   @db.VarChar(100)        // Customer's OSRS/RS3 username
+
+  // Crypto transaction fields
+  cryptoType      String?   @db.VarChar(50)         // BTC, ETH, USDT, etc.
+  cryptoAmount    Decimal?  @db.Decimal(20, 8)      // Crypto amount
+  walletAddress   String?   @db.VarChar(500)        // Customer's wallet address
+  swapDirection   String?   @db.VarChar(50)         // CRYPTO_TO_GOLD or GOLD_TO_CRYPTO
+
+  // Payment details (for sell gold)
+  paymentEmail    String?   @db.VarChar(255)        // PayPal email or similar
+  paymentProof    String?   @db.Text                // URL to payment proof
+  payoutAmount    Decimal?  @db.Decimal(18, 8)      // Amount paid to customer
+
+  // Additional notes
+  specialNotes    String?   @db.Text
+  internalNotes   String?   @db.Text                // Staff-only notes
+
+  createdAt       DateTime  @default(now()) @db.DateTime(0)
+  updatedAt       DateTime  @default(now()) @updatedAt @db.DateTime(0)
+
+  ticket          Ticket    @relation("ticketMetadata", fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+}
+
+// Ticket Type Settings - Customization per ticket type
+model TicketTypeSettings {
+  id              String     @id @default(uuid())
+  ticketType      TicketType @unique
+
+  // Grouping (for types that share welcome messages)
+  groupKey        String?    @db.VarChar(50)
+  buttonLabel     String?    @db.VarChar(100)
+  buttonColor     String?    @db.VarChar(20) // "green", "blue", "red", "gray"
+  displayOrder    Int        @default(0)
+
+  // Welcome message customization (shared across group if groupKey is set)
+  bannerUrl       String?    @db.Text
+  thumbnailUrl    String?    @db.Text
+  welcomeTitle    String?    @db.VarChar(255)
+  welcomeMessage  String     @db.Text
+  footerText      String?    @db.Text
+  embedColor      String?    @db.VarChar(6) @default("5865F2")
+
+  // Dynamic form fields (JSON array) - unique per type
+  // Each field: { id, label, type, required, placeholder, options[], min, max }
+  customFields    Json?
+
+  // Auto-assignment settings
+  autoAssign      Boolean    @default(false)
+
+  // Notification settings
+  notifyOnCreate  Boolean    @default(true)
+  notifyOnClose   Boolean    @default(true)
+  mentionSupport  Boolean    @default(true)
+  mentionCustomer Boolean    @default(true)
+
+  // Active toggle (per type - can disable RS3 but keep OSRS active)
+  isActive        Boolean    @default(true)
+
+  createdAt       DateTime   @default(now()) @db.DateTime(0)
+  updatedAt       DateTime   @default(now()) @updatedAt @db.DateTime(0)
+
+  @@index([ticketType])
+  @@index([isActive])
+  @@index([groupKey])
 }

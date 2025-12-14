@@ -9,11 +9,13 @@ import { handleOrderConfirm } from "./order-confirm.button";
 import { handleCalculatePrice } from "./calculate-price.button";
 import { handleOrderNow } from "./order-now.button";
 import { handleBackToServices } from "./back-to-services.button";
+import { handleBackToCategory } from "./back-to-category.button";
 import {
     handleOpenTicket,
     handleTicketCalculate,
     handleTicketClose,
 } from "./open-ticket.button";
+import { handleCreateTicket } from "./create-ticket.button"; // NEW
 import { handleCalculate } from "./calculate.button";
 import { handleResetCalculator } from "./reset-calculator.button";
 import { handleOrderFromPrice } from "./order-from-price.button";
@@ -152,6 +154,18 @@ export async function handleButtonInteraction(
 
         if (customId.startsWith("mark_complete_")) {
             await handleCompleteOrder(interaction);
+            return;
+        }
+
+        // Back to category button
+        if (customId.startsWith("back_to_category_")) {
+            await handleBackToCategory(interaction);
+            return;
+        }
+
+        // Create ticket buttons (for all ticket types)
+        if (customId.startsWith("create_ticket_")) {
+            await handleCreateTicket(interaction);
             return;
         }
 

@@ -1,6 +1,6 @@
 import { config } from "dotenv";
+import logger from "../../common/loggers";
 
-// Load environment variables
 config();
 
 export const discordConfig = {
@@ -47,6 +47,13 @@ export const discordConfig = {
     ticketCategoryId: process.env.DISCORD_TICKETS_CATEGORY_ID || "", // Parent category for ticket channels
     ticketLogChannelId: process.env.DISCORD_TICKET_LOG_CHANNEL_ID || "", // Log channel for ticket events
 
+    // CREATE TICKET category and channels (NEW)
+    createTicketCategoryId: process.env.DISCORD_CREATE_TICKET_CATEGORY_ID || "", // CREATE TICKET category
+    purchaseServicesChannelId: process.env.DISCORD_PURCHASE_SERVICES_CHANNEL_ID || "", // purchase-services channel
+    purchaseGoldChannelId: process.env.DISCORD_PURCHASE_GOLD_CHANNEL_ID || "", // purchase-gold channel
+    sellGoldChannelId: process.env.DISCORD_SELL_GOLD_CHANNEL_ID || "", // sell-gold channel
+    swapCryptoChannelId: process.env.DISCORD_SWAP_CRYPTO_CHANNEL_ID || "", // swap-crypto channel
+
     // Pricing channel settings
     serviceDetailExpiry:
         parseInt(process.env.SERVICE_DETAIL_EXPIRY_MS || "300000") || 300000, // 5 minutes
@@ -56,16 +63,14 @@ export const discordConfig = {
     // Logging
     logLevel: process.env.LOG_LEVEL || "info",
 
-    // Validation
     validate(): boolean {
-        // Check if we have the required values (either from env or fallback)
         if (!this.token || !this.clientId || !this.guildId) {
-            console.error(
+            logger.error(
                 `Missing required Discord configuration. Please check your environment variables or config fallbacks.`
             );
-            console.error(`Token: ${this.token ? "Set" : "Missing"}`);
-            console.error(`Client ID: ${this.clientId ? "Set" : "Missing"}`);
-            console.error(`Guild ID: ${this.guildId ? "Set" : "Missing"}`);
+            logger.error(`Token: ${this.token ? "Set" : "Missing"}`);
+            logger.error(`Client ID: ${this.clientId ? "Set" : "Missing"}`);
+            logger.error(`Guild ID: ${this.guildId ? "Set" : "Missing"}`);
             return false;
         }
 
@@ -73,9 +78,8 @@ export const discordConfig = {
     },
 };
 
-// Validate configuration on load
 if (!discordConfig.validate()) {
-    console.error(
+    logger.error(
         "Discord bot configuration is invalid. Please check your environment variables."
     );
     process.exit(1);

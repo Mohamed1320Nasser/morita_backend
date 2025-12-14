@@ -30,7 +30,6 @@ export async function handleOrderDetailsModal(
                 embeds: [embed as any],
             });
 
-            // TODO: Create actual ticket channel and notify staff
             logger.info(
                 `Support ticket created by ${interaction.user.tag}: ${specialNotes}`
             );

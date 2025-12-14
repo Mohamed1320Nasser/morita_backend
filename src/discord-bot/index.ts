@@ -8,33 +8,21 @@ import { ImprovedChannelManager } from "./services/improvedChannelManager.servic
 import { EmbedBuilder } from "./utils/embedBuilder";
 import { discordConfig } from "./config/discord.config";
 import logger from "../common/loggers";
-// Import Environment to ensure .env is loaded (same as backend)
-// This ensures env vars are available whether run standalone or from app.ts
 import Environment from "../common/config/environment";
-
-// Environment variables are already loaded by Environment.ts (dotenv.config() called there)
-// No need to load again - this works for both standalone and integrated modes
-
-// Create Discord client with increased timeout
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent, // Required for reading message content (!s command)
+        GatewayIntentBits.MessageContent,
     ],
     rest: {
-        // Increase REST API timeout to 30 seconds (default is 15s)
         timeout: 30000,
     },
 });
 
-// Create collections for commands and interactions
 client.commands = new Collection<string, Command>();
 client.apiService = new ApiService(discordConfig.apiBaseUrl);
-// client.channelManager = new ChannelManagerService(client); // Legacy - DISABLED (was causing "Invalid Form Body" errors)
-client.improvedChannelManager = new ImprovedChannelManager(client); // New system
-
-// Load commands
+client.improvedChannelManager = new ImprovedChannelManager(client);
 const loadCommands = async () => {
     const commandsPath = join(__dirname, "commands");
     const commandFiles = readdirSync(commandsPath).filter(
@@ -99,20 +87,16 @@ const loadEvents = async () => {
     }
 };
 
-// Bot ready event
 client.once(Events.ClientReady, async readyClient => {
     logger.info(`Discord bot ready! Logged in as ${readyClient.user.tag}`);
 
-    // Set bot activity
     readyClient.user.setActivity("🎮 Morita Gaming | /help", { type: 1 });
 
-    // Register slash commands (guild commands for immediate update)
     try {
         const commands = Array.from(client.commands.values()).map(
             (cmd: any) => cmd.data.toJSON()
         );
 
-        // Register as guild commands (immediate) instead of global (up to 1 hour delay)
         const guildId = discordConfig.guildId;
         if (guildId) {
             const guild = readyClient.guilds.cache.get(guildId);
@@ -120,12 +104,10 @@ client.once(Events.ClientReady, async readyClient => {
                 await guild.commands.set(commands);
                 logger.info(`Registered ${commands.length} guild slash commands to ${guild.name}`);
             } else {
-                // Fallback to global if guild not found
                 await readyClient.application?.commands.set(commands);
                 logger.info(`Registered ${commands.length} global slash commands (guild not found)`);
             }
         } else {
-            // Fallback to global if no guild ID configured
             await readyClient.application?.commands.set(commands);
             logger.info(`Registered ${commands.length} global slash commands`);
         }
@@ -133,11 +115,10 @@ client.once(Events.ClientReady, async readyClient => {
         logger.error("Failed to register slash commands:", error);
     }
 
-    // Initialize improved pricing channel manager with real-time updates
     try {
         await client.improvedChannelManager.initialize();
         logger.info(
-            "✅ Improved pricing channel manager initialized with real-time updates"
+            "Improved pricing channel manager initialized with real-time updates"
         );
     } catch (error) {
         logger.error(
@@ -145,9 +126,22 @@ client.once(Events.ClientReady, async readyClient => {
             error
         );
     }
+
+    try {
+        const { getTicketCategoryManager } = await import("./services/ticketCategoryManager.service");
+        client.ticketCategoryManager = getTicketCategoryManager(client);
+        await client.ticketCategoryManager.initialize();
+        logger.info(
+            "Ticket category manager initialized (4 ticket types ready)"
+        );
+    } catch (error) {
+        logger.error(
+            "Failed to initialize ticket category manager:",
+            error
+        );
+    }
 });
 
-// Error handling
 client.on(Events.Error, error => {
     logger.error("Discord client error:", error);
 });
@@ -155,8 +149,6 @@ client.on(Events.Error, error => {
 process.on("unhandledRejection", error => {
     logger.error("Unhandled promise rejection:", error);
 });
-
-// Login to Discord with retry logic
 const startBot = async (retries = 3, delay = 5000) => {
     try {
         await loadCommands();
@@ -188,13 +180,11 @@ const startBot = async (retries = 3, delay = 5000) => {
             return startBot(retries - 1, delay);
         }
 
-        // Non-network error or no retries left - exit
         logger.error("Unable to start Discord bot after all retry attempts");
         process.exit(1);
     }
 };
 
-// Start the bot
 startBot();
 
 export default client;

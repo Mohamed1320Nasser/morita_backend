@@ -782,4 +782,264 @@ export default class OrderService {
 
         return this.getOrderById(data.orderId);
     }
+
+    async getOrderStats() {
+        const totalOrders = await prisma.order.count();
+
+        const ordersByStatus = await prisma.order.groupBy({
+            by: ["status"],
+            _count: { id: true },
+        });
+
+        const revenueResult = await prisma.order.aggregate({
+            where: { status: { in: ["COMPLETED"] } },
+            _sum: { orderValue: true },
+        });
+
+        const pendingOrders = await prisma.order.count({ where: { status: "PENDING" } });
+        const inProgressOrders = await prisma.order.count({ where: { status: "IN_PROGRESS" } });
+        const completedOrders = await prisma.order.count({ where: { status: "COMPLETED" } });
+        const cancelledOrders = await prisma.order.count({ where: { status: "CANCELLED" } });
+        const disputedOrders = await prisma.order.count({ where: { status: "DISPUTED" } });
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const ordersToday = await prisma.order.count({
+            where: { createdAt: { gte: today } },
+        });
+
+        const weekAgo = new Date();
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        const ordersThisWeek = await prisma.order.count({
+            where: { createdAt: { gte: weekAgo } },
+        });
+
+        const monthStart = new Date();
+        monthStart.setDate(1);
+        monthStart.setHours(0, 0, 0, 0);
+        const ordersThisMonth = await prisma.order.count({
+            where: { createdAt: { gte: monthStart } },
+        });
+
+        const avgOrderValue = await prisma.order.aggregate({
+            where: { status: { notIn: ["CANCELLED"] } },
+            _avg: { orderValue: true },
+        });
+
+        return {
+            totalOrders,
+            ordersByStatus: ordersByStatus.map((item) => ({
+                status: item.status,
+                count: item._count.id,
+            })),
+            totalRevenue: revenueResult._sum.orderValue
+                ? parseFloat(revenueResult._sum.orderValue.toString())
+                : 0,
+            pendingOrders,
+            inProgressOrders,
+            completedOrders,
+            cancelledOrders,
+            disputedOrders,
+            ordersToday,
+            ordersThisWeek,
+            ordersThisMonth,
+            averageOrderValue: avgOrderValue._avg.orderValue
+                ? parseFloat(avgOrderValue._avg.orderValue.toString())
+                : 0,
+        };
+    }
+
+    async getOrderVolumeStats(query: { days?: number; startDate?: string; endDate?: string }) {
+        let startDate: Date;
+        let endDate: Date;
+        let days: number;
+
+        if (query.startDate && query.endDate) {
+            startDate = new Date(query.startDate);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date(query.endDate);
+            endDate.setHours(23, 59, 59, 999);
+            days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        } else {
+            days = query.days || 30;
+            startDate = new Date();
+            startDate.setDate(startDate.getDate() - days);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date();
+            endDate.setHours(23, 59, 59, 999);
+        }
+
+        const orders = await prisma.order.findMany({
+            where: {
+                createdAt: {
+                    gte: startDate,
+                    lte: endDate,
+                },
+            },
+            select: {
+                createdAt: true,
+                orderValue: true,
+                status: true,
+            },
+            orderBy: { createdAt: "asc" },
+        });
+
+        const volumeByDate = new Map<string, { count: number; value: number }>();
+
+        orders.forEach((order) => {
+            const dateKey = order.createdAt.toISOString().split("T")[0];
+            const existing = volumeByDate.get(dateKey) || { count: 0, value: 0 };
+            volumeByDate.set(dateKey, {
+                count: existing.count + 1,
+                value: existing.value + parseFloat(order.orderValue.toString()),
+            });
+        });
+
+        const result = [];
+        for (let i = 0; i < days; i++) {
+            const date = new Date(startDate);
+            date.setDate(date.getDate() + i);
+            const dateKey = date.toISOString().split("T")[0];
+            const data = volumeByDate.get(dateKey) || { count: 0, value: 0 };
+            result.push({
+                date: dateKey,
+                count: data.count,
+                value: data.value,
+            });
+        }
+
+        return result;
+    }
+
+    async getRecentActivity() {
+        const recentOrders = await prisma.order.findMany({
+            take: 20,
+            orderBy: { createdAt: "desc" },
+            include: {
+                customer: {
+                    select: {
+                        id: true,
+                        username: true,
+                        discordId: true,
+                    },
+                },
+                worker: {
+                    select: {
+                        id: true,
+                        username: true,
+                        discordId: true,
+                    },
+                },
+                service: {
+                    select: {
+                        id: true,
+                        name: true,
+                    },
+                },
+            },
+        });
+
+        return recentOrders.map((order) => ({
+            id: order.id,
+            orderNumber: order.orderNumber,
+            status: order.status,
+            orderValue: parseFloat(order.orderValue.toString()),
+            currency: order.currency,
+            customer: order.customer,
+            worker: order.worker,
+            service: order.service,
+            createdAt: order.createdAt,
+        }));
+    }
+
+    async getOrderHistory(orderId: string) {
+        const order = await prisma.order.findUnique({
+            where: { id: orderId },
+            select: { statusHistory: true },
+        });
+
+        if (!order) {
+            throw new NotFoundError("Order not found");
+        }
+
+        return order.statusHistory || [];
+    }
+
+    async getOrdersForExport(query: GetOrderListDto) {
+        const orders = await prisma.order.findMany({
+            where: this.buildOrderFilters(query),
+            include: {
+                customer: {
+                    select: {
+                        username: true,
+                        email: true,
+                    },
+                },
+                worker: {
+                    select: {
+                        username: true,
+                        email: true,
+                    },
+                },
+                support: {
+                    select: {
+                        username: true,
+                        email: true,
+                    },
+                },
+                service: {
+                    select: {
+                        name: true,
+                    },
+                },
+            },
+            orderBy: { createdAt: "desc" },
+        });
+
+        return orders.map((order) => ({
+            orderNumber: order.orderNumber,
+            status: order.status,
+            customer: order.customer?.username || "N/A",
+            worker: order.worker?.username || "Unassigned",
+            support: order.support?.username || "N/A",
+            service: order.service?.name || "N/A",
+            orderValue: parseFloat(order.orderValue.toString()),
+            depositAmount: parseFloat(order.depositAmount.toString()),
+            currency: order.currency,
+            createdAt: order.createdAt,
+            completedAt: order.completedAt,
+        }));
+    }
+
+    private buildOrderFilters(query: GetOrderListDto) {
+        const filters: any = {};
+
+        if (query.status) {
+            filters.status = query.status;
+        }
+
+        if (query.customerId) {
+            filters.customerId = query.customerId;
+        }
+
+        if (query.workerId) {
+            filters.workerId = query.workerId;
+        }
+
+        if (query.serviceId) {
+            filters.serviceId = query.serviceId;
+        }
+
+        if (query.startDate || query.endDate) {
+            filters.createdAt = {};
+            if (query.startDate) {
+                filters.createdAt.gte = new Date(query.startDate);
+            }
+            if (query.endDate) {
+                filters.createdAt.lte = new Date(query.endDate);
+            }
+        }
+
+        return filters;
+    }
 }

@@ -663,4 +663,42 @@ export default class TicketService {
 
         return messages;
     }
+
+    /**
+     * Save ticket metadata (for gold/crypto transactions)
+     */
+    async saveMetadata(ticketId: string, metadata: any) {
+        // Check if ticket exists
+        const ticket = await prisma.ticket.findUnique({
+            where: { id: ticketId },
+        });
+
+        if (!ticket) {
+            throw new NotFoundError("Ticket not found");
+        }
+
+        // Upsert metadata
+        const savedMetadata = await prisma.ticketMetadata.upsert({
+            where: { ticketId },
+            create: {
+                ticketId,
+                ...metadata,
+            },
+            update: metadata,
+        });
+
+        logger.info(`Ticket metadata saved for ticket ${ticketId}`);
+        return savedMetadata;
+    }
+
+    /**
+     * Get ticket metadata
+     */
+    async getMetadata(ticketId: string) {
+        const metadata = await prisma.ticketMetadata.findUnique({
+            where: { ticketId },
+        });
+
+        return metadata;
+    }
 }

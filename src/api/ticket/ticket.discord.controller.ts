@@ -142,4 +142,31 @@ export default class DiscordTicketController {
             data: message,
         };
     }
+
+    /**
+     * Save ticket metadata (gold/crypto transaction details)
+     */
+    @Post("/:id/metadata")
+    async saveTicketMetadata(
+        @Param("id") ticketId: string,
+        @Body() metadata: any
+    ) {
+        const savedMetadata = await this.ticketService.saveMetadata(ticketId, metadata);
+        return {
+            success: true,
+            data: savedMetadata,
+        };
+    }
+
+    /**
+     * Get ticket metadata
+     */
+    @Get("/:id/metadata")
+    async getTicketMetadata(@Param("id") ticketId: string) {
+        const metadata = await this.ticketService.getMetadata(ticketId);
+        return {
+            success: true,
+            data: metadata,
+        };
+    }
 }

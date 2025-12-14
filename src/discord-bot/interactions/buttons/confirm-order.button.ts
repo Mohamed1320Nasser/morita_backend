@@ -18,7 +18,6 @@ export async function handleConfirmOrder(
             embeds: [embed as any],
         });
 
-        // TODO: Create actual order in database and ticket channel
         logger.info(`Order confirmed by ${interaction.user.tag}`);
     } catch (error) {
         logger.error("Error handling confirm order button:", error);

@@ -6,7 +6,6 @@ import {
     Delete,
     Param,
     Body,
-    QueryParams,
     Authorized,
 } from "routing-controllers";
 import { Service } from "typedi";
@@ -26,49 +25,27 @@ export default class CategoryTicketSettingsController {
 
     @Post("/")
     async upsertSettings(@Body() data: CreateCategoryTicketSettingsDto) {
-        const settings = await this.categoryTicketSettingsService.upsert(data);
-        return {
-            success: true,
-            data: settings,
-        };
+        return await this.categoryTicketSettingsService.upsert(data);
     }
 
     @Get("/")
     async getAllSettings() {
-        const settings = await this.categoryTicketSettingsService.getAll();
-        return {
-            success: true,
-            data: settings,
-        };
+        return await this.categoryTicketSettingsService.getAll();
     }
 
     @Get("/categories")
     async getAllCategoriesWithSettings() {
-        const categories =
-            await this.categoryTicketSettingsService.getAllCategoriesWithSettings();
-        return {
-            success: true,
-            data: categories,
-        };
+        return await this.categoryTicketSettingsService.getAllCategoriesWithSettings();
     }
 
     @Get("/:id")
     async getSettings(@Param("id") id: string) {
-        const settings = await this.categoryTicketSettingsService.getSingle(id);
-        return {
-            success: true,
-            data: settings,
-        };
+        return await this.categoryTicketSettingsService.getSingle(id);
     }
 
     @Get("/category/:categoryId")
     async getSettingsByCategory(@Param("categoryId") categoryId: string) {
-        const settings =
-            await this.categoryTicketSettingsService.getByCategoryId(categoryId);
-        return {
-            success: true,
-            data: settings,
-        };
+        return await this.categoryTicketSettingsService.getByCategoryId(categoryId);
     }
 
     @Patch("/:id")
@@ -76,41 +53,24 @@ export default class CategoryTicketSettingsController {
         @Param("id") id: string,
         @Body() data: UpdateCategoryTicketSettingsDto
     ) {
-        const settings = await this.categoryTicketSettingsService.update(
-            id,
-            data
-        );
-        return {
-            success: true,
-            data: settings,
-        };
+        return await this.categoryTicketSettingsService.update(id, data);
     }
-
 
     @Patch("/category/:categoryId")
     async updateSettingsByCategory(
         @Param("categoryId") categoryId: string,
         @Body() data: UpdateCategoryTicketSettingsDto
     ) {
-        const settings =
-            await this.categoryTicketSettingsService.updateByCategoryId(
-                categoryId,
-                data
-            );
-        return {
-            success: true,
-            data: settings,
-        };
+        return await this.categoryTicketSettingsService.updateByCategoryId(
+            categoryId,
+            data
+        );
     }
 
     @Delete("/:id")
     @Authorized(API.Role.system)
     async deleteSettings(@Param("id") id: string) {
-        const result = await this.categoryTicketSettingsService.delete(id);
-        return {
-            success: true,
-            ...result,
-        };
+        return await this.categoryTicketSettingsService.delete(id);
     }
 
     @Post("/preview")
@@ -129,18 +89,11 @@ export default class CategoryTicketSettingsController {
             };
         }
     ) {
-        const rendered =
-            this.categoryTicketSettingsService.renderWelcomeMessage(
+        return {
+            rendered: this.categoryTicketSettingsService.renderWelcomeMessage(
                 data.template,
                 data.variables || {}
-            );
-        return {
-            success: true,
-            data: {
-                rendered,
-            },
+            ),
         };
     }
 }
-
-// Discord API controller is in a separate file: categoryTicketSettings.discord.controller.ts

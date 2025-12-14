@@ -3,6 +3,7 @@ import { EnhancedPricingBuilder } from "../../utils/enhancedPricingBuilder";
 import { ApiService } from "../../services/api.service";
 import { discordConfig } from "../../config/discord.config";
 import logger from "../../../common/loggers";
+import { pricingMessageTracker } from "../../services/pricingMessageTracker.service";
 
 const apiService = new ApiService(discordConfig.apiBaseUrl);
 
@@ -63,25 +64,6 @@ export async function handleImprovedPricingServiceSelect(
         return;
     }
 
-    // Defer the reply to prevent timeout
-    // NOTE: Changed to non-ephemeral so ANSI codes render properly in Discord
-    try {
-        await interaction.deferReply({ ephemeral: false });
-    } catch (error) {
-        // Silently return if interaction already acknowledged or expired
-        if (isInteractionExpiredError(error)) {
-            logger.debug(
-                "[PricingServiceSelect] Interaction already acknowledged or expired"
-            );
-            return;
-        }
-        logger.error(
-            "[PricingServiceSelect] Failed to defer interaction:",
-            error
-        );
-        return;
-    }
-
     try {
         const categoryId = interaction.customId.replace(
             "pricing_service_select_",
@@ -89,9 +71,12 @@ export async function handleImprovedPricingServiceSelect(
         );
         const serviceId = interaction.values[0];
 
+        // Immediately reply to the interaction (this prevents checkmark)
+        await interaction.deferReply({ ephemeral: true });
+
         // Handle "Show More" option
         if (serviceId.startsWith("show_more_")) {
-            await safeEditReply(interaction, {
+            await interaction.editReply({
                 content:
                     "📋 **Additional Services**\n\n" +
                     "This category has more than 25 services. " +
@@ -105,7 +90,7 @@ export async function handleImprovedPricingServiceSelect(
         const service = await apiService.getServiceWithPricing(serviceId);
 
         if (!service) {
-            await safeEditReply(interaction, {
+            await interaction.editReply({
                 content:
                     "❌ **Service Not Found**\n\n" +
                     "The selected service could not be loaded. It may have been removed or is temporarily unavailable.\n\n" +
@@ -179,16 +164,27 @@ export async function handleImprovedPricingServiceSelect(
                 );
             }
 
-            const success = await safeEditReply(interaction, {
+            // Send the service details as ephemeral reply
+            await interaction.editReply({
                 embeds: [embedData as any],
                 components: [buttonData as any],
             });
 
-            if (success) {
-                logger.info(
-                    `[PricingServiceSelect] Service details shown: ${service.name} by ${interaction.user.tag}`
-                );
-            }
+            // Track message for auto-delete after 10 minutes
+            const messageId = `${interaction.id}`;
+            pricingMessageTracker.trackMessage(messageId, async () => {
+                try {
+                    await interaction.deleteReply();
+                } catch (error) {
+                    logger.debug(
+                        "[PricingServiceSelect] Could not auto-delete pricing message (likely already deleted)"
+                    );
+                }
+            });
+
+            logger.info(
+                `[PricingServiceSelect] Service details shown: ${service.name} by ${interaction.user.tag} (auto-delete in 10 minutes)`
+            );
         } catch (sendError) {
             // Log the actual error with full details
             const errorDetails = {
@@ -236,10 +232,23 @@ export async function handleImprovedPricingServiceSelect(
                         })
                         .setTimestamp();
 
-                    await safeEditReply(interaction, {
+                    await interaction.editReply({
                         embeds: [simplifiedEmbed.toJSON() as any],
                         components: [actionButtons.toJSON() as any],
                     });
+
+                    // Track simplified message for auto-delete too
+                    const messageId = `${interaction.id}`;
+                    pricingMessageTracker.trackMessage(messageId, async () => {
+                        try {
+                            await interaction.deleteReply();
+                        } catch (error) {
+                            logger.debug(
+                                "[PricingServiceSelect] Could not auto-delete simplified message"
+                            );
+                        }
+                    });
+
                     return;
                 } catch (simplifiedError) {
                     logger.error(
@@ -280,11 +289,28 @@ export async function handleImprovedPricingServiceSelect(
         }
 
         // Attempt to show error message to user
-        await safeEditReply(interaction, {
-            content:
-                "❌ **Error Loading Service**\n\n" +
-                "An error occurred while loading the service details. " +
-                "Please try again later or contact support if the problem persists.",
-        });
+        try {
+            if (interaction.deferred || interaction.replied) {
+                await interaction.editReply({
+                    content:
+                        "❌ **Error Loading Service**\n\n" +
+                        "An error occurred while loading the service details. " +
+                        "Please try again later or contact support if the problem persists.",
+                });
+            } else {
+                await interaction.reply({
+                    content:
+                        "❌ **Error Loading Service**\n\n" +
+                        "An error occurred while loading the service details. " +
+                        "Please try again later or contact support if the problem persists.",
+                    ephemeral: true,
+                });
+            }
+        } catch (replyError) {
+            logger.error(
+                "[PricingServiceSelect] Could not send error message:",
+                replyError
+            );
+        }
     }
 }

@@ -10,6 +10,7 @@ import { discordConfig } from "../../config/discord.config";
 import { EmbedBuilder as CustomEmbedBuilder } from "../../utils/embedBuilder";
 import { COLORS } from "../../constants/colors";
 import logger from "../../../common/loggers";
+import { pricingMessageTracker } from "../../services/pricingMessageTracker.service";
 
 export async function handleServiceDetails(
     interaction: ButtonInteraction
@@ -66,27 +67,25 @@ export async function handleServiceDetails(
         ];
 
         // Send ephemeral response
-        await interaction.editReply({
+        const reply = await interaction.editReply({
             embeds: [embed as any],
             components: components as any,
         });
 
-        // Auto-delete after 5 minutes
-        setTimeout(
-            async () => {
-                try {
-                    await interaction.deleteReply();
-                } catch (error) {
-                    logger.debug(
-                        "Could not delete service details message (likely already deleted)"
-                    );
-                }
-            },
-            5 * 60 * 1000
-        );
+        // Track message for auto-delete after 10 minutes
+        const messageId = `${interaction.id}`; // Use interaction ID as unique identifier
+        pricingMessageTracker.trackMessage(messageId, async () => {
+            try {
+                await interaction.deleteReply();
+            } catch (error) {
+                logger.debug(
+                    "Could not delete service details message (likely already deleted)"
+                );
+            }
+        });
 
         logger.info(
-            `Service details shown for ${service.name} by ${interaction.user.tag}`
+            `Service details shown for ${service.name} by ${interaction.user.tag} (auto-delete in 10 minutes)`
         );
     } catch (error) {
         logger.error("Error handling service details:", error);

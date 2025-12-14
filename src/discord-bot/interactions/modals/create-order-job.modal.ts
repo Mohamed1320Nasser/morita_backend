@@ -209,8 +209,6 @@ export async function handleCreateOrderJobModal(
                         });
 
                         logger.info(`[CreateOrderJob] Job posted to claiming channel, message ID: ${claimMessage.id}`);
-
-                        // TODO: Store claimMessageId in database for future reference
                     }
                 } else {
                     logger.warn(`[CreateOrderJob] Job claiming channel ID not configured`);

@@ -29,7 +29,7 @@ export class CreateServiceDto {
 
     @IsOptional()
     @IsString()
-    @MaxLength(10)
+    @MaxLength(100)
     emoji?: string;
 
     @IsOptional()

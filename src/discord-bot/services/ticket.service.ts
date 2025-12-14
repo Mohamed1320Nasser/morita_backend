@@ -18,6 +18,9 @@ import { ApiService } from "./api.service";
 import logger from "../../common/loggers";
 import axios, { AxiosInstance } from "axios";
 
+// Import ticket type
+import { TicketType, TicketMetadata } from "../types/discord.types";
+
 // Ticket data interface
 export interface TicketData {
     id?: string;
@@ -32,6 +35,7 @@ export interface TicketData {
     currency?: string;
     customerNotes?: string;
     customerName: string;
+    ticketType?: TicketType; // NEW
 }
 
 // Welcome message settings interface
@@ -175,6 +179,324 @@ export class TicketService {
     }
 
     /**
+     * Create a new ticket channel with ticket type support
+     */
+    async createTicketChannelWithType(
+        guild: Guild,
+        user: User,
+        ticketData: TicketData,
+        metadata?: TicketMetadata
+    ): Promise<{ channel: TextChannel; ticket: any }> {
+        try {
+            const ticketType = ticketData.ticketType || TicketType.GENERAL;
+
+            // Get appropriate category based on ticket type
+            let ticketCategory = await this.getTicketCategoryByType(guild, ticketType);
+
+            // Get ticket type category name for channel name
+            const ticketTypeName = this.getTicketTypeCategoryName(ticketType);
+
+            // Generate channel name: username {ticket-type}
+            const username = user.username.replace(/[^a-z0-9_-]/gi, '').toLowerCase();
+            const tempChannelName = `${username} {${ticketTypeName}}`;
+
+            // Create the channel
+            const channel = await guild.channels.create({
+                name: tempChannelName,
+                type: ChannelType.GuildText,
+                parent: ticketCategory?.id,
+                permissionOverwrites: [
+                    {
+                        id: guild.id,
+                        deny: [PermissionFlagsBits.ViewChannel],
+                    },
+                    {
+                        id: user.id,
+                        allow: [
+                            PermissionFlagsBits.ViewChannel,
+                            PermissionFlagsBits.SendMessages,
+                            PermissionFlagsBits.ReadMessageHistory,
+                            PermissionFlagsBits.AttachFiles,
+                            PermissionFlagsBits.EmbedLinks,
+                        ],
+                    },
+                    {
+                        id: discordConfig.supportRoleId,
+                        allow: [
+                            PermissionFlagsBits.ViewChannel,
+                            PermissionFlagsBits.SendMessages,
+                            PermissionFlagsBits.ReadMessageHistory,
+                            PermissionFlagsBits.ManageMessages,
+                            PermissionFlagsBits.AttachFiles,
+                            PermissionFlagsBits.EmbedLinks,
+                        ],
+                    },
+                    {
+                        id: discordConfig.adminRoleId,
+                        allow: [PermissionFlagsBits.Administrator],
+                    },
+                ],
+            });
+
+            // Create ticket in database with type
+            const ticketResponse = await this.apiClient.post(
+                "/api/discord/tickets",
+                {
+                    customerDiscordId: user.id,
+                    categoryId: ticketData.categoryId,
+                    serviceId: ticketData.serviceId,
+                    channelId: channel.id,
+                    calculatedPrice: ticketData.calculatedPrice,
+                    paymentMethodId: ticketData.paymentMethodId,
+                    currency: ticketData.currency || "USD",
+                    customerNotes: ticketData.customerNotes,
+                    customerName: user.username || user.displayName,
+                    customerEmail: undefined,
+                    ticketType: ticketType, // NEW
+                }
+            );
+
+            const responseData = ticketResponse.data.data || ticketResponse.data;
+            const ticket = responseData.data || responseData;
+
+            // Save metadata if provided
+            if (metadata && Object.keys(metadata).length > 0) {
+                await this.saveTicketMetadata(ticket.id, metadata);
+            }
+
+            // Update channel topic
+            const ticketNumber = ticket.ticketNumber.toString().padStart(4, "0");
+            await channel.setTopic(
+                `Ticket #${ticketNumber} | ${this.getTicketTypeLabel(ticketType)} | Customer: ${user.tag}`
+            );
+
+            // Send welcome message
+            await this.sendWelcomeMessageForTicketType(channel, ticket, user, ticketType, ticketData.customerNotes);
+
+            logger.info(
+                `[TicketService] Created ${ticketType} ticket #${ticketNumber} for ${user.tag}`
+            );
+
+            return {
+                channel,
+                ticket: { ...ticket, channelId: channel.id },
+            };
+        } catch (error) {
+            logger.error("[TicketService] Error creating ticket channel with type:", error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get ticket category based on ticket type
+     */
+    private async getTicketCategoryByType(
+        guild: Guild,
+        ticketType: TicketType
+    ): Promise<CategoryChannel | null> {
+        // For now, use the same tickets category for all types
+        // You can extend this to use different categories per type
+        return await this.getOrCreateTicketsCategory(guild);
+    }
+
+    /**
+     * Get channel prefix based on ticket type
+     */
+    private getChannelPrefixByType(ticketType: TicketType): string {
+        switch (ticketType) {
+            case TicketType.PURCHASE_SERVICES_OSRS:
+            case TicketType.PURCHASE_SERVICES_RS3:
+                return "service-";
+            case TicketType.BUY_GOLD_OSRS:
+            case TicketType.BUY_GOLD_RS3:
+                return "buy-gold-";
+            case TicketType.SELL_GOLD_OSRS:
+            case TicketType.SELL_GOLD_RS3:
+                return "sell-gold-";
+            case TicketType.SWAP_CRYPTO:
+                return "swap-";
+            default:
+                return "ticket-";
+        }
+    }
+
+    /**
+     * Get user-friendly ticket type label
+     */
+    private getTicketTypeLabel(ticketType: TicketType): string {
+        switch (ticketType) {
+            case TicketType.PURCHASE_SERVICES_OSRS:
+                return "OSRS Service";
+            case TicketType.PURCHASE_SERVICES_RS3:
+                return "RS3 Service";
+            case TicketType.BUY_GOLD_OSRS:
+                return "Buy OSRS Gold";
+            case TicketType.BUY_GOLD_RS3:
+                return "Buy RS3 Gold";
+            case TicketType.SELL_GOLD_OSRS:
+                return "Sell OSRS Gold";
+            case TicketType.SELL_GOLD_RS3:
+                return "Sell RS3 Gold";
+            case TicketType.SWAP_CRYPTO:
+                return "Crypto Swap";
+            default:
+                return "Support";
+        }
+    }
+
+    /**
+     * Get ticket type category name for channel naming
+     */
+    private getTicketTypeCategoryName(ticketType: TicketType): string {
+        switch (ticketType) {
+            case TicketType.PURCHASE_SERVICES_OSRS:
+            case TicketType.PURCHASE_SERVICES_RS3:
+                return "services";
+            case TicketType.BUY_GOLD_OSRS:
+            case TicketType.BUY_GOLD_RS3:
+                return "buy-gold";
+            case TicketType.SELL_GOLD_OSRS:
+            case TicketType.SELL_GOLD_RS3:
+                return "sell-gold";
+            case TicketType.SWAP_CRYPTO:
+                return "swap-crypto";
+            default:
+                return "support";
+        }
+    }
+
+    /**
+     * Send welcome message for ticket type (using dynamic settings from API)
+     */
+    private async sendWelcomeMessageForTicketType(
+        channel: TextChannel,
+        ticket: any,
+        user: User,
+        ticketType: TicketType,
+        customerNotes?: string
+    ): Promise<void> {
+        try {
+            const ticketNumber = ticket.ticketNumber.toString().padStart(4, "0");
+
+            // Fetch ticket type settings from API
+            let welcomeSettings: any;
+            try {
+                const settingsResponse = await this.apiClient.post(
+                    `/api/discord/ticket-type-settings/render`,
+                    {
+                        ticketType: ticketType,
+                        variables: {
+                            customer: `<@${user.id}>`,
+                            support: `<@&${discordConfig.supportRoleId}>`,
+                            service: ticket.service?.name || "N/A",
+                            price: ticket.calculatedPrice
+                                ? `$${ticket.calculatedPrice.toFixed(2)}`
+                                : "TBD",
+                            currency: ticket.currency || "USD",
+                            ticketId: ticketNumber,
+                        },
+                    }
+                );
+
+                const responseData = settingsResponse.data.data || settingsResponse.data;
+                welcomeSettings = responseData;
+                logger.info(`[TicketService] Fetched welcome settings for ${ticketType}`);
+            } catch (error) {
+                logger.warn(`[TicketService] Failed to fetch welcome settings for ${ticketType}, using fallback:`, error);
+                // Fallback to default message
+                welcomeSettings = {
+                    title: "🎫 Welcome to Our Support Ticket System!",
+                    message: `🙋 Welcome, <@${user.id}>. Thank you for reaching out to us. We're ready to help you with your request.\n\n` +
+                        `👨‍💼 To ensure we can assist you as quickly and effectively as possible, please provide as much detail as you can about your request in your next message.\n\n` +
+                        `⚙️ **Payment Options:** Use \`!pm\` to view all available payment methods.\n` +
+                        `🎊 Use \`!reviews\` to see how you can get up to 10% OFF your order value.\n\n` +
+                        `🎊 **Note:** We appreciate your patience and look forward to assisting you!\nRemember, We beat any quote!`,
+                    embedColor: "5865F2",
+                    bannerUrl: null,
+                    footerText: null,
+                    mentionCustomer: true,
+                    mentionSupport: true,
+                };
+            }
+
+            // Create the welcome embed with dynamic settings
+            const embed = new EmbedBuilder()
+                .setTitle(welcomeSettings.title || "🎫 Support Ticket")
+                .setDescription(welcomeSettings.message)
+                .setColor(parseInt(welcomeSettings.embedColor || "5865F2", 16) as ColorResolvable)
+                .setTimestamp();
+
+            // Add banner image if set
+            if (welcomeSettings.bannerUrl) {
+                embed.setThumbnail(welcomeSettings.bannerUrl);
+                embed.setImage(welcomeSettings.bannerUrl);
+            }
+
+            // Add footer text if set
+            if (welcomeSettings.footerText) {
+                embed.setFooter({
+                    text: welcomeSettings.footerText,
+                    iconURL: "https://i.imgur.com/4M34hi2.png",
+                });
+            } else {
+                embed.setFooter({
+                    text: `Ticket #${ticketNumber}`,
+                    iconURL: "https://i.imgur.com/4M34hi2.png",
+                });
+            }
+
+            // Create the close button
+            const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`ticket_close_${ticket.id}`)
+                    .setLabel("Close Ticket")
+                    .setEmoji("🔒")
+                    .setStyle(ButtonStyle.Danger)
+            );
+
+            // Build content for mentions
+            let content = "";
+            if (welcomeSettings.mentionCustomer) {
+                content += `<@${user.id}> `;
+            }
+            if (welcomeSettings.mentionSupport) {
+                content += `<@&${discordConfig.supportRoleId}>`;
+            }
+
+            // Send the welcome message
+            await channel.send({
+                content: content.trim() || undefined,
+                embeds: [embed.toJSON() as any],
+                components: [actionRow.toJSON() as any],
+            });
+
+            logger.info(`[TicketService] Sent welcome message to ticket #${ticketNumber}`);
+        } catch (error) {
+            logger.error("[TicketService] Error sending welcome message for ticket type:", error);
+            // Don't throw - welcome message is not critical
+        }
+    }
+
+    /**
+     * Save ticket metadata
+     */
+    private async saveTicketMetadata(
+        ticketId: string,
+        metadata: TicketMetadata
+    ): Promise<void> {
+        try {
+            await this.apiClient.post(
+                `/api/discord/tickets/${ticketId}/metadata`,
+                metadata
+            );
+            logger.info(`[TicketService] Saved metadata for ticket ${ticketId}`);
+        } catch (error) {
+            logger.error(`[TicketService] Error saving ticket metadata:`, error);
+            // Don't throw - metadata is optional
+        }
+    }
+
+    /**
      * Get or create the tickets category
      */
     async getOrCreateTicketsCategory(
@@ -237,12 +559,10 @@ export class TicketService {
     ): Promise<WelcomeMessageSettings> {
         try {
             const response = await this.apiClient.get(
-                `/api/discord/category-ticket-settings/category/${categoryId}`
+                `/discord/category-ticket-settings/category/${categoryId}`
             );
 
-            // Handle nested response from API interceptor
-            const responseData = response.data.data || response.data;
-            const settingsData = responseData.data || responseData;
+            const settingsData = response.data.data;
 
             if (settingsData && (settingsData.welcomeTitle || settingsData.welcomeMessage)) {
                 return {

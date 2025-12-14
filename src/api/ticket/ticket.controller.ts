@@ -37,7 +37,11 @@ export default class TicketController {
         const result = await this.ticketService.getList(query);
         return {
             success: true,
-            ...result,
+            data: result.list,
+            total: result.total,
+            page: result.page,
+            limit: result.limit,
+            totalPages: result.totalPages,
         };
     }
 

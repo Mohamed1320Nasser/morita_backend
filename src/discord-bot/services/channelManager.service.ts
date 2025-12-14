@@ -1,4 +1,4 @@
-import { Client, TextChannel, Message, Collection } from "discord.js";
+import { Client, TextChannel, Message, Collection, AttachmentBuilder } from "discord.js";
 import { PrismaClient } from "@prisma/client";
 import { ApiService } from "./api.service";
 import { SelectMenuPricingBuilder } from "../utils/selectMenuPricingBuilder";
@@ -9,6 +9,7 @@ import {
 } from "../types/discord.types";
 import { discordConfig } from "../config/discord.config";
 import logger from "../../common/loggers";
+import path from "path";
 
 const prisma = new PrismaClient();
 
@@ -308,8 +309,10 @@ export class ChannelManagerService {
     private async createHeaderMessage(): Promise<void> {
         if (!this.pricingChannel) return;
 
-        const headerContent = SelectMenuPricingBuilder.buildHeaderMessage();
-        const message = await this.pricingChannel.send(headerContent);
+        // Send only banner image
+        const bannerPath = path.join(__dirname, "../../../public/discord banner 01.png");
+        const bannerAttachment = new AttachmentBuilder(bannerPath);
+        const message = await this.pricingChannel.send({ files: [bannerAttachment] });
         await this.saveMessageToDatabase(message, "HEADER");
     }
 

@@ -1,4 +1,4 @@
-import { Client, TextChannel, Message } from "discord.js";
+import { Client, TextChannel, Message, AttachmentBuilder } from "discord.js";
 import { PrismaClient } from "@prisma/client";
 import { ApiService } from "./api.service";
 import { EnhancedPricingBuilder } from "../utils/enhancedPricingBuilder";
@@ -14,6 +14,7 @@ import {
 } from "../types/discord.types";
 import { discordConfig } from "../config/discord.config";
 import logger from "../../common/loggers";
+import path from "path";
 
 const prisma = new PrismaClient();
 
@@ -245,6 +246,10 @@ export class ImprovedChannelManager {
             // Clear channel
             await this.clearChannel();
 
+            // Wait 2 seconds for Discord to process deletions (prevents duplicate banners)
+            logger.debug("[ImprovedChannelManager] Waiting for Discord to process deletions...");
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
             // Create header
             await this.createHeader();
 
@@ -277,15 +282,48 @@ export class ImprovedChannelManager {
                 "[ImprovedChannelManager] Clearing channel messages"
             );
 
-            const messages = await this.pricingChannel.messages.fetch({
-                limit: 100,
-            });
-            const botMessages = messages.filter(
+            // Fetch ALL messages, not just 100 (force: true to bypass cache)
+            let allMessages: Message[] = [];
+            let lastMessageId: string | undefined = undefined;
+
+            // Keep fetching until no more messages
+            while (true) {
+                const fetchOptions: { limit: number; before?: string; cache?: boolean } = {
+                    limit: 100,
+                    cache: false // Force fetch from Discord API, not cache
+                };
+                if (lastMessageId) {
+                    fetchOptions.before = lastMessageId;
+                }
+
+                const messagesCollection = await this.pricingChannel.messages.fetch(fetchOptions);
+                if (messagesCollection.size === 0) break;
+
+                allMessages.push(...Array.from(messagesCollection.values()));
+                lastMessageId = messagesCollection.last()?.id;
+
+                if (messagesCollection.size < 100) break;
+            }
+
+            logger.debug(`[ImprovedChannelManager] Found ${allMessages.length} total messages in channel`);
+
+            // Filter bot messages
+            const botMessages = allMessages.filter(
                 msg => msg.author.id === this.client.user?.id
             );
 
-            if (botMessages.size > 0) {
-                await this.pricingChannel.bulkDelete(botMessages, true);
+            logger.debug(`[ImprovedChannelManager] Deleting ${botMessages.length} bot messages`);
+
+            // Delete messages in batches
+            for (const msg of botMessages) {
+                try {
+                    await msg.delete();
+                } catch (err: any) {
+                    // Silently skip "Unknown Message" errors (message was already deleted)
+                    if (err.code !== 10008) {
+                        logger.warn(`[ImprovedChannelManager] Could not delete message ${msg.id}: ${err}`);
+                    }
+                }
             }
 
             // Clear database records
@@ -299,6 +337,9 @@ export class ImprovedChannelManager {
             this.headerMessage = null;
             this.categoryMessages.clear();
             this.footerMessage = null;
+
+            // Clear Discord's message cache to prevent stale data
+            this.pricingChannel.messages.cache.clear();
 
             logger.debug("[ImprovedChannelManager] Channel cleared");
         } catch (error) {
@@ -316,15 +357,17 @@ export class ImprovedChannelManager {
         if (!this.pricingChannel) return;
 
         try {
-            const headerContent = EnhancedPricingBuilder.buildHeaderMessage();
-            this.headerMessage = await this.pricingChannel.send(headerContent);
+            // Send only banner image
+            const bannerPath = path.join(__dirname, "../../../public/discord banner 01.png");
+            const bannerAttachment = new AttachmentBuilder(bannerPath);
+            this.headerMessage = await this.pricingChannel.send({ files: [bannerAttachment] });
 
             await this.saveMessageToDatabase(
                 this.headerMessage,
                 "HEADER"
             );
 
-            logger.debug("[ImprovedChannelManager] Header created");
+            logger.debug("[ImprovedChannelManager] Header created with banner only");
         } catch (error) {
             logger.error(
                 "[ImprovedChannelManager] Error creating header:",

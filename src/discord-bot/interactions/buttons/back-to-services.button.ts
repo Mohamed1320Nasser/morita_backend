@@ -2,11 +2,16 @@ import { ButtonInteraction } from "discord.js";
 import { EmbedBuilder } from "../../utils/embedBuilder";
 import { ComponentBuilder } from "../../utils/componentBuilder";
 import logger from "../../../common/loggers";
+import { pricingMessageTracker } from "../../services/pricingMessageTracker.service";
 
 export async function handleBackToServices(
     interaction: ButtonInteraction
 ): Promise<void> {
     try {
+        // Clear auto-delete timeout (user navigated away)
+        const messageId = `${interaction.id}`;
+        pricingMessageTracker.clearTimeout(messageId);
+
         await interaction.deferReply();
 
         // Fetch categories from API

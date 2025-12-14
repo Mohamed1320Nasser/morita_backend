@@ -29,6 +29,57 @@ export interface BuildOptions {
  * Creates beautiful 3D-styled messages for Discord pricing channel
  */
 export class EnhancedPricingBuilder {
+    /**
+     * Format emoji for Discord API
+     * Ensures custom Discord emoji have proper format: <:name:id> or <a:name:id>
+     */
+    private static formatEmojiForDiscord(emoji: string | null | undefined): string {
+        if (!emoji) return "";
+
+        const trimmed = String(emoji).trim();
+
+        // Check if it's already in Discord custom emoji format with brackets
+        if (trimmed.startsWith("<:") || trimmed.startsWith("<a:")) {
+            return trimmed;
+        }
+
+        // Check if it's Discord custom emoji format without brackets
+        // Formats: name:id or a:name:id
+        const customEmojiMatch = trimmed.match(/^(a?):?(.+?):(\d+)$/);
+        if (customEmojiMatch) {
+            const animated = customEmojiMatch[1];
+            const name = customEmojiMatch[2];
+            const id = customEmojiMatch[3];
+            // Wrap in angle brackets for Discord API
+            return animated ? `<a:${name}:${id}>` : `<:${name}:${id}>`;
+        }
+
+        // It's a regular Unicode emoji, return as is
+        return trimmed;
+    }
+
+    /**
+     * Extract emoji name for display in text (placeholders don't support custom emoji)
+     * For custom Discord emoji, returns just the name with a generic icon
+     * For Unicode emoji, returns the emoji itself
+     */
+    private static getEmojiForPlaceholder(emoji: string | null | undefined): string {
+        if (!emoji) return "📦";
+
+        const trimmed = String(emoji).trim();
+
+        // Check if it's a Discord custom emoji (with or without brackets)
+        // Formats: <:name:id>, <a:name:id>, name:id, a:name:id
+        const customEmojiMatch = trimmed.match(/^<?a?:?(.+?):(\d+)>?$/);
+        if (customEmojiMatch) {
+            // Extract just the emoji name and show with a generic game icon
+            const emojiName = customEmojiMatch[1];
+            return `🎮 ${emojiName}`;
+        }
+
+        // It's a regular Unicode emoji, return as is
+        return trimmed;
+    }
     // ANSI Color Gradient System for 3D Effects
     // Using proper Discord ANSI escape sequences with \u001b
     private static readonly ANSI = {
@@ -58,32 +109,6 @@ export class EnhancedPricingBuilder {
         // Reset
         RESET: "\u001b[0m",
     };
-    /**
-     * Build header message with Morita branding
-     */
-    static buildHeaderMessage(): string {
-        return `\`\`\`ansi
-[1;36m╔══════════════════════════════════════════════════════════════════════════════╗
-[1;36m║                                                                              ║
-[1;33m║   ███╗   ███╗ ██████╗ ██████╗ ██╗████████╗ █████╗                          ║
-[1;33m║   ████╗ ████║██╔═══██╗██╔══██╗██║╚══██╔══╝██╔══██╗                         ║
-[1;33m║   ██╔████╔██║██║   ██║██████╔╝██║   ██║   ███████║                         ║
-[1;33m║   ██║╚██╔╝██║██║   ██║██╔══██╗██║   ██║   ██╔══██║                         ║
-[1;33m║   ██║ ╚═╝ ██║╚██████╔╝██║  ██║██║   ██║   ██║  ██║                         ║
-[1;33m║   ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝   ╚═╝   ╚═╝  ╚═╝                         ║
-[1;36m║                                                                              ║
-[1;37m║   [1;32m🎮 PREMIUM GAMING SERVICES[1;37m                                               ║
-[1;37m║   [1;36mOSRS • RS3 • ACCOUNTS • GOLD • SERVICES[1;37m                                  ║
-[1;36m║                                                                              ║
-[1;37m║   PAYMENT METHODS:                                                           ║
-[1;37m║   [1;32m💳 PayPal[1;37m • [1;32m💵 Venmo[1;37m • [1;32m🔷 Discover[1;37m • [1;33m⚡ OSRS Gold[1;37m                        ║
-[1;37m║   [1;33m₿ Bitcoin[1;37m • [1;32m💰 Zelle[1;37m • [1;33m🔐 Other Crypto[1;37m                                  ║
-[1;36m║                                                                              ║
-[1;36m║   [1;37mSelect a category below to view our services[1;36m                              ║
-[1;36m║                                                                              ║
-[1;36m╚══════════════════════════════════════════════════════════════════════════════╝
-\`\`\``;
-    }
 
     /**
      * Build category select menu message
@@ -92,13 +117,16 @@ export class EnhancedPricingBuilder {
         content: string;
         components: ActionRowBuilder<StringSelectMenuBuilder>[];
     } {
-        // Beautiful category header with emoji
-        const content = `**${category.emoji || "📦"} ${category.name} - Click to View Services**`;
+        // No title text - only the dropdown placeholder will show
+        const content = ``;
+
+        // Get emoji for placeholder (custom emoji show as "🎮 Name", Unicode emoji show normally)
+        const categoryEmojiPlaceholder = this.getEmojiForPlaceholder(category.emoji);
 
         const selectMenu = new StringSelectMenuBuilder()
             .setCustomId(`pricing_service_select_${category.id}`)
             .setPlaceholder(
-                `🔍 Select a ${category.name} service to view pricing...`
+                `${categoryEmojiPlaceholder} ${category.name} - Click Here`
             )
             .setMinValues(1)
             .setMaxValues(1);
@@ -114,16 +142,32 @@ export class EnhancedPricingBuilder {
                     ? service.name.substring(0, 97) + "..."
                     : service.name;
 
-            selectMenu.addOptions(
-                new StringSelectMenuOptionBuilder()
-                    .setLabel(label)
-                    .setValue(service.id)
-                    .setDescription(
-                        service.description?.substring(0, 100) ||
-                            `View ${service.name} pricing`
-                    )
-                    .setEmoji(service.emoji || "🔹")
-            );
+            // Build option
+            const option = new StringSelectMenuOptionBuilder()
+                .setLabel(label)
+                .setValue(service.id)
+                .setDescription("Click here for more information");
+
+            // Handle emoji - custom emoji need ID format, Unicode emoji can be string
+            if (service.emoji) {
+                const trimmed = String(service.emoji).trim();
+                // Check if it's a custom Discord emoji
+                const customEmojiMatch = trimmed.match(/^<?a?:?(.+?):(\d+)>?$/);
+                if (customEmojiMatch) {
+                    // Extract name and ID for custom emoji
+                    const emojiName = customEmojiMatch[1];
+                    const emojiId = customEmojiMatch[2];
+                    // Set as emoji object with ID
+                    option.setEmoji({ id: emojiId, name: emojiName });
+                } else {
+                    // It's a Unicode emoji, use as string
+                    option.setEmoji(trimmed);
+                }
+            } else {
+                option.setEmoji("🔹");
+            }
+
+            selectMenu.addOptions(option);
         }
 
         // If more than 25 services, add a "Show More" option
@@ -165,9 +209,12 @@ export class EnhancedPricingBuilder {
         // Use orange accent color like MMOGoldHut (#fca311)
         const embedColor = 0xfca311;
 
+        // Get emoji for embed title (format custom emoji so Discord can render them)
+        const serviceEmoji = this.formatEmojiForDiscord(service.emoji) || "⭐";
+
         const embed = new EmbedBuilder()
             .setColor(embedColor)
-            .setTitle(`${service.emoji || "⭐"} ${service.name}`)
+            .setTitle(`${serviceEmoji} ${service.name}`)
             .setDescription(
                 service.description || "Professional gaming service"
             )
@@ -178,9 +225,19 @@ export class EnhancedPricingBuilder {
                     "https://cdn.discordapp.com/icons/placeholder/morita-icon.png",
             });
 
-        // Add optional banner image
-        if (bannerUrl) {
+        // Add service image as large image at bottom (like MMOGoldHut style)
+        // Use property indexing to bypass ts-node cache issues
+        const serviceImage = (service as any)['imageUrl'];
+        logger.debug(`[EnhancedPricingBuilder] Service: ${service.name}, imageUrl: ${serviceImage || 'NOT SET'}`);
+        if (serviceImage) {
+            logger.debug(`[EnhancedPricingBuilder] Setting image: ${serviceImage}`);
+            embed.setImage(serviceImage);
+        } else if (bannerUrl) {
+            // Fallback to banner if no service image
+            logger.debug(`[EnhancedPricingBuilder] Using banner instead: ${bannerUrl}`);
             embed.setImage(bannerUrl);
+        } else {
+            logger.debug(`[EnhancedPricingBuilder] No image or banner available`);
         }
 
         // Add pricing sections if available
@@ -358,9 +415,12 @@ export class EnhancedPricingBuilder {
         // Determine embed color: category color > default cyan
         const embedColor = categoryColor || 0x00d9ff;
 
+        // Get emoji for embed title (format custom emoji so Discord can render them)
+        const serviceEmoji = this.formatEmojiForDiscord(service.emoji) || "⭐";
+
         const embed = new EmbedBuilder()
             .setColor(embedColor)
-            .setTitle(`${service.emoji || "⭐"} ${service.name}`)
+            .setTitle(`${serviceEmoji} ${service.name}`)
             .setDescription(
                 service.description || "Professional gaming service"
             )
@@ -371,9 +431,19 @@ export class EnhancedPricingBuilder {
                     "https://cdn.discordapp.com/icons/placeholder/morita-icon.png",
             });
 
-        // Add optional banner image
-        if (bannerUrl) {
+        // Add service image as large image at bottom (like MMOGoldHut style)
+        // Use property indexing to bypass ts-node cache issues
+        const serviceImage = (service as any)['imageUrl'];
+        logger.debug(`[EnhancedPricingBuilder] Service: ${service.name}, imageUrl: ${serviceImage || 'NOT SET'}`);
+        if (serviceImage) {
+            logger.debug(`[EnhancedPricingBuilder] Setting image: ${serviceImage}`);
+            embed.setImage(serviceImage);
+        } else if (bannerUrl) {
+            // Fallback to banner if no service image
+            logger.debug(`[EnhancedPricingBuilder] Using banner instead: ${bannerUrl}`);
             embed.setImage(bannerUrl);
+        } else {
+            logger.debug(`[EnhancedPricingBuilder] No image or banner available`);
         }
 
         // Add pricing table if available

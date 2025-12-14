@@ -4,10 +4,9 @@ import {
     CreateCategoryTicketSettingsDto,
     UpdateCategoryTicketSettingsDto,
 } from "./dtos";
-import { NotFoundError, BadRequestError } from "routing-controllers";
+import { NotFoundError } from "routing-controllers";
 import logger from "../../common/loggers";
 
-// Default welcome message template
 const DEFAULT_WELCOME_MESSAGE = `Welcome to our support!
 
 **Order Details:**
@@ -21,17 +20,12 @@ Our support team will assist you shortly. Please wait patiently while we review 
 - Do not share sensitive information (passwords, 2FA codes) until our support confirms the order`;
 
 const DEFAULT_WELCOME_TITLE = "Welcome to Support!";
-const DEFAULT_EMBED_COLOR = "5865F2"; // Discord blurple
+const DEFAULT_EMBED_COLOR = "5865F2";
 
 @Service()
 export default class CategoryTicketSettingsService {
-    constructor() {}
 
-    /**
-     * Create or update category ticket settings
-     */
     async upsert(data: CreateCategoryTicketSettingsDto) {
-        // Verify the category exists
         const category = await prisma.serviceCategory.findUnique({
             where: { id: data.categoryId },
         });
@@ -40,68 +34,47 @@ export default class CategoryTicketSettingsService {
             throw new NotFoundError("Category not found");
         }
 
-        // Check if settings already exist
         const existingSettings = await prisma.categoryTicketSettings.findUnique({
             where: { categoryId: data.categoryId },
         });
 
+        const settingsData = {
+            bannerUrl: data.bannerUrl,
+            welcomeTitle: data.welcomeTitle || DEFAULT_WELCOME_TITLE,
+            welcomeMessage: data.welcomeMessage,
+            footerText: data.footerText,
+            embedColor: data.embedColor || DEFAULT_EMBED_COLOR,
+            isActive: data.isActive ?? true,
+        };
+
+        const includeCategory = {
+            category: {
+                select: {
+                    id: true,
+                    name: true,
+                    emoji: true,
+                },
+            },
+        };
+
         if (existingSettings) {
-            // Update existing
             const updated = await prisma.categoryTicketSettings.update({
                 where: { categoryId: data.categoryId },
-                data: {
-                    bannerUrl: data.bannerUrl,
-                    welcomeTitle: data.welcomeTitle,
-                    welcomeMessage: data.welcomeMessage,
-                    footerText: data.footerText,
-                    embedColor: data.embedColor || DEFAULT_EMBED_COLOR,
-                    isActive: data.isActive ?? true,
-                    updatedAt: new Date(),
-                },
-                include: {
-                    category: {
-                        select: {
-                            id: true,
-                            name: true,
-                            emoji: true,
-                        },
-                    },
-                },
+                data: { ...settingsData, updatedAt: new Date() },
+                include: includeCategory,
             });
-
             logger.info(`Updated ticket settings for category: ${category.name}`);
             return updated;
         }
 
-        // Create new
         const created = await prisma.categoryTicketSettings.create({
-            data: {
-                categoryId: data.categoryId,
-                bannerUrl: data.bannerUrl,
-                welcomeTitle: data.welcomeTitle || DEFAULT_WELCOME_TITLE,
-                welcomeMessage: data.welcomeMessage,
-                footerText: data.footerText,
-                embedColor: data.embedColor || DEFAULT_EMBED_COLOR,
-                isActive: data.isActive ?? true,
-            },
-            include: {
-                category: {
-                    select: {
-                        id: true,
-                        name: true,
-                        emoji: true,
-                    },
-                },
-            },
+            data: { categoryId: data.categoryId, ...settingsData },
+            include: includeCategory,
         });
-
         logger.info(`Created ticket settings for category: ${category.name}`);
         return created;
     }
 
-    /**
-     * Get settings by category ID
-     */
     async getByCategoryId(categoryId: string) {
         const settings = await prisma.categoryTicketSettings.findUnique({
             where: { categoryId },
@@ -120,9 +93,6 @@ export default class CategoryTicketSettingsService {
         return settings;
     }
 
-    /**
-     * Get settings by category ID or return defaults
-     */
     async getByCategoryIdOrDefault(categoryId: string) {
         const category = await prisma.serviceCategory.findUnique({
             where: { id: categoryId },
@@ -143,7 +113,6 @@ export default class CategoryTicketSettingsService {
             };
         }
 
-        // Return default settings
         return {
             id: null,
             categoryId,
@@ -157,9 +126,6 @@ export default class CategoryTicketSettingsService {
         };
     }
 
-    /**
-     * Get settings by ID
-     */
     async getSingle(id: string) {
         const settings = await prisma.categoryTicketSettings.findUnique({
             where: { id },
@@ -181,9 +147,6 @@ export default class CategoryTicketSettingsService {
         return settings;
     }
 
-    /**
-     * Get all category ticket settings
-     */
     async getAll() {
         const settings = await prisma.categoryTicketSettings.findMany({
             include: {
@@ -207,9 +170,6 @@ export default class CategoryTicketSettingsService {
         return settings;
     }
 
-    /**
-     * Get all categories with their ticket settings (including those without settings)
-     */
     async getAllCategoriesWithSettings() {
         const categories = await prisma.serviceCategory.findMany({
             where: {
@@ -239,9 +199,6 @@ export default class CategoryTicketSettingsService {
         }));
     }
 
-    /**
-     * Update settings
-     */
     async update(id: string, data: UpdateCategoryTicketSettingsDto) {
         const settings = await prisma.categoryTicketSettings.findUnique({
             where: { id },
@@ -272,16 +229,12 @@ export default class CategoryTicketSettingsService {
         return updated;
     }
 
-    /**
-     * Update settings by category ID
-     */
     async updateByCategoryId(categoryId: string, data: UpdateCategoryTicketSettingsDto) {
         const settings = await prisma.categoryTicketSettings.findUnique({
             where: { categoryId },
         });
 
         if (!settings) {
-            // Create if not exists
             return this.upsert({
                 categoryId,
                 welcomeMessage: data.welcomeMessage || DEFAULT_WELCOME_MESSAGE,
@@ -310,9 +263,6 @@ export default class CategoryTicketSettingsService {
         return updated;
     }
 
-    /**
-     * Delete settings
-     */
     async delete(id: string) {
         const settings = await prisma.categoryTicketSettings.findUnique({
             where: { id },
@@ -330,9 +280,6 @@ export default class CategoryTicketSettingsService {
         return { message: "Settings deleted successfully" };
     }
 
-    /**
-     * Render welcome message with variables
-     */
     renderWelcomeMessage(
         template: string,
         variables: {
@@ -347,13 +294,9 @@ export default class CategoryTicketSettingsService {
     ): string {
         let rendered = template;
 
-        // First, handle cases where users added @ before mention variables
-        // (e.g., @{customer}, @@{support}, etc.) - the variables already contain the mention format
-        // Use @+ to match one or more @ symbols before the variable
         rendered = rendered.replace(/@+{customer}/g, "{customer}");
         rendered = rendered.replace(/@+{support}/g, "{support}");
 
-        // Replace all variables
         const replacements: Record<string, string> = {
             "{customer}": variables.customer || "Customer",
             "{support}": variables.support || "Support",
@@ -369,5 +312,32 @@ export default class CategoryTicketSettingsService {
         }
 
         return rendered;
+    }
+
+    async renderWelcomeMessageForCategory(
+        categoryId: string,
+        variables: {
+            customer?: string;
+            support?: string;
+            service?: string;
+            price?: string;
+            currency?: string;
+            ticketId?: string;
+        }
+    ) {
+        const settings = await this.getByCategoryIdOrDefault(categoryId);
+
+        const rendered = this.renderWelcomeMessage(settings.welcomeMessage, {
+            ...variables,
+            categoryName: settings.category?.name,
+        });
+
+        return {
+            title: settings.welcomeTitle,
+            message: rendered,
+            bannerUrl: settings.bannerUrl,
+            embedColor: settings.embedColor,
+            footerText: settings.footerText,
+        };
     }
 }

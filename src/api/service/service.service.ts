@@ -377,6 +377,7 @@ export default class ServiceService {
                 slug: true,
                 description: true,
                 emoji: true,
+                imageUrl: true,
                 active: true,
                 displayOrder: true,
                 category: {

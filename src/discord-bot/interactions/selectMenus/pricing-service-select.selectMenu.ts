@@ -3,6 +3,7 @@ import { SelectMenuPricingBuilder } from "../../utils/selectMenuPricingBuilder";
 import { ApiService } from "../../services/api.service";
 import { discordConfig } from "../../config/discord.config";
 import logger from "../../../common/loggers";
+import { pricingMessageTracker } from "../../services/pricingMessageTracker.service";
 
 const apiService = new ApiService(discordConfig.apiBaseUrl);
 
@@ -10,7 +11,7 @@ export async function handlePricingServiceSelect(
     interaction: StringSelectMenuInteraction
 ): Promise<void> {
     try {
-        // Immediately defer the interaction to prevent timeout
+        // Defer reply to prevent timeout
         await interaction.deferReply({ ephemeral: true });
 
         const customId = interaction.customId;
@@ -67,31 +68,40 @@ export async function handlePricingServiceSelect(
             components: [actionButtons],
         });
 
+        // Track message for auto-delete after 10 minutes
+        const messageId = `${interaction.id}`; // Use interaction ID as unique identifier
+        pricingMessageTracker.trackMessage(messageId, async () => {
+            try {
+                await interaction.deleteReply();
+            } catch (error) {
+                logger.debug(
+                    "Could not delete pricing message (likely already deleted)"
+                );
+            }
+        });
+
         logger.info(
-            `Service details shown for ${service.name} by ${interaction.user.tag}`
+            `Service details shown for ${service.name} by ${interaction.user.tag} (auto-delete in 10 minutes)`
         );
     } catch (error) {
         logger.error("Error handling pricing service select:", error);
 
-        // Only send error message if interaction hasn't been replied to
-        if (!interaction.replied && !interaction.deferred) {
-            try {
-                await interaction.reply({
-                    content:
-                        "Error loading service details. Please try again later.",
-                });
-            } catch (followUpError) {
-                logger.debug("Could not send error message:", followUpError);
-            }
-        } else {
-            try {
+        // Send error message
+        try {
+            if (interaction.deferred || interaction.replied) {
                 await interaction.editReply({
                     content:
-                        "Error loading service details. Please try again later.",
+                        "❌ Error loading service details. Please try again later.",
                 });
-            } catch (editError) {
-                logger.debug("Could not edit reply:", editError);
+            } else {
+                await interaction.reply({
+                    content:
+                        "❌ Error loading service details. Please try again later.",
+                    ephemeral: true,
+                });
             }
+        } catch (replyError) {
+            logger.debug("Could not send error message:", replyError);
         }
     }
 }

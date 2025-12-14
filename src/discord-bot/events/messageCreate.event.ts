@@ -829,116 +829,292 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
     }
 }
 
-// Handler for !q command (Quote - FIXED pricing)
+// Handler for !q command (Quote - FIXED pricing with batch support)
 async function handleQuoteCommand(message: Message, apiService: ApiService) {
     const prefix = discordConfig.prefix;
-    const args = message.content.slice(prefix.length + 2).trim().split(/\s+/);
+    const input = message.content.slice(prefix.length + 2).trim();
 
-    if (args.length < 1) {
+    if (!input) {
         await message.reply({
             content: "❌ **Invalid Command Format**\n\n" +
-                "**Usage:** `!q <service-name>`\n" +
-                "**Example:** `!q infernal-cape`",
+                "**Single Quest:** `!q desert treasure 1`\n" +
+                "**Multiple Quests:** `!q desert treasure 1, monkey madness, infernal cape`",
         });
         return;
     }
 
-    // Service name is all arguments
-    const serviceName = args.join(" ").toLowerCase();
+    // Check if this is a batch request (contains commas)
+    const isBatchRequest = input.includes(',');
+    const questNames = isBatchRequest
+        ? input.split(',').map(q => q.trim().toLowerCase())
+        : [input.toLowerCase()];
 
-    logger.info(`[PriceCalculator] Command: !q ${serviceName} by ${message.author.tag}`);
+    logger.info(`[Quest] Command: !q ${input} by ${message.author.tag} (${questNames.length} quests)`);
 
     // Send "fetching..." message
-    const thinkingMsg = await message.reply("💰 Fetching price quote...");
+    const thinkingMsg = await message.reply(
+        isBatchRequest
+            ? `💰 Fetching quotes for ${questNames.length} quests...`
+            : "💰 Fetching price quote..."
+    );
 
-    // Get all services to find matching service
+    // Get all services
     const services = await apiService.getAllServicesWithPricing();
 
-    // Find service by name or slug (filter for FIXED services)
-    const service = services.find((s: any) => {
-        const matchesName = s.name.toLowerCase().includes(serviceName) ||
-            s.slug.toLowerCase().includes(serviceName);
-        const hasFixedPricing = s.pricingMethods?.some((m: any) => m.pricingUnit === 'FIXED');
-        return matchesName && hasFixedPricing;
-    });
+    // Find all matching quests
+    const results: Array<{
+        questName: string;
+        service: any;
+        price: number;
+        upcharges: Array<{ method: string; price: number; difference: number }>;
+    }> = [];
 
-    if (!service) {
+    const notFound: string[] = [];
+
+    for (const questName of questNames) {
+        // Find service with improved matching
+        const service = findBestQuestMatch(services, questName);
+
+        if (!service) {
+            notFound.push(questName);
+            continue;
+        }
+
+        try {
+            // Get all FIXED pricing methods
+            const fixedMethods = service.pricingMethods?.filter((m: any) => m.pricingUnit === 'FIXED') || [];
+
+            if (fixedMethods.length === 0) {
+                notFound.push(questName);
+                continue;
+            }
+
+            // Get payment methods
+            const paymentMethods = await apiService.getPaymentMethods();
+            if (!paymentMethods || paymentMethods.length === 0) {
+                throw new Error('No payment methods available');
+            }
+            const defaultPaymentMethod = paymentMethods[0];
+
+            const pricingService = new PricingCalculatorService();
+
+            // Calculate prices for all methods
+            const methodPrices = await Promise.all(
+                fixedMethods.map(async (method: any) => {
+                    const result = await pricingService.calculatePrice({
+                        methodId: method.id,
+                        paymentMethodId: defaultPaymentMethod.id,
+                        quantity: 1,
+                    });
+                    return {
+                        method: method.name,
+                        price: result.finalPrice,
+                        basePrice: result.basePrice,
+                    };
+                })
+            );
+
+            // Find cheapest price
+            const cheapest = methodPrices.reduce((min, curr) =>
+                curr.price < min.price ? curr : min
+            );
+
+            // Build upcharges list (other payment methods)
+            const upcharges = methodPrices
+                .filter(m => m.method !== cheapest.method)
+                .map(m => ({
+                    method: m.method,
+                    price: m.price,
+                    difference: m.price - cheapest.price,
+                }));
+
+            results.push({
+                questName: service.name,
+                service,
+                price: cheapest.price,
+                upcharges,
+            });
+
+        } catch (error) {
+            logger.error(`[Quest] Error calculating price for ${questName}:`, error);
+            notFound.push(questName);
+        }
+    }
+
+    // Handle no results
+    if (results.length === 0) {
         await thinkingMsg.edit({
-            content: `❌ **Service Not Found**\n\n` +
-                `Could not find a fixed-price service matching "${serviceName}".\n\n` +
-                `Make sure the service has fixed pricing.`,
+            content: `❌ **No Quests Found**\n\n` +
+                `Could not find any quests matching your search.\n\n` +
+                `**Searched for:** ${questNames.join(', ')}`,
         });
         return;
     }
 
-    try {
-        logger.info(`[PriceCalculator] Getting quote for serviceId: ${service.id}`);
+    // Build response based on single or batch
+    if (isBatchRequest) {
+        await sendBatchQuoteResponse(thinkingMsg, results, notFound);
+    } else {
+        await sendSingleQuoteResponse(thinkingMsg, results[0], notFound);
+    }
 
-        const pricingService = new PricingCalculatorService();
+    logger.info(`[Quest] Quote sent for ${results.length} quests to ${message.author.tag}`);
+}
 
-        // Get all FIXED pricing methods for this service
-        if (!service.pricingMethods || service.pricingMethods.length === 0) {
-            throw new Error('No pricing methods found for this service');
-        }
+/**
+ * Find best matching quest service with improved logic
+ */
+function findBestQuestMatch(services: any[], searchName: string): any | null {
+    // Normalize search name (handle Roman numerals)
+    const normalized = normalizeQuestName(searchName);
 
-        const fixedMethods = service.pricingMethods.filter((m: any) => m.pricingUnit === 'FIXED');
+    // Filter FIXED pricing services only
+    const fixedServices = services.filter((s: any) =>
+        s.pricingMethods?.some((m: any) => m.pricingUnit === 'FIXED')
+    );
 
-        if (fixedMethods.length === 0) {
-            throw new Error('No FIXED pricing method found for this service');
-        }
+    // Try exact match first
+    let match = fixedServices.find((s: any) =>
+        normalizeQuestName(s.name) === normalized ||
+        normalizeQuestName(s.slug) === normalized
+    );
 
-        // Get payment methods to get the default one
-        const paymentMethods = await apiService.getPaymentMethods();
-        if (!paymentMethods || paymentMethods.length === 0) {
-            throw new Error('No payment methods available');
-        }
-        const defaultPaymentMethod = paymentMethods[0];
+    if (match) {
+        logger.info(`[Quest] ✅ Exact match: "${match.name}"`);
+        return match;
+    }
 
-        const embed = new EmbedBuilder()
-            .setTitle(`${service.emoji || '⭐'} ${service.name}`)
-            .setDescription(service.description || 'Fixed price service')
-            .setColor(0xfca311)
-            .setTimestamp();
+    // Try partial match (but prefer shorter names to avoid DT2 matching DT1)
+    const partialMatches = fixedServices.filter((s: any) =>
+        normalizeQuestName(s.name).includes(normalized) ||
+        normalizeQuestName(s.slug).includes(normalized)
+    );
 
-        // Show all pricing options
-        for (const method of fixedMethods) {
-            const result = await pricingService.calculatePrice({
-                methodId: method.id,
-                paymentMethodId: defaultPaymentMethod.id,
-                quantity: 1,
-            });
+    if (partialMatches.length === 1) {
+        logger.info(`[Quest] ✅ Partial match: "${partialMatches[0].name}"`);
+        return partialMatches[0];
+    }
 
-            const priceInfo =
-                `**Base Price:** $${result.basePrice.toFixed(2)}\n` +
-                (result.breakdown.totalModifiers > 0 ? `**With Modifiers:** $${result.finalPrice.toFixed(2)}\n` : '') +
-                `\`\`\`ansi\n\u001b[1;32m$${result.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
+    if (partialMatches.length > 1) {
+        // Prefer shortest name (more specific)
+        match = partialMatches.reduce((shortest, curr) =>
+            curr.name.length < shortest.name.length ? curr : shortest
+        );
+        logger.info(`[Quest] ✅ Best partial match: "${match.name}" (shortest of ${partialMatches.length})`);
+        return match;
+    }
 
-            embed.addFields({
-                name: `💎 ${method.name}`,
-                value: priceInfo,
-                inline: fixedMethods.length > 1,
-            });
-        }
+    logger.warn(`[Quest] ❌ No match found for: "${searchName}"`);
+    return null;
+}
 
-        // Add note about modifiers
+/**
+ * Normalize quest name (handle Roman numerals and formatting)
+ */
+function normalizeQuestName(name: string): string {
+    return name
+        .toLowerCase()
+        .trim()
+        .replace(/\bi\b/g, '1')     // I → 1
+        .replace(/\bii\b/g, '2')    // II → 2
+        .replace(/\biii\b/g, '3')   // III → 3
+        .replace(/\biv\b/g, '4')    // IV → 4
+        .replace(/\bv\b/g, '5')     // V → 5
+        .replace(/[^a-z0-9\s]/g, '') // Remove special chars
+        .replace(/\s+/g, ' ');      // Normalize spaces
+}
+
+/**
+ * Send single quest quote response
+ */
+async function sendSingleQuoteResponse(
+    message: any,
+    result: { questName: string; service: any; price: number; upcharges: any[] },
+    notFound: string[]
+) {
+    const embed = new EmbedBuilder()
+        .setTitle(`${result.service.emoji || '⭐'} ${result.questName}`)
+        .setDescription(result.service.description || 'Fixed price quest service')
+        .setColor(0xfca311)
+        .setTimestamp();
+
+    // Show main price
+    embed.addFields({
+        name: "💰 Price",
+        value: `\`\`\`ansi\n\u001b[1;32m$${result.price.toFixed(2)}\u001b[0m\n\`\`\``,
+        inline: false,
+    });
+
+    // Show upcharges in notes if any
+    if (result.upcharges.length > 0) {
+        const upchargeLines = result.upcharges.map(u =>
+            `• ${u.method}: $${u.price.toFixed(2)} (+$${u.difference.toFixed(2)})`
+        );
         embed.addFields({
-            name: "📝 Note",
-            value: "Final price may vary based on account requirements and selected options.\nContact support for a personalized quote!",
+            name: "📝 Payment Method Upcharges",
+            value: upchargeLines.join('\n'),
             inline: false,
         });
+    }
 
-        await thinkingMsg.edit({
-            content: "",
-            embeds: [embed.toJSON() as any],
-        });
+    // Add general note
+    embed.addFields({
+        name: "ℹ️ Note",
+        value: "Price shown is base cost. Additional upcharges may apply based on account requirements.\nContact support for personalized quote!",
+        inline: false,
+    });
 
-        logger.info(`[PriceCalculator] Quote sent for ${service.name} to ${message.author.tag}`);
-    } catch (apiError) {
-        logger.error('[PriceCalculator] API error:', apiError);
-        await thinkingMsg.edit({
-            content: `❌ **Quote Error**\n\n` +
-                `An error occurred while fetching the price quote.\n\n` +
-                `Please try another service or contact support.`,
+    await message.edit({
+        content: notFound.length > 0 ? `⚠️ Could not find: ${notFound.join(', ')}` : "",
+        embeds: [embed.toJSON() as any],
+    });
+}
+
+/**
+ * Send batch quest quote response
+ */
+async function sendBatchQuoteResponse(
+    message: any,
+    results: Array<{ questName: string; service: any; price: number; upcharges: any[] }>,
+    notFound: string[]
+) {
+    const embed = new EmbedBuilder()
+        .setTitle("📋 Quest Bundle Quote")
+        .setColor(0xfca311)
+        .setTimestamp();
+
+    // Build quest list
+    const questList = results.map((r, i) =>
+        `${i + 1}. ${r.service.emoji || '⭐'} **${r.questName}** → \`$${r.price.toFixed(2)}\``
+    ).join('\n');
+
+    embed.addFields({
+        name: "Quests",
+        value: questList,
+        inline: false,
+    });
+
+    // Calculate total
+    const total = results.reduce((sum, r) => sum + r.price, 0);
+
+    embed.addFields({
+        name: "💰 Total Price",
+        value: `\`\`\`ansi\n\u001b[1;32m$${total.toFixed(2)}\u001b[0m\n\`\`\``,
+        inline: false,
+    });
+
+    // Show upcharges if any quest has them
+    const hasUpcharges = results.some(r => r.upcharges.length > 0);
+    if (hasUpcharges) {
+        embed.addFields({
+            name: "📝 Note",
+            value: "Prices shown are base costs. Payment method upcharges may apply.\nContact support for detailed breakdown!",
+            inline: false,
         });
     }
+
+    await message.edit({
+        content: notFound.length > 0 ? `⚠️ Could not find: ${notFound.join(', ')}` : "",
+        embeds: [embed.toJSON() as any],
+    });
 }

@@ -1,4 +1,5 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
+import logger from "../../common/loggers";
 
 export interface JobClaimingData {
     orderId: string;
@@ -11,16 +12,12 @@ export interface JobClaimingData {
     customerDiscordId: string;
 }
 
-/**
- * Creates an embed for job claiming channel
- */
 export function createJobClaimingEmbed(data: JobClaimingData): EmbedBuilder {
-    // Validate required data
     if (!data.orderId) {
-        console.error(`[JobClaimingEmbed] Missing orderId!`, data);
+        logger.error(`[JobClaimingEmbed] Missing orderId!`, data);
     }
     if (!data.orderNumber && data.orderNumber !== 0) {
-        console.error(`[JobClaimingEmbed] Missing orderNumber!`, data);
+        logger.error(`[JobClaimingEmbed] Missing orderNumber!`, data);
     }
 
     const workerPayout = data.orderValue * 0.8; // 80% payout

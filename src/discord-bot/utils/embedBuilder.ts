@@ -116,14 +116,6 @@ export class EmbedBuilder {
             });
         }
 
-        // Add service modifiers (applies to all methods)
-        console.log('[DEBUG] Service data:', JSON.stringify({
-            name: service.name,
-            hasServiceModifiers: !!service.serviceModifiers,
-            serviceModifiersLength: service.serviceModifiers?.length || 0,
-            serviceModifiers: service.serviceModifiers
-        }, null, 2));
-
         if (service.serviceModifiers && service.serviceModifiers.length > 0) {
             const modifiersText = service.serviceModifiers
                 .map(modifier => {
@@ -136,15 +128,11 @@ export class EmbedBuilder {
                 })
                 .join("\n");
 
-            console.log('[DEBUG] Adding modifiers field:', modifiersText);
-
             embed.addFields({
                 name: "⚙️ **Available Modifiers** (All Methods)",
                 value: modifiersText,
                 inline: false,
             });
-        } else {
-            console.log('[DEBUG] No service modifiers to display');
         }
 
         // Add service status
