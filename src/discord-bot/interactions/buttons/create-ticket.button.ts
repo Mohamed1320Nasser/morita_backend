@@ -68,7 +68,7 @@ async function buildModalForTicketType(ticketType: TicketType): Promise<ModalBui
     try {
         // Fetch custom fields from API
         const response = await axios.get(
-            `${discordConfig.apiBaseUrl}/api/discord/ticket-type-settings/${ticketType}/custom-fields`
+            `${discordConfig.apiBaseUrl}/discord/ticket-type-settings/${ticketType}/custom-fields`
         );
 
         const customFieldsData = response.data?.data;
@@ -106,12 +106,12 @@ function buildFieldsFromCustomDefinitions(
 
         const input = new TextInputBuilder()
             .setCustomId(field.id)
-            .setLabel(field.label)
+            .setLabel(field.label.slice(0, 45)) // Discord limit: 45 chars
             .setRequired(field.required);
 
-        // Set placeholder if provided
+        // Set placeholder if provided (Discord limit: 100 chars)
         if (field.placeholder) {
-            input.setPlaceholder(field.placeholder);
+            input.setPlaceholder(field.placeholder.slice(0, 100));
         }
 
         // Set style based on type
@@ -121,9 +121,9 @@ function buildFieldsFromCustomDefinitions(
             input.setStyle(TextInputStyle.Short);
         }
 
-        // Set max length if provided
+        // Set max length if provided (Discord limit: 4000)
         if (field.maxLength) {
-            input.setMaxLength(field.maxLength);
+            input.setMaxLength(Math.min(field.maxLength, 4000));
         }
 
         // Set min/max for number fields (as value constraints)
@@ -250,7 +250,7 @@ function getModalFields(ticketType: TicketType): ActionRowBuilder<TextInputBuild
             new ActionRowBuilder<TextInputBuilder>().addComponents(
                 new TextInputBuilder()
                     .setCustomId("gold_amount")
-                    .setLabel("How much gold do you want to sell? (in millions)")
+                    .setLabel("How much gold to sell? (in millions)")
                     .setPlaceholder("e.g., 500 (for 500M)")
                     .setStyle(TextInputStyle.Short)
                     .setRequired(true)

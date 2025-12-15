@@ -382,7 +382,7 @@ export class TicketService {
             let welcomeSettings: any;
             try {
                 const settingsResponse = await this.apiClient.post(
-                    `/api/discord/ticket-type-settings/render`,
+                    `/discord/ticket-type-settings/render`,
                     {
                         ticketType: ticketType,
                         variables: {
