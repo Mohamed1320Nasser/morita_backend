@@ -963,6 +963,7 @@ async function handleQuoteCommand(message: Message, apiService: ApiService) {
 
 /**
  * Find best matching quest service with improved logic
+ * Searches both service names AND pricing method names
  */
 function findBestQuestMatch(services: any[], searchName: string): any | null {
     // Normalize search name (handle Roman numerals)
@@ -973,25 +974,43 @@ function findBestQuestMatch(services: any[], searchName: string): any | null {
         s.pricingMethods?.some((m: any) => m.pricingUnit === 'FIXED')
     );
 
-    // Try exact match first
+    // Try exact match on SERVICE NAME first
     let match = fixedServices.find((s: any) =>
         normalizeQuestName(s.name) === normalized ||
         normalizeQuestName(s.slug) === normalized
     );
 
     if (match) {
-        logger.info(`[Quest] ✅ Exact match: "${match.name}"`);
+        logger.info(`[Quest] ✅ Exact service match: "${match.name}"`);
         return match;
     }
 
-    // Try partial match (but prefer shorter names to avoid DT2 matching DT1)
+    // Try exact match on PRICING METHOD NAMES (for quests like "Cook's Assistant")
+    for (const service of fixedServices) {
+        const methodMatch = service.pricingMethods?.find((m: any) =>
+            m.pricingUnit === 'FIXED' &&
+            normalizeQuestName(m.name) === normalized
+        );
+
+        if (methodMatch) {
+            logger.info(`[Quest] ✅ Exact pricing method match: "${methodMatch.name}" in service "${service.name}"`);
+            // Return a virtual service object for this specific quest
+            return {
+                ...service,
+                name: methodMatch.name,
+                pricingMethods: [methodMatch],
+            };
+        }
+    }
+
+    // Try partial match on service names (but prefer shorter names to avoid DT2 matching DT1)
     const partialMatches = fixedServices.filter((s: any) =>
         normalizeQuestName(s.name).includes(normalized) ||
         normalizeQuestName(s.slug).includes(normalized)
     );
 
     if (partialMatches.length === 1) {
-        logger.info(`[Quest] ✅ Partial match: "${partialMatches[0].name}"`);
+        logger.info(`[Quest] ✅ Partial service match: "${partialMatches[0].name}"`);
         return partialMatches[0];
     }
 
@@ -1000,8 +1019,30 @@ function findBestQuestMatch(services: any[], searchName: string): any | null {
         match = partialMatches.reduce((shortest, curr) =>
             curr.name.length < shortest.name.length ? curr : shortest
         );
-        logger.info(`[Quest] ✅ Best partial match: "${match.name}" (shortest of ${partialMatches.length})`);
+        logger.info(`[Quest] ✅ Best partial service match: "${match.name}" (shortest of ${partialMatches.length})`);
         return match;
+    }
+
+    // Try partial match on pricing method names
+    for (const service of fixedServices) {
+        const methodMatches = service.pricingMethods?.filter((m: any) =>
+            m.pricingUnit === 'FIXED' &&
+            normalizeQuestName(m.name).includes(normalized)
+        );
+
+        if (methodMatches && methodMatches.length > 0) {
+            // Use the first/shortest match
+            const bestMethod = methodMatches.reduce((shortest: any, curr: any) =>
+                curr.name.length < shortest.name.length ? curr : shortest
+            );
+
+            logger.info(`[Quest] ✅ Partial pricing method match: "${bestMethod.name}" in service "${service.name}"`);
+            return {
+                ...service,
+                name: bestMethod.name,
+                pricingMethods: [bestMethod],
+            };
+        }
     }
 
     logger.warn(`[Quest] ❌ No match found for: "${searchName}"`);
@@ -1010,6 +1051,7 @@ function findBestQuestMatch(services: any[], searchName: string): any | null {
 
 /**
  * Normalize quest name (handle Roman numerals and formatting)
+ * IMPORTANT: Preserves apostrophes for quest names like "Cook's Assistant"
  */
 function normalizeQuestName(name: string): string {
     return name
@@ -1020,8 +1062,9 @@ function normalizeQuestName(name: string): string {
         .replace(/\biii\b/g, '3')   // III → 3
         .replace(/\biv\b/g, '4')    // IV → 4
         .replace(/\bv\b/g, '5')     // V → 5
-        .replace(/[^a-z0-9\s]/g, '') // Remove special chars
-        .replace(/\s+/g, ' ');      // Normalize spaces
+        .replace(/[^a-z0-9\s']/g, '') // Remove special chars BUT keep apostrophes
+        .replace(/\s+/g, ' ')       // Normalize spaces
+        .replace(/'+/g, "'");       // Normalize multiple apostrophes to single
 }
 
 /**

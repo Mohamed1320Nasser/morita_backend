@@ -4,6 +4,7 @@ import { ApiService } from "../../services/api.service";
 import { discordConfig } from "../../config/discord.config";
 import logger from "../../../common/loggers";
 import { pricingMessageTracker } from "../../services/pricingMessageTracker.service";
+import { DISCORD_LIMITS } from "../../constants/discord-limits";
 
 const apiService = new ApiService(discordConfig.apiBaseUrl);
 
@@ -72,7 +73,19 @@ export async function handleImprovedPricingServiceSelect(
         const serviceId = interaction.values[0];
 
         // Immediately reply to the interaction (this prevents checkmark)
-        await interaction.deferReply({ ephemeral: true });
+        // Wrap in try/catch to handle expired interactions gracefully
+        try {
+            await interaction.deferReply({ ephemeral: true });
+        } catch (deferError) {
+            // If interaction is expired (bot restart), silently fail
+            if (isInteractionExpiredError(deferError)) {
+                logger.debug(
+                    `[PricingServiceSelect] Interaction expired (likely bot restart). User: ${interaction.user.tag}`
+                );
+                return;
+            }
+            throw deferError;
+        }
 
         // Handle "Show More" option
         if (serviceId.startsWith("show_more_")) {
@@ -102,11 +115,30 @@ export async function handleImprovedPricingServiceSelect(
         // Build embed with pricing sections (MMOGoldHut style)
         let embed, actionButtons;
         try {
+            const page = 0; // Start at page 0
+            const itemsPerPage = DISCORD_LIMITS.PAGINATION.PRICING_ITEMS_PER_PAGE;
+
             // Build service info embed WITH pricing sections (clean Discord embed style)
-            embed = EnhancedPricingBuilder.buildServiceInfoEmbed(service);
-            actionButtons = EnhancedPricingBuilder.buildServiceActionButtons(
+            embed = EnhancedPricingBuilder.buildServiceInfoEmbed(service, {
+                page,
+                itemsPerPage
+            });
+
+            // Calculate pagination options
+            const totalPricingMethods = service.pricingMethods?.length || 0;
+            const paginationOptions = totalPricingMethods > itemsPerPage ? {
+                currentPage: page,
+                itemsPerPage,
+                totalItems: totalPricingMethods,
                 serviceId,
                 categoryId
+            } : undefined;
+
+            // Build action buttons with pagination if needed
+            actionButtons = EnhancedPricingBuilder.buildServiceActionButtons(
+                serviceId,
+                categoryId,
+                paginationOptions
             );
 
             // Validate embed before sending
@@ -155,10 +187,10 @@ export async function handleImprovedPricingServiceSelect(
         // Send the response
         try {
             const embedData = embed.toJSON();
-            const buttonData = actionButtons.toJSON();
+            const componentsData = actionButtons.map(row => row.toJSON());
 
             // Validate components
-            if (!buttonData.components || buttonData.components.length === 0) {
+            if (componentsData.length === 0 || componentsData.every(row => !row.components || row.components.length === 0)) {
                 logger.warn(
                     "[PricingServiceSelect] No button components, skipping"
                 );
@@ -167,7 +199,7 @@ export async function handleImprovedPricingServiceSelect(
             // Send the service details as ephemeral reply
             await interaction.editReply({
                 embeds: [embedData as any],
-                components: [buttonData as any],
+                components: componentsData as any,
             });
 
             // Track message for auto-delete after 10 minutes
@@ -194,8 +226,8 @@ export async function handleImprovedPricingServiceSelect(
                         : String(sendError),
                 stack: sendError instanceof Error ? sendError.stack : undefined,
                 embedSize: embed ? JSON.stringify(embed.toJSON()).length : 0,
-                buttonSize: actionButtons
-                    ? JSON.stringify(actionButtons.toJSON()).length
+                componentsSize: actionButtons
+                    ? JSON.stringify(actionButtons.map(row => row.toJSON())).length
                     : 0,
             };
 
@@ -234,7 +266,7 @@ export async function handleImprovedPricingServiceSelect(
 
                     await interaction.editReply({
                         embeds: [simplifiedEmbed.toJSON() as any],
-                        components: [actionButtons.toJSON() as any],
+                        components: actionButtons.map(row => row.toJSON()) as any,
                     });
 
                     // Track simplified message for auto-delete too

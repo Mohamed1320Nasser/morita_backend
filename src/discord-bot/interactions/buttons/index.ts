@@ -33,6 +33,7 @@ import { handleHelpSupport } from "./help-support.button";
 // import { handleCategoryToggle } from "./pricing-category-toggle.button"; // DISABLED - old system
 import { handleServiceDetails } from "./pricing-service-details.button";
 import { handleAdminRefreshPricing } from "./admin-refresh-pricing.button";
+import { handlePricingPagination } from "./pricing-pagination.button";
 import { handleClaimJobButton } from "./claim-job.button";
 import { handleConfirmCompleteButton } from "./confirm-complete.button";
 import { handleReportIssueButton } from "./report-issue.button";
@@ -103,6 +104,12 @@ export async function handleButtonInteraction(
             customId.endsWith("_details")
         ) {
             await handleServiceDetails(interaction);
+            return;
+        }
+
+        // Pricing pagination buttons
+        if (customId.startsWith("pricing_prev_") || customId.startsWith("pricing_next_")) {
+            await handlePricingPagination(interaction);
             return;
         }
 

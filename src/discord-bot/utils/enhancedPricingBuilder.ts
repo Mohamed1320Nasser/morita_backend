@@ -13,6 +13,14 @@ import {
     PricingModifier,
 } from "../types/discord.types";
 import logger from "../../common/loggers";
+import {
+    getPaginatedPricingMethods,
+    addPaginationFooter,
+    createServiceActionButtonsWithPagination,
+    PaginationOptions
+} from "./pricingPagination";
+import { DISCORD_LIMITS } from "../constants/discord-limits";
+import { toNumber, formatPrice as formatPriceUtil, formatLargeNumber } from "../../common/utils/decimal.util";
 
 /**
  * Options for building service details embeds
@@ -22,6 +30,8 @@ export interface BuildOptions {
     useAnsi?: boolean; // Use ANSI colorization (default: false, Discord support limited)
     bannerUrl?: string; // Optional banner image URL
     categoryColor?: number; // Override embed color with category color
+    page?: number; // Current page for pagination (0-indexed)
+    itemsPerPage?: number; // Items per page (default: from DISCORD_LIMITS.PAGINATION.PRICING_ITEMS_PER_PAGE)
 }
 
 /**
@@ -204,26 +214,33 @@ export class EnhancedPricingBuilder {
         service: Service,
         options: BuildOptions = {}
     ): EmbedBuilder {
-        const { compact = false, bannerUrl, categoryColor } = options;
+        try {
+            const {
+                compact = false,
+                bannerUrl,
+                categoryColor,
+                page = 0,
+                itemsPerPage = DISCORD_LIMITS.PAGINATION.PRICING_ITEMS_PER_PAGE
+            } = options;
 
-        // Use orange accent color like MMOGoldHut (#fca311)
-        const embedColor = 0xfca311;
+            // Use orange accent color like MMOGoldHut (#fca311)
+            const embedColor = 0xfca311;
 
-        // Get emoji for embed title (format custom emoji so Discord can render them)
-        const serviceEmoji = this.formatEmojiForDiscord(service.emoji) || "⭐";
+            // Get emoji for embed title (format custom emoji so Discord can render them)
+            const serviceEmoji = this.formatEmojiForDiscord(service.emoji) || "⭐";
 
-        const embed = new EmbedBuilder()
-            .setColor(embedColor)
-            .setTitle(`${serviceEmoji} ${service.name}`)
-            .setDescription(
-                service.description || "Professional gaming service"
-            )
-            .setTimestamp()
-            .setFooter({
-                text: "Morita Gaming Services • Select an option below",
-                iconURL:
-                    "https://cdn.discordapp.com/icons/placeholder/morita-icon.png",
-            });
+            const embed = new EmbedBuilder()
+                .setColor(embedColor)
+                .setTitle(`${serviceEmoji} ${service.name}`)
+                .setDescription(
+                    service.description || "Professional gaming service"
+                )
+                .setTimestamp()
+                .setFooter({
+                    text: "Morita Gaming Services • Select an option below",
+                    iconURL:
+                        "https://cdn.discordapp.com/icons/placeholder/morita-icon.png",
+                });
 
         // Add service image as large image at bottom (like MMOGoldHut style)
         // Use property indexing to bypass ts-node cache issues
@@ -241,8 +258,29 @@ export class EnhancedPricingBuilder {
         }
 
         // Add pricing sections if available
+        // NOTE: Discord limit is 25 fields per embed
         if (service.pricingMethods && service.pricingMethods.length > 0) {
-            this.addPricingSectionsToEmbed(embed, service.pricingMethods);
+            // Get paginated pricing methods
+            const pricingToShow = getPaginatedPricingMethods(
+                service.pricingMethods,
+                page,
+                itemsPerPage
+            );
+
+            const totalPages = Math.ceil(service.pricingMethods.length / itemsPerPage);
+            const hasMultiplePages = totalPages > 1;
+
+            this.addPricingSectionsToEmbed(embed, pricingToShow);
+
+            // Add pagination info to footer if multiple pages
+            if (hasMultiplePages) {
+                addPaginationFooter(
+                    embed,
+                    page,
+                    totalPages,
+                    service.pricingMethods.length
+                );
+            }
         }
 
         // Add service modifiers at the end (applies to ALL pricing methods)
@@ -321,23 +359,43 @@ export class EnhancedPricingBuilder {
             }
         }
 
-        return embed;
+            return embed;
+        } catch (error) {
+            logger.error(`[EnhancedPricingBuilder] Error in buildServiceInfoEmbed for ${service.name}:`, error);
+            throw error;
+        }
     }
 
     /**
      * Add pricing sections to embed in MMOGoldHut style
      */
     private static addPricingSectionsToEmbed(embed: EmbedBuilder, pricingMethods: PricingMethod[]): void {
-        // Group pricing methods by type
-        const groupedMethods = this.groupPricingMethodsByType(pricingMethods);
+        try {
+            logger.debug(`[addPricingSectionsToEmbed] Processing ${pricingMethods.length} pricing methods`);
 
-        // Add each group as a section (MMOGoldHut style with colored code blocks)
-        for (const [groupName, methods] of Object.entries(groupedMethods)) {
-            const items: string[] = [];
+            // Group pricing methods by type
+            const groupedMethods = this.groupPricingMethodsByType(pricingMethods);
 
-            for (const method of methods) {
-                const price = this.formatPriceNumber(method.basePrice);
-                const unit = this.formatPricingUnit(method.pricingUnit);
+            // Discord limit: max 25 fields per embed
+            const currentFieldCount = embed.data.fields?.length || 0;
+            const availableFields = DISCORD_LIMITS.EMBED.MAX_FIELDS - currentFieldCount;
+            let fieldsAdded = 0;
+
+            logger.debug(`[addPricingSectionsToEmbed] Current fields: ${currentFieldCount}, Available: ${availableFields}`);
+
+            // Add each group as a section (MMOGoldHut style with colored code blocks)
+            for (const [groupName, methods] of Object.entries(groupedMethods)) {
+                // Stop if we've reached the field limit
+                if (fieldsAdded >= availableFields) {
+                    logger.warn(`[addPricingSectionsToEmbed] Reached field limit, stopping at ${fieldsAdded} fields`);
+                    break;
+                }
+
+                const items: string[] = [];
+
+                for (const method of methods) {
+                    const price = this.formatPriceNumber(method.basePrice);
+                    const unit = this.formatPricingUnit(method.pricingUnit);
 
                 // Format based on whether it has level ranges
                 // Use ANSI color codes for MMOGoldHut-style colored text
@@ -357,47 +415,61 @@ export class EnhancedPricingBuilder {
             // Add section as embed field with spacing
             // Use # for big heading (MMOGoldHut style - much bolder!)
             const fieldValue = items.join('\n'); // Single newline - ANSI blocks already have padding
-            if (fieldValue.length <= 1024) {
+            if (fieldValue.length <= DISCORD_LIMITS.EMBED.MAX_FIELD_VALUE) {
                 embed.addFields({
                     name: `# ${groupName}`, // Big header with # symbol
                     value: fieldValue,
                     inline: false
                 });
+                fieldsAdded++;
             }
         }
 
-        // Add upcharges section if any
-        const upcharges = this.extractUpcharges(pricingMethods);
-        if (upcharges.length > 0) {
-            const upchargeLines = upcharges.slice(0, 5).map(u => `⚠️ ${u}`);
-            if (upcharges.length > 5) {
-                upchargeLines.push(`*+${upcharges.length - 5} more upcharges*`);
-            }
-            const upchargeValue = upchargeLines.join('\n');
-            if (upchargeValue.length <= 1024) {
-                embed.addFields({
-                    name: "⚠️ Additional Charges",
-                    value: upchargeValue,
-                    inline: false
-                });
+        // Add upcharges section if any (only if we have room)
+        if (fieldsAdded < availableFields) {
+            const upcharges = this.extractUpcharges(pricingMethods);
+            if (upcharges.length > 0) {
+                const upchargeLines = upcharges.slice(0, 5).map(u => `⚠️ ${u}`);
+                if (upcharges.length > 5) {
+                    upchargeLines.push(`*+${upcharges.length - 5} more upcharges*`);
+                }
+                const upchargeValue = upchargeLines.join('\n');
+                if (upchargeValue.length <= 1024) {
+                    embed.addFields({
+                        name: "⚠️ Additional Charges",
+                        value: upchargeValue,
+                        inline: false
+                    });
+                    fieldsAdded++;
+                }
             }
         }
 
-        // Add notes section if any
-        const notes = this.extractNotes(pricingMethods);
-        if (notes.length > 0) {
-            const noteLines = notes.slice(0, 5).map(n => `→ ${n}`);
-            if (notes.length > 5) {
-                noteLines.push(`*+${notes.length - 5} more notes*`);
+        // Add notes section if any (only if we have room)
+        if (fieldsAdded < availableFields) {
+            const notes = this.extractNotes(pricingMethods);
+            if (notes.length > 0) {
+                const noteLines = notes.slice(0, 5).map(n => `→ ${n}`);
+                if (notes.length > 5) {
+                    noteLines.push(`*+${notes.length - 5} more notes*`);
+                }
+                const noteValue = noteLines.join('\n');
+                if (noteValue.length <= 1024) {
+                    embed.addFields({
+                        name: "📝 Important Notes",
+                        value: noteValue,
+                        inline: false
+                    });
+                    fieldsAdded++;
+                }
             }
-            const noteValue = noteLines.join('\n');
-            if (noteValue.length <= 1024) {
-                embed.addFields({
-                    name: "📝 Important Notes",
-                    value: noteValue,
-                    inline: false
-                });
-            }
+        }
+
+        logger.debug(`[addPricingSectionsToEmbed] Added ${fieldsAdded} fields total`);
+        } catch (error) {
+            logger.error(`[addPricingSectionsToEmbed] Error adding pricing sections:`, error);
+            logger.error(`[addPricingSectionsToEmbed] Pricing method count: ${pricingMethods.length}`);
+            throw error;
         }
     }
 
@@ -1032,25 +1104,39 @@ export class EnhancedPricingBuilder {
 
     /**
      * Build action buttons for service details
+     * If paginationOptions are provided, includes pagination buttons
      */
     static buildServiceActionButtons(
         serviceId: string,
-        categoryId: string
-    ): ActionRowBuilder<ButtonBuilder> {
-        return new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder()
-                .setCustomId(`open_ticket_${serviceId}_${categoryId}_0`)
-                .setLabel("🎫 Open Ticket")
-                .setStyle(ButtonStyle.Success),
-            new ButtonBuilder()
-                .setCustomId(`calculate_price_${serviceId}`)
-                .setLabel("💰 Calculate Price")
-                .setStyle(ButtonStyle.Primary),
-            new ButtonBuilder()
-                .setCustomId(`back_to_category_${categoryId}`)
-                .setLabel("⬅️ Back")
-                .setStyle(ButtonStyle.Secondary)
-        );
+        categoryId: string,
+        paginationOptions?: PaginationOptions
+    ): ActionRowBuilder<ButtonBuilder>[] {
+        // Use the pagination helper if pagination options are provided
+        if (paginationOptions) {
+            return createServiceActionButtonsWithPagination(
+                serviceId,
+                categoryId,
+                paginationOptions
+            );
+        }
+
+        // Legacy single row without pagination
+        return [
+            new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`open_ticket_${serviceId}_${categoryId}_0`)
+                    .setLabel("🎫 Open Ticket")
+                    .setStyle(ButtonStyle.Success),
+                new ButtonBuilder()
+                    .setCustomId(`calculate_price_${serviceId}`)
+                    .setLabel("💰 Calculate Price")
+                    .setStyle(ButtonStyle.Primary),
+                new ButtonBuilder()
+                    .setCustomId(`back_to_category_${categoryId}`)
+                    .setLabel("⬅️ Back")
+                    .setStyle(ButtonStyle.Secondary)
+            )
+        ];
     }
 
     /**
@@ -1069,12 +1155,14 @@ export class EnhancedPricingBuilder {
     /**
      * Format price with proper currency using Intl.NumberFormat
      * Supports K/M abbreviations for large numbers
+     *
+     * @deprecated Use formatPrice from decimal.util.ts instead
+     * Kept for backwards compatibility
      */
     private static formatPrice(price: any, currency: string = "USD"): string {
-        if (typeof price === "string") {
-            price = parseFloat(price);
-        }
-        if (isNaN(price) || price === null || price === undefined) {
+        const num = toNumber(price);
+
+        if (num === 0 && price !== 0 && price !== '0') {
             return "Contact Us";
         }
 
@@ -1087,13 +1175,13 @@ export class EnhancedPricingBuilder {
         });
 
         // Format based on price magnitude (preserve K/M abbreviations for readability)
-        if (price >= 1000000) {
-            const millions = price / 1000000;
+        if (num >= 1000000) {
+            const millions = num / 1000000;
             return formatter.format(millions).replace(/\.00$/, "") + "M";
-        } else if (price >= 1000) {
-            const thousands = price / 1000;
+        } else if (num >= 1000) {
+            const thousands = num / 1000;
             return formatter.format(thousands).replace(/\.00$/, "") + "K";
-        } else if (price < 1) {
+        } else if (num < 1 && num > 0) {
             // For very small prices, use more decimal places
             const smallFormatter = new Intl.NumberFormat("en-US", {
                 style: "currency",
@@ -1101,9 +1189,9 @@ export class EnhancedPricingBuilder {
                 minimumFractionDigits: 4,
                 maximumFractionDigits: 4,
             });
-            return smallFormatter.format(price);
+            return smallFormatter.format(num);
         } else {
-            return formatter.format(price);
+            return formatter.format(num);
         }
     }
 
@@ -1140,32 +1228,19 @@ export class EnhancedPricingBuilder {
 
     /**
      * Format price as plain number (MMOGoldHut style - no $ symbol)
+     *
+     * @deprecated Use formatPrice from decimal.util.ts instead
+     * Kept for backwards compatibility
      */
     private static formatPriceNumber(price: any): string {
-        if (typeof price === "string") {
-            price = parseFloat(price);
-        }
-        if (isNaN(price) || price === null || price === undefined) {
+        const num = toNumber(price);
+
+        if (num === 0 && price !== 0 && price !== '0') {
             return "Contact Us";
         }
 
-        // For very small prices (like XP rates), show up to 6 decimals but remove ONLY trailing zeros
-        if (price < 1) {
-            // Convert to string with 8 decimals, then intelligently remove trailing zeros
-            let str = price.toFixed(8);
-            // Remove trailing zeros but keep at least one decimal place
-            str = str.replace(/(\.\d*?[1-9])0+$/, '$1'); // Keep significant digits
-            str = str.replace(/\.0+$/, ''); // Remove if all zeros after decimal
-            return str || '0';
-        } else if (price >= 1000000) {
-            const millions = price / 1000000;
-            return millions.toFixed(2) + "M";
-        } else if (price >= 1000) {
-            const thousands = price / 1000;
-            return thousands.toFixed(2) + "K";
-        } else {
-            return price.toFixed(2);
-        }
+        // Use the utility function for consistent formatting
+        return formatPriceUtil(num);
     }
 
     /**

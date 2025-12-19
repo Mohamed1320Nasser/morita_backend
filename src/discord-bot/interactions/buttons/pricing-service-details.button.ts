@@ -11,6 +11,9 @@ import { EmbedBuilder as CustomEmbedBuilder } from "../../utils/embedBuilder";
 import { COLORS } from "../../constants/colors";
 import logger from "../../../common/loggers";
 import { pricingMessageTracker } from "../../services/pricingMessageTracker.service";
+import { splitContent, ContentItem, DISCORD_LIMITS } from "../../utils/messageSplitter";
+import { handleInteractionError } from "../../utils/errorHandler";
+import { toNumber } from "../../../common/utils/decimal.util";
 
 export async function handleServiceDetails(
     interaction: ButtonInteraction
@@ -89,9 +92,7 @@ export async function handleServiceDetails(
         );
     } catch (error) {
         logger.error("Error handling service details:", error);
-        await interaction.editReply({
-            content: "Error loading service details. Please try again later.",
-        });
+        await handleInteractionError(error, interaction);
     }
 }
 
@@ -133,21 +134,43 @@ function buildServiceDetailsEmbed(service: any): EmbedBuilder {
 
     // Add pricing methods in a professional table format
     if (service.pricingMethods && service.pricingMethods.length > 0) {
-        const pricingTable = service.pricingMethods
+        const pricingLines = service.pricingMethods
             .map((method: any, index: number) => {
                 const price = formatPrice(method.basePrice, method.pricingUnit);
                 const tier = method.name;
                 const connector =
                     index === service.pricingMethods.length - 1 ? "└─" : "├─";
                 return `\`${connector}\` **${tier}** → \`${price}\``;
-            })
-            .join("\n");
+            });
 
-        embed.addFields({
-            name: "📊 PRICING TIERS",
-            value: `\`\`\`ansi\n${pricingTable}\n\`\`\``,
-            inline: false,
-        });
+        // Check if single field would exceed limit
+        const fullTable = pricingLines.join("\n");
+        const wrappedTable = `\`\`\`ansi\n${fullTable}\n\`\`\``;
+
+        if (wrappedTable.length <= DISCORD_LIMITS.EMBED_FIELD_VALUE) {
+            // Fits in one field
+            embed.addFields({
+                name: "📊 PRICING TIERS",
+                value: wrappedTable,
+                inline: false,
+            });
+        } else {
+            // Split into multiple fields (max 25 fields per embed)
+            const itemsPerField = Math.ceil(pricingLines.length / Math.min(Math.ceil(pricingLines.length / 10), 3));
+            let fieldNumber = 1;
+
+            for (let i = 0; i < pricingLines.length; i += itemsPerField) {
+                const chunk = pricingLines.slice(i, i + itemsPerField);
+                const chunkTable = chunk.join("\n");
+
+                embed.addFields({
+                    name: `📊 PRICING TIERS ${fieldNumber > 1 ? `(Part ${fieldNumber})` : ''}`,
+                    value: chunkTable,
+                    inline: false,
+                });
+                fieldNumber++;
+            }
+        }
     }
 
     // Add service information
@@ -205,28 +228,25 @@ function buildServiceDetailsEmbed(service: any): EmbedBuilder {
 /**
  * Format price based on pricing unit
  */
-function formatPrice(basePrice: number | string, pricingUnit: string): string {
-    // Convert to number if it's a string (from database Decimal type)
-    const price =
-        typeof basePrice === "string" ? parseFloat(basePrice) : basePrice;
+function formatPrice(basePrice: any, pricingUnit: string): string {
+    // Use centralized utility for Decimal handling
+    const price = toNumber(basePrice);
 
-    // Handle NaN or invalid numbers
-    if (isNaN(price)) {
-        return "$0.00";
-    }
+    // Format price with unit
+    const formattedPrice = `$${price.toFixed(2)}`;
 
     switch (pricingUnit) {
         case "FIXED":
-            return `$${price.toFixed(2)}`;
+            return formattedPrice;
         case "PER_LEVEL":
-            return `$${price.toFixed(2)} per level`;
+            return `${formattedPrice} per level`;
         case "PER_KILL":
-            return `$${price.toFixed(2)} per kill`;
+            return `${formattedPrice} per kill`;
         case "PER_ITEM":
-            return `$${price.toFixed(2)} per item`;
+            return `${formattedPrice} per item`;
         case "PER_HOUR":
-            return `$${price.toFixed(2)} per hour`;
+            return `${formattedPrice} per hour`;
         default:
-            return `$${price.toFixed(2)}`;
+            return formattedPrice;
     }
 }
