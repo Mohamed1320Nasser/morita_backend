@@ -182,10 +182,18 @@ export class DiscordErrorService {
     };
 
     // Count by status
-    const byStatus: Record<ErrorStatus, number> = {} as Record<ErrorStatus, number>;
-    Object.values(ErrorStatus).forEach((status) => {
-      byStatus[status] = 0;
-    });
+    const byStatus: Record<ErrorStatus, number> = {
+      [ErrorStatus.BAD_REQUEST]: 0,
+      [ErrorStatus.UNAUTHORIZED]: 0,
+      [ErrorStatus.FORBIDDEN]: 0,
+      [ErrorStatus.NOT_FOUND]: 0,
+      [ErrorStatus.CONFLICT]: 0,
+      [ErrorStatus.RATE_LIMITED]: 0,
+      [ErrorStatus.INTERNAL_ERROR]: 0,
+      [ErrorStatus.BAD_GATEWAY]: 0,
+      [ErrorStatus.SERVICE_UNAVAILABLE]: 0,
+      [ErrorStatus.TIMEOUT]: 0,
+    };
 
     // Populate counts
     periodErrors.forEach((error) => {
