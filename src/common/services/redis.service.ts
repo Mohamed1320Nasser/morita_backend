@@ -174,7 +174,7 @@ export class RedisService {
             const serialized = JSON.stringify(value);
 
             if (this.client && this.isConnected) {
-                const result = await this.client.set(key, serialized, "NX", "EX", ttlSeconds || 86400);
+                const result = await this.client.set(key, serialized, "EX", ttlSeconds || 86400, "NX");
                 return result === "OK";
             } else {
                 // Fallback to in-memory
