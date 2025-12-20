@@ -39,7 +39,7 @@ export async function handleTicketModal(
             interaction.user,
             {
                 customerDiscordId: interaction.user.id,
-                categoryId: categoryId || "",
+                categoryId: categoryId || undefined,
                 serviceId,
                 customerNotes,
                 customerName: interaction.user.displayName || interaction.user.username,

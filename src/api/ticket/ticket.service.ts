@@ -20,13 +20,20 @@ export default class TicketService {
      * Create a new ticket
      */
     async create(data: CreateTicketDto) {
-        // Verify the category exists
-        const category = await prisma.serviceCategory.findUnique({
-            where: { id: data.categoryId },
-        });
+        logger.info(`[TicketService] Creating ticket with categoryId: ${JSON.stringify(data.categoryId)}`);
 
-        if (!category) {
-            throw new NotFoundError("Category not found");
+        // Verify the category exists (only if categoryId is provided and not empty)
+        if (data.categoryId && data.categoryId.trim() !== "") {
+            const category = await prisma.serviceCategory.findUnique({
+                where: { id: data.categoryId },
+            });
+
+            if (!category) {
+                logger.error(`[TicketService] Category not found: ${data.categoryId}`);
+                throw new NotFoundError("Category not found");
+            }
+        } else {
+            logger.info(`[TicketService] No categoryId provided or empty, skipping category validation`);
         }
 
         // Verify service exists if provided
@@ -53,7 +60,7 @@ export default class TicketService {
             data: {
                 customerId: data.customerId,
                 customerDiscordId: data.customerDiscordId,
-                categoryId: data.categoryId,
+                categoryId: (data.categoryId && data.categoryId.trim() !== "") ? data.categoryId : undefined,
                 serviceId: data.serviceId,
                 channelId: data.channelId,
                 calculatedPrice: data.calculatedPrice,

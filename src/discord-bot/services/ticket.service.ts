@@ -27,7 +27,7 @@ export interface TicketData {
     ticketNumber?: number;
     customerId?: number;
     customerDiscordId: string;
-    categoryId: string;
+    categoryId?: string;
     serviceId?: string;
     channelId?: string;
     calculatedPrice?: number;
@@ -196,9 +196,12 @@ export class TicketService {
             // Get ticket type category name for channel name
             const ticketTypeName = this.getTicketTypeCategoryName(ticketType);
 
-            // Generate channel name: username {ticket-type}
+            // Clean username for channel name (Discord compatible)
             const username = user.username.replace(/[^a-z0-9_-]/gi, '').toLowerCase();
-            const tempChannelName = `${username} {${ticketTypeName}}`;
+
+            // Create temporary channel name (will be renamed after ticket is created in DB)
+            const tempTimestamp = Date.now().toString().slice(-6);
+            const tempChannelName = `temp-ticket-${tempTimestamp}`;
 
             // Create the channel
             const channel = await guild.channels.create({
@@ -264,8 +267,14 @@ export class TicketService {
                 await this.saveTicketMetadata(ticket.id, metadata);
             }
 
-            // Update channel topic
+            // Update channel name with actual ticket number from database
             const ticketNumber = ticket.ticketNumber.toString().padStart(4, "0");
+            const finalChannelName = `${username}-${ticketTypeName}-${ticketNumber}`;
+
+            await channel.setName(finalChannelName);
+            logger.info(`[TicketService] Renamed channel to: ${finalChannelName}`);
+
+            // Update channel topic
             await channel.setTopic(
                 `Ticket #${ticketNumber} | ${this.getTicketTypeLabel(ticketType)} | Customer: ${user.tag}`
             );
@@ -547,6 +556,61 @@ export class TicketService {
             return category;
         } catch (error) {
             logger.error("Error getting/creating tickets category:", error);
+            return null;
+        }
+    }
+
+    /**
+     * Get or create the Closed Tickets category
+     */
+    async getOrCreateClosedTicketsCategory(
+        guild: Guild
+    ): Promise<CategoryChannel | null> {
+        try {
+            // Try to find existing category by ID
+            if (discordConfig.closedTicketsCategoryId) {
+                const existing = guild.channels.cache.get(
+                    discordConfig.closedTicketsCategoryId
+                );
+                if (existing && existing.type === ChannelType.GuildCategory) {
+                    return existing as CategoryChannel;
+                }
+            }
+
+            // Try to find by name
+            const existingByName = guild.channels.cache.find(
+                (c) =>
+                    c.name.toLowerCase() === "closed tickets" &&
+                    c.type === ChannelType.GuildCategory
+            );
+            if (existingByName) {
+                return existingByName as CategoryChannel;
+            }
+
+            // Create new category
+            const category = await guild.channels.create({
+                name: "Closed Tickets",
+                type: ChannelType.GuildCategory,
+                permissionOverwrites: [
+                    {
+                        id: guild.id,
+                        deny: [PermissionFlagsBits.ViewChannel],
+                    },
+                    {
+                        id: discordConfig.supportRoleId,
+                        allow: [PermissionFlagsBits.ViewChannel],
+                    },
+                    {
+                        id: discordConfig.adminRoleId,
+                        allow: [PermissionFlagsBits.ViewChannel],
+                    },
+                ],
+            });
+
+            logger.info(`Created Closed Tickets category: ${category.id}`);
+            return category;
+        } catch (error) {
+            logger.error("Error getting/creating closed tickets category:", error);
             return null;
         }
     }
@@ -838,28 +902,103 @@ export class TicketService {
                     await channel.send({ embeds: [embed.toJSON() as any] });
                     logger.info(`[CloseTicket] Sent close message`);
 
-                    // Run channel updates in parallel (non-critical)
-                    const updatePromises: Promise<any>[] = [];
-
-                    // Rename channel
-                    updatePromises.push(
-                        channel.setName(`closed-${channel.name.replace("ticket-", "")}`)
-                            .catch(err => logger.warn(`[CloseTicket] Failed to rename channel:`, err.message))
-                    );
-
-                    // Remove customer permissions
-                    if (ticketResponse.customerDiscordId) {
-                        updatePromises.push(
-                            channel.permissionOverwrites.edit(
-                                ticketResponse.customerDiscordId,
-                                { ViewChannel: false }
-                            ).catch(err => logger.warn(`[CloseTicket] Failed to update permissions:`, err.message))
+                    // Disable the Close Ticket button in welcome message
+                    try {
+                        const messages = await channel.messages.fetch({ limit: 100 });
+                        const welcomeMessage = messages.find(msg =>
+                            msg.author.id === this.client.user?.id &&
+                            msg.components.length > 0 &&
+                            msg.components[0].components.some((c: any) => c.customId?.startsWith('ticket_close_'))
                         );
+
+                        if (welcomeMessage) {
+                            // Disable all buttons
+                            const disabledComponents = welcomeMessage.components.map(row => {
+                                const actionRow = new ActionRowBuilder<ButtonBuilder>();
+                                row.components.forEach((component: any) => {
+                                    if (component.type === 2) { // Button type
+                                        const button = ButtonBuilder.from(component);
+                                        button.setDisabled(true);
+                                        actionRow.addComponents(button);
+                                    }
+                                });
+                                return actionRow;
+                            });
+
+                            await welcomeMessage.edit({ components: disabledComponents as any });
+                            logger.info(`[CloseTicket] Disabled close ticket button`);
+                        }
+                    } catch (err: any) {
+                        logger.warn(`[CloseTicket] Failed to disable button:`, err.message);
                     }
 
-                    // Wait for all updates but don't fail if they error
-                    await Promise.allSettled(updatePromises);
-                    logger.info(`[CloseTicket] Channel updates completed`);
+                    // Get or create the Closed Tickets category
+                    logger.info(`[CloseTicket] Getting closed tickets category...`);
+                    const closedCategory = await this.getOrCreateClosedTicketsCategory(channel.guild);
+                    logger.info(`[CloseTicket] Closed category: ${closedCategory ? closedCategory.id : 'not found'}`);
+
+                    // Run channel updates SEQUENTIALLY with timeouts
+                    // 1. Rename channel (OPTIONAL - with 3 second timeout)
+                    try {
+                        logger.info(`[CloseTicket] Renaming channel from: ${channel.name}`);
+                        const newChannelName = channel.name.startsWith('closed-')
+                            ? channel.name
+                            : `closed-${channel.name}`;
+
+                        const renamePromise = channel.setName(newChannelName);
+                        const renameTimeout = new Promise((_, reject) =>
+                            setTimeout(() => reject(new Error('Rename timeout')), 3000)
+                        );
+
+                        await Promise.race([renamePromise, renameTimeout]);
+                        logger.info(`[CloseTicket] ✅ Channel renamed to: ${newChannelName}`);
+                    } catch (err: any) {
+                        logger.warn(`[CloseTicket] ⚠️ Skipping rename (${err.message}), continuing with move...`);
+                    }
+
+                    // 2. Move to Closed Tickets category (CRITICAL - with timeout)
+                    if (closedCategory) {
+                        try {
+                            logger.info(`[CloseTicket] Waiting 1s before moving...`);
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+
+                            logger.info(`[CloseTicket] Moving to closed category: ${closedCategory.id}`);
+
+                            const movePromise = channel.setParent(closedCategory.id, { lockPermissions: false });
+                            const moveTimeout = new Promise((_, reject) =>
+                                setTimeout(() => reject(new Error('Move timeout')), 5000)
+                            );
+
+                            await Promise.race([movePromise, moveTimeout]);
+                            logger.info(`[CloseTicket] ✅ Successfully moved to closed category`);
+                        } catch (err: any) {
+                            logger.error(`[CloseTicket] ❌ Failed to move to closed category: ${err.message}`);
+                        }
+                    }
+
+                    // 3. Remove customer permissions
+                    if (ticketResponse.customerDiscordId) {
+                        try {
+                            await new Promise(resolve => setTimeout(resolve, 500));
+
+                            logger.info(`[CloseTicket] Removing customer permissions...`);
+
+                            const permissionPromise = channel.permissionOverwrites.edit(
+                                ticketResponse.customerDiscordId,
+                                { ViewChannel: false }
+                            );
+                            const permissionTimeout = new Promise((_, reject) =>
+                                setTimeout(() => reject(new Error('Permission timeout')), 3000)
+                            );
+
+                            await Promise.race([permissionPromise, permissionTimeout]);
+                            logger.info(`[CloseTicket] ✅ Successfully removed customer permissions`);
+                        } catch (err: any) {
+                            logger.warn(`[CloseTicket] ❌ Failed to update permissions: ${err.message}`);
+                        }
+                    }
+
+                    logger.info(`[CloseTicket] All channel updates completed`);
                 }
             }
 
@@ -869,6 +1008,74 @@ export class TicketService {
         } catch (error) {
             logger.error("[CloseTicket] Error closing ticket:", error);
             throw error;
+        }
+    }
+
+    /**
+     * Archive old closed tickets
+     * Automatically archives closed ticket channels older than the configured threshold
+     */
+    async archiveOldClosedTickets(guild: Guild): Promise<void> {
+        try {
+            logger.info("[ArchiveClosedTickets] Starting archive process for old closed tickets");
+
+            // Get the Closed Tickets category
+            const closedCategory = await this.getOrCreateClosedTicketsCategory(guild);
+            if (!closedCategory) {
+                logger.warn("[ArchiveClosedTickets] Could not find Closed Tickets category");
+                return;
+            }
+
+            // Get all channels in the closed tickets category
+            const closedChannels = guild.channels.cache.filter(
+                channel =>
+                    channel.parentId === closedCategory.id &&
+                    channel.isTextBased() &&
+                    channel.name.startsWith("closed-")
+            );
+
+            if (closedChannels.size === 0) {
+                logger.info("[ArchiveClosedTickets] No closed tickets found to archive");
+                return;
+            }
+
+            logger.info(`[ArchiveClosedTickets] Found ${closedChannels.size} closed ticket channels`);
+
+            const now = Date.now();
+            const archiveThreshold = discordConfig.closedTicketArchiveAfter;
+            let archivedCount = 0;
+
+            for (const [channelId, channel] of closedChannels) {
+                try {
+                    // Check if channel is old enough to archive
+                    // Use the channel's creation date + last message timestamp
+                    const lastMessage = channel.isTextBased() ?
+                        await channel.messages.fetch({ limit: 1 }).then(msgs => msgs.first()) :
+                        null;
+
+                    const lastActivityTime = lastMessage?.createdTimestamp || channel.createdTimestamp || 0;
+                    const timeSinceLastActivity = now - lastActivityTime;
+
+                    if (timeSinceLastActivity >= archiveThreshold) {
+                        logger.info(
+                            `[ArchiveClosedTickets] Archiving ${channel.name} (last activity: ${Math.floor(timeSinceLastActivity / (60 * 60 * 1000))}h ago)`
+                        );
+
+                        // Archive the channel (Discord's native archive = thread lock + hide)
+                        // For text channels, we'll delete them or you can implement custom archiving
+                        await channel.delete(`Auto-archive: Closed ticket older than ${Math.floor(archiveThreshold / (60 * 60 * 1000))} hours`);
+                        archivedCount++;
+
+                        logger.info(`[ArchiveClosedTickets] Archived and deleted ${channel.name}`);
+                    }
+                } catch (error) {
+                    logger.error(`[ArchiveClosedTickets] Error archiving channel ${channel.name}:`, error);
+                }
+            }
+
+            logger.info(`[ArchiveClosedTickets] Archive process completed. Archived ${archivedCount} tickets`);
+        } catch (error) {
+            logger.error("[ArchiveClosedTickets] Error in archive process:", error);
         }
     }
 

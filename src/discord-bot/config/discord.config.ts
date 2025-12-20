@@ -4,15 +4,15 @@ import logger from "../../common/loggers";
 config();
 
 export const discordConfig = {
-    // Bot credentials
+    // Bot credentials - MUST be provided via environment variables
     token: process.env.DISCORD_BOT_TOKEN || "",
-    clientId: process.env.DISCORD_CLIENT_ID || "1431962373719326781",
-    guildId: process.env.DISCORD_GUILD_ID || "1431960124699709482",
+    clientId: process.env.DISCORD_CLIENT_ID || "",
+    guildId: process.env.DISCORD_GUILD_ID || "",
 
-    // Role IDs
-    workersRoleId: process.env.DISCORD_WORKERS_ROLE_ID || "1432045978134905055",
-    adminRoleId: process.env.DISCORD_ADMIN_ROLE_ID || "1432046286625964204",
-    supportRoleId: process.env.DISCORD_SUPPORT_ROLE_ID || "1432046601266004168",
+    // Role IDs - MUST be provided via environment variables
+    workersRoleId: process.env.DISCORD_WORKERS_ROLE_ID || "",
+    adminRoleId: process.env.DISCORD_ADMIN_ROLE_ID || "",
+    supportRoleId: process.env.DISCORD_SUPPORT_ROLE_ID || "",
 
     // Channel IDs
     ordersCategoryId: process.env.DISCORD_ORDERS_CATEGORY_ID || "",
@@ -45,7 +45,9 @@ export const discordConfig = {
     ticketChannelPrefix: "ticket-",
     ticketAutoClose: 24 * 60 * 60 * 1000, // 24 hours in milliseconds
     ticketCategoryId: process.env.DISCORD_TICKETS_CATEGORY_ID || "", // Parent category for ticket channels
+    closedTicketsCategoryId: process.env.DISCORD_CLOSED_TICKETS_CATEGORY_ID || "", // Category for closed ticket channels
     ticketLogChannelId: process.env.DISCORD_TICKET_LOG_CHANNEL_ID || "", // Log channel for ticket events
+    closedTicketArchiveAfter: parseInt(process.env.CLOSED_TICKET_ARCHIVE_AFTER_HOURS || "72") * 60 * 60 * 1000, // Default: 72 hours (3 days)
 
     // CREATE TICKET category and channels (NEW)
     createTicketCategoryId: process.env.DISCORD_CREATE_TICKET_CATEGORY_ID || "", // CREATE TICKET category

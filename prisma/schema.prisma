@@ -606,7 +606,7 @@ model Ticket {
   customerDiscordId String      // Discord user ID of customer
 
   // Category and service context
-  categoryId      String
+  categoryId      String?
   serviceId       String?
 
   // Discord channel info
@@ -635,7 +635,7 @@ model Ticket {
   // Relations
   customer        User          @relation("customerTickets", fields: [customerId], references: [id])
   support         User?         @relation("supportTickets", fields: [supportId], references: [id])
-  category        ServiceCategory @relation("categoryTickets", fields: [categoryId], references: [id])
+  category        ServiceCategory? @relation("categoryTickets", fields: [categoryId], references: [id])
   service         Service?      @relation("serviceTickets", fields: [serviceId], references: [id])
   paymentMethod   PaymentMethod? @relation("paymentMethodTickets", fields: [paymentMethodId], references: [id])
   messages        TicketMessage[]

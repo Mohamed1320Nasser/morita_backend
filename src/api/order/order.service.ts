@@ -17,15 +17,50 @@ import { NotFoundError, BadRequestError } from "routing-controllers";
 import { Decimal } from "@prisma/client/runtime/library";
 import logger from "../../common/loggers";
 import WalletService from "../wallet/wallet.service";
+import { withTransactionRetry, checkWalletBalanceWithLock, updateWalletBalance } from "../../common/utils/transaction.util";
+import { PAYOUT_STRUCTURE, FINANCIAL_LIMITS, isValidAmount } from "../../common/constants/security.constants";
+import { InsufficientBalanceError } from "../../common/utils/errorHandler.util";
 
 @Service()
 export default class OrderService {
     constructor(private walletService: WalletService) {}
 
+    /**
+     * Create Order
+     *
+     * BUSINESS FLOW:
+     * 1. Customer locks ORDER VALUE (payment) in pending
+     * 2. Worker locks DEPOSIT (security) when claiming/assigned
+     * 3. On completion: Customer's order value distributed, Worker's deposit returned
+     */
     async createOrder(data: CreateOrderDto) {
         logger.info(`[OrderService] Creating order for customer ${data.customerId}`);
 
-        // Validate customer exists
+        // Validate input amounts
+        if (!isValidAmount(data.orderValue, FINANCIAL_LIMITS.MIN_ORDER_VALUE, FINANCIAL_LIMITS.MAX_ORDER_VALUE)) {
+            throw new BadRequestError(
+                `Order value must be between $${FINANCIAL_LIMITS.MIN_ORDER_VALUE} and $${FINANCIAL_LIMITS.MAX_ORDER_VALUE}`
+            );
+        }
+
+        if (!isValidAmount(data.depositAmount, FINANCIAL_LIMITS.MIN_DEPOSIT, FINANCIAL_LIMITS.MAX_DEPOSIT)) {
+            throw new BadRequestError(
+                `Deposit amount must be between $${FINANCIAL_LIMITS.MIN_DEPOSIT} and $${FINANCIAL_LIMITS.MAX_DEPOSIT}`
+            );
+        }
+
+        // NO validation between deposit and order value
+        // Deposit is worker security - can be higher/lower than order value
+        // Support decides deposit based on risk assessment
+
+        // Calculate payouts (based on ORDER VALUE, not deposit)
+        const orderValue = new Decimal(data.orderValue);
+        const workerPayout = orderValue.mul(PAYOUT_STRUCTURE.WORKER_PERCENTAGE);
+        const supportPayout = orderValue.mul(PAYOUT_STRUCTURE.SUPPORT_PERCENTAGE);
+        const systemPayout = orderValue.mul(PAYOUT_STRUCTURE.SYSTEM_PERCENTAGE);
+        const requiredDeposit = new Decimal(data.depositAmount);
+
+        // Pre-validate users exist
         const customer = await prisma.user.findUnique({
             where: { id: data.customerId },
         });
@@ -44,25 +79,13 @@ export default class OrderService {
             }
         }
 
-        // Validate customer has sufficient balance
-        let customerWallet = await this.walletService.getWalletByUserId(
-            data.customerId
-        );
-
+        // Get customer wallet
+        const customerWallet = await this.walletService.getWalletByUserId(data.customerId);
         if (!customerWallet) {
             throw new BadRequestError("Customer does not have a wallet");
         }
 
-        const availableBalance = new Decimal(customerWallet.balance.toString());
-        const requiredDeposit = new Decimal(data.depositAmount);
-
-        if (availableBalance.lessThan(requiredDeposit)) {
-            throw new BadRequestError(
-                `Insufficient balance. Required: ${requiredDeposit.toString()}, Available: ${availableBalance.toString()}`
-            );
-        }
-
-        // If worker is assigned, validate worker exists and has sufficient balance
+        // If worker assigned, validate worker
         if (data.workerId) {
             const worker = await prisma.user.findUnique({
                 where: { id: data.workerId },
@@ -72,121 +95,214 @@ export default class OrderService {
                 throw new NotFoundError("Worker not found");
             }
 
-            const workerWallet = await this.walletService.getWalletByUserId(
-                data.workerId
-            );
-
+            const workerWallet = await this.walletService.getWalletByUserId(data.workerId);
             if (!workerWallet) {
                 throw new BadRequestError("Worker does not have a wallet");
             }
+        }
 
-            const workerBalance = new Decimal(workerWallet.balance.toString());
-            if (workerBalance.lessThan(requiredDeposit)) {
-                throw new BadRequestError(
-                    `Worker has insufficient balance for deposit`
+        // Execute in atomic transaction
+        const order = await withTransactionRetry(async (tx) => {
+            // 1. LOCK CUSTOMER'S ORDER VALUE
+            const customerBalanceCheck = await checkWalletBalanceWithLock(
+                tx,
+                customerWallet.id,
+                orderValue.toNumber()
+            );
+
+            if (!customerBalanceCheck.sufficient) {
+                throw new InsufficientBalanceError(
+                    orderValue.toNumber(),
+                    customerBalanceCheck.available
                 );
             }
-        }
 
-        // Calculate payouts (80% worker, 5% support, 15% system)
-        const orderValue = new Decimal(data.orderValue);
-        const workerPayout = orderValue.mul(0.8);
-        const supportPayout = orderValue.mul(0.05);
-        const systemPayout = orderValue.mul(0.15);
+            await updateWalletBalance(
+                tx,
+                customerWallet.id,
+                -orderValue.toNumber(),
+                orderValue.toNumber()
+            );
 
-        // Get next order number (manual increment since MySQL doesn't support autoincrement on non-PK)
-        const lastOrder = await prisma.order.findFirst({
-            orderBy: { orderNumber: "desc" },
-            select: { orderNumber: true },
-        });
-        const nextOrderNumber = (lastOrder?.orderNumber || 0) + 1;
-
-        // Create order
-        const order = await prisma.order.create({
-            data: {
-                orderNumber: nextOrderNumber,
-                customerId: data.customerId,
-                workerId: data.workerId,
-                supportId: data.supportId,
-                ticketId: data.ticketId,
-                serviceId: data.serviceId,
-                methodId: data.methodId,
-                paymentMethodId: data.paymentMethodId,
-                orderValue: data.orderValue,
-                depositAmount: data.depositAmount,
-                currency: data.currency || "USD",
-                workerPayout: workerPayout.toNumber(),
-                supportPayout: supportPayout.toNumber(),
-                systemPayout: systemPayout.toNumber(),
-                jobDetails: data.jobDetails,
-                status: data.workerId ? OrderStatus.ASSIGNED : OrderStatus.PENDING,
-                assignedAt: data.workerId ? new Date() : null,
-            },
-            include: {
-                customer: {
-                    select: {
-                        id: true,
-                        fullname: true,
-                        username: true,
-                        email: true,
-                        discordId: true,
-                    },
+            await tx.walletTransaction.create({
+                data: {
+                    walletId: customerWallet.id,
+                    type: "PAYMENT",
+                    amount: orderValue.neg(),
+                    balanceBefore: customerBalanceCheck.wallet.balance,
+                    balanceAfter: new Decimal(customerBalanceCheck.wallet.balance).sub(orderValue).toNumber(),
+                    currency: customerWallet.currency,
+                    status: "PENDING",
+                    notes: `Order payment locked (escrow)`,
+                    createdById: data.customerId,
                 },
-                worker: {
-                    select: {
-                        id: true,
-                        fullname: true,
-                        username: true,
-                        email: true,
-                        discordId: true,
-                    },
-                },
-                support: {
-                    select: {
-                        id: true,
-                        fullname: true,
-                        username: true,
-                        email: true,
-                        discordId: true,
-                    },
-                },
-                service: true,
-                method: true,
-                paymentMethod: true,
-            },
-        });
-
-        // Book customer balance (move to pending)
-        customerWallet = await this.walletService.getWalletByUserId(data.customerId);
-        if (customerWallet) {
-            await this.walletService.deductBalance(customerWallet.id, {
-                amount: data.depositAmount,
-                orderId: order.id,
-                notes: `Order #${order.orderNumber} - Deposit locked`,
-                lockAsPending: true,
-            }, data.customerId);
-        }
-
-        // Create status history
-        await prisma.orderStatusHistory.create({
-            data: {
-                orderId: order.id,
-                fromStatus: null,
-                toStatus: order.status,
-                changedById: data.supportId || data.customerId,
-                reason: "Order created",
-            },
-        });
-
-        // Update ticket status if linked
-        if (data.ticketId) {
-            await prisma.ticket.update({
-                where: { id: data.ticketId },
-                data: { status: "IN_PROGRESS" },
             });
-        }
+
+            // 2. IF WORKER ASSIGNED: LOCK WORKER'S DEPOSIT
+            if (data.workerId) {
+                const workerWallet = await tx.wallet.findUnique({
+                    where: { userId: data.workerId },
+                });
+
+                if (workerWallet) {
+                    const workerBalanceCheck = await checkWalletBalanceWithLock(
+                        tx,
+                        workerWallet.id,
+                        requiredDeposit.toNumber()
+                    );
+
+                    if (!workerBalanceCheck.sufficient) {
+                        throw new InsufficientBalanceError(
+                            requiredDeposit.toNumber(),
+                            workerBalanceCheck.available
+                        );
+                    }
+
+                    await updateWalletBalance(
+                        tx,
+                        workerWallet.id,
+                        -requiredDeposit.toNumber(),
+                        requiredDeposit.toNumber()
+                    );
+
+                    await tx.walletTransaction.create({
+                        data: {
+                            walletId: workerWallet.id,
+                            type: "PAYMENT",
+                            amount: requiredDeposit.neg(),
+                            balanceBefore: workerBalanceCheck.wallet.balance,
+                            balanceAfter: new Decimal(workerBalanceCheck.wallet.balance).sub(requiredDeposit).toNumber(),
+                            currency: workerWallet.currency,
+                            status: "PENDING",
+                            notes: `Worker security deposit`,
+                            createdById: data.workerId!, // Safe: validated at line 142
+                        },
+                    });
+                }
+            }
+
+            // 3. CREATE ORDER
+            const lastOrder = await tx.order.findFirst({
+                orderBy: { orderNumber: "desc" },
+                select: { orderNumber: true },
+            });
+            const nextOrderNumber = (lastOrder?.orderNumber || 0) + 1;
+
+            const createdOrder = await tx.order.create({
+                data: {
+                    orderNumber: nextOrderNumber,
+                    customerId: data.customerId,
+                    workerId: data.workerId,
+                    supportId: data.supportId,
+                    ticketId: data.ticketId,
+                    serviceId: data.serviceId,
+                    methodId: data.methodId,
+                    paymentMethodId: data.paymentMethodId,
+                    orderValue: data.orderValue,
+                    depositAmount: data.depositAmount,
+                    currency: data.currency || "USD",
+                    workerPayout: workerPayout.toNumber(),
+                    supportPayout: supportPayout.toNumber(),
+                    systemPayout: systemPayout.toNumber(),
+                    jobDetails: data.jobDetails,
+                    status: data.workerId ? OrderStatus.ASSIGNED : OrderStatus.PENDING,
+                    assignedAt: data.workerId ? new Date() : null,
+                },
+                include: {
+                    customer: {
+                        select: {
+                            id: true,
+                            fullname: true,
+                            username: true,
+                            email: true,
+                            discordId: true,
+                        },
+                    },
+                    worker: {
+                        select: {
+                            id: true,
+                            fullname: true,
+                            username: true,
+                            email: true,
+                            discordId: true,
+                        },
+                    },
+                    support: {
+                        select: {
+                            id: true,
+                            fullname: true,
+                            username: true,
+                            email: true,
+                            discordId: true,
+                        },
+                    },
+                    service: true,
+                    method: true,
+                    paymentMethod: true,
+                },
+            });
+
+            // Update transactions with order ID
+            await tx.walletTransaction.updateMany({
+                where: {
+                    walletId: customerWallet.id,
+                    orderId: null,
+                    status: "PENDING",
+                    createdAt: { gte: new Date(Date.now() - 5000) },
+                },
+                data: {
+                    orderId: createdOrder.id,
+                    reference: `Order #${createdOrder.orderNumber} - Payment locked`,
+                },
+            });
+
+            if (data.workerId) {
+                const workerWallet = await tx.wallet.findUnique({
+                    where: { userId: data.workerId },
+                });
+                if (workerWallet) {
+                    await tx.walletTransaction.updateMany({
+                        where: {
+                            walletId: workerWallet.id,
+                            orderId: null,
+                            status: "PENDING",
+                            createdAt: { gte: new Date(Date.now() - 5000) },
+                        },
+                        data: {
+                            orderId: createdOrder.id,
+                            reference: `Order #${createdOrder.orderNumber} - Deposit locked`,
+                        },
+                    });
+                }
+            }
+
+            // 4. CREATE STATUS HISTORY
+            await tx.orderStatusHistory.create({
+                data: {
+                    orderId: createdOrder.id,
+                    fromStatus: null,
+                    toStatus: createdOrder.status,
+                    changedById: data.supportId || data.customerId,
+                    reason: "Order created",
+                },
+            });
+
+            // 5. UPDATE TICKET
+            if (data.ticketId) {
+                await tx.ticket.update({
+                    where: { id: data.ticketId },
+                    data: { status: "IN_PROGRESS" },
+                });
+            }
+
+            return createdOrder;
+        });
 
         logger.info(`[OrderService] Order created: ${order.id} (#${order.orderNumber})`);
+        logger.info(`[OrderService] Customer locked: $${orderValue.toNumber()} (order value)`);
+        if (data.workerId) {
+            logger.info(`[OrderService] Worker locked: $${requiredDeposit.toNumber()} (deposit)`);
+        }
 
         return order;
     }
@@ -452,6 +568,10 @@ export default class OrderService {
     /**
      * Worker claims an unassigned order (from job claiming channel)
      */
+    /**
+     * Worker claims an unassigned order
+     * Worker must lock DEPOSIT when claiming
+     */
     async claimOrder(orderId: string, data: ClaimOrderDto) {
         const order = await this.getOrderById(orderId);
 
@@ -473,52 +593,87 @@ export default class OrderService {
             throw new NotFoundError("Worker not found. Please ensure you have a registered account.");
         }
 
-        // Check worker balance
+        // Get worker wallet
         const workerWallet = await this.walletService.getWalletByUserId(worker.id);
         if (!workerWallet) {
             throw new BadRequestError("You do not have a wallet. Please contact support.");
         }
 
-        const workerBalance = new Decimal(workerWallet.balance.toString());
-        const workerPending = new Decimal(workerWallet.pendingBalance.toString());
-        const availableBalance = workerBalance.minus(workerPending);
         const requiredDeposit = new Decimal(order.depositAmount.toString());
 
-        if (availableBalance.lessThan(requiredDeposit)) {
-            throw new BadRequestError(
-                `Insufficient balance. Required: $${requiredDeposit.toFixed(2)}, Available: $${availableBalance.toFixed(2)}`
+        // Execute claim in transaction - LOCK WORKER'S DEPOSIT
+        const updatedOrder = await withTransactionRetry(async (tx) => {
+            // 1. Lock worker wallet and check balance for DEPOSIT
+            const balanceCheck = await checkWalletBalanceWithLock(
+                tx,
+                workerWallet.id,
+                requiredDeposit.toNumber()
             );
-        }
 
-        // Update order - assign worker
-        const updatedOrder = await prisma.order.update({
-            where: { id: orderId },
-            data: {
-                workerId: worker.id,
-                status: OrderStatus.ASSIGNED,
-                assignedAt: new Date(),
-            },
-            include: {
-                customer: true,
-                worker: true,
-                support: true,
-                service: true,
-            },
-        });
+            if (!balanceCheck.sufficient) {
+                throw new InsufficientBalanceError(
+                    requiredDeposit.toNumber(),
+                    balanceCheck.available
+                );
+            }
 
-        // Create status history
-        await prisma.orderStatusHistory.create({
-            data: {
-                orderId,
-                fromStatus: order.status,
-                toStatus: OrderStatus.ASSIGNED,
-                changedById: worker.id,
-                reason: "Job claimed by worker",
-            },
+            // 2. Lock worker's DEPOSIT
+            await updateWalletBalance(
+                tx,
+                workerWallet.id,
+                -requiredDeposit.toNumber(), // Deduct from balance
+                requiredDeposit.toNumber()   // Add to pending
+            );
+
+            // 3. Create worker deposit transaction
+            await tx.walletTransaction.create({
+                data: {
+                    walletId: workerWallet.id,
+                    orderId: order.id,
+                    type: "PAYMENT",
+                    amount: requiredDeposit.neg(),
+                    balanceBefore: balanceCheck.wallet.balance,
+                    balanceAfter: new Decimal(balanceCheck.wallet.balance).sub(requiredDeposit).toNumber(),
+                    currency: workerWallet.currency,
+                    status: "PENDING",
+                    reference: `Order #${order.orderNumber} - Worker deposit locked`,
+                    notes: `Security deposit for claiming job`,
+                    createdById: worker.id,
+                },
+            });
+
+            // 4. Update order - assign worker
+            const updated = await tx.order.update({
+                where: { id: orderId },
+                data: {
+                    workerId: worker.id,
+                    status: OrderStatus.ASSIGNED,
+                    assignedAt: new Date(),
+                },
+                include: {
+                    customer: true,
+                    worker: true,
+                    support: true,
+                    service: true,
+                },
+            });
+
+            // 5. Create status history
+            await tx.orderStatusHistory.create({
+                data: {
+                    orderId,
+                    fromStatus: order.status,
+                    toStatus: OrderStatus.ASSIGNED,
+                    changedById: worker.id,
+                    reason: "Job claimed by worker",
+                },
+            });
+
+            return updated;
         });
 
         logger.info(
-            `[OrderService] Worker ${worker.id} (${data.workerDiscordId}) claimed order ${orderId}`
+            `[OrderService] Worker ${worker.id} claimed order ${orderId}, locked $${requiredDeposit.toNumber()} deposit`
         );
 
         return updatedOrder;
@@ -633,6 +788,14 @@ export default class OrderService {
     /**
      * Process order payouts (80% worker, 5% support, 15% system)
      */
+    /**
+     * Process Order Payouts (on completion)
+     *
+     * 1. Release customer's pending ORDER VALUE and distribute it
+     * 2. Release worker's pending DEPOSIT back to worker
+     * 3. Pay worker their earnings
+     * 4. Pay support commission
+     */
     private async processOrderPayouts(orderId: string) {
         const order = await this.getOrderById(orderId);
 
@@ -643,62 +806,122 @@ export default class OrderService {
 
         logger.info(`[OrderService] Processing payouts for order ${orderId}`);
 
-        // Release customer's pending balance
+        // Get wallets
         const customerWallet = await this.walletService.getWalletByUserId(order.customerId);
-        if (customerWallet) {
-            const newPendingBalance = new Decimal(customerWallet.pendingBalance.toString()).minus(
-                order.depositAmount.toString()
+        const workerWallet = await this.walletService.getWalletByUserId(order.workerId);
+        const supportWallet = await this.walletService.getWalletByUserId(order.supportId);
+
+        if (!customerWallet || !workerWallet || !supportWallet) {
+            throw new BadRequestError("Missing wallet for payout");
+        }
+
+        const orderValue = new Decimal(order.orderValue.toString());
+        const depositAmount = new Decimal(order.depositAmount.toString());
+        const workerPayout = new Decimal(order.workerPayout!.toString());
+        const supportPayout = new Decimal(order.supportPayout!.toString());
+
+        // Process all payouts atomically
+        await withTransactionRetry(async (tx) => {
+            // 1. RELEASE CUSTOMER'S PENDING ORDER VALUE
+            await updateWalletBalance(
+                tx,
+                customerWallet.id,
+                0, // Balance stays same (already deducted)
+                -orderValue.toNumber() // Remove from pending
             );
 
-            await prisma.wallet.update({
-                where: { id: customerWallet.id },
-                data: {
-                    pendingBalance: newPendingBalance.toNumber(),
-                },
-            });
-
-            // Create release transaction
-            await prisma.walletTransaction.create({
+            await tx.walletTransaction.create({
                 data: {
                     walletId: customerWallet.id,
-                    type: "RELEASE",
-                    amount: -order.depositAmount.toNumber(),
-                    balanceBefore: customerWallet.balance.toNumber(),
-                    balanceAfter: customerWallet.balance.toNumber(),
-                    status: "COMPLETED",
                     orderId: order.id,
-                    reference: `Order #${order.orderNumber} completed - Deposit released`,
+                    type: "RELEASE",
+                    amount: -orderValue.toNumber(),
+                    balanceBefore: customerWallet.balance,
+                    balanceAfter: customerWallet.balance,
+                    status: "COMPLETED",
+                    reference: `Order #${order.orderNumber} - Payment released for distribution`,
                     createdById: order.customerId,
                 },
             });
-        }
 
-        // Pay worker (80%)
-        const workerWallet = await this.walletService.getWalletByUserId(order.worker!.id);
-        if (workerWallet) {
-            await this.walletService.addBalance(workerWallet.id, {
-                amount: order.workerPayout!.toNumber(),
-                transactionType: WalletTransactionType.EARNING,
-                reference: `Order #${order.orderNumber} - Worker payout`,
-                notes: `80% of order value`,
-            }, order.customerId);
-        }
+            // 2. RELEASE WORKER'S PENDING DEPOSIT
+            await updateWalletBalance(
+                tx,
+                workerWallet.id,
+                depositAmount.toNumber(), // Add back to balance
+                -depositAmount.toNumber() // Remove from pending
+            );
 
-        // Pay support (5%)
-        const supportWallet = await this.walletService.getWalletByUserId(order.support!.id);
-        if (supportWallet) {
-            await this.walletService.addBalance(supportWallet.id, {
-                amount: order.supportPayout!.toNumber(),
-                transactionType: WalletTransactionType.COMMISSION,
-                reference: `Order #${order.orderNumber} - Support commission`,
-                notes: `5% of order value`,
-            }, order.customerId);
-        }
+            await tx.walletTransaction.create({
+                data: {
+                    walletId: workerWallet.id,
+                    orderId: order.id,
+                    type: "RELEASE",
+                    amount: depositAmount,
+                    balanceBefore: workerWallet.balance,
+                    balanceAfter: new Decimal(workerWallet.balance).add(depositAmount).toNumber(),
+                    status: "COMPLETED",
+                    reference: `Order #${order.orderNumber} - Security deposit returned`,
+                    notes: `Job completed successfully`,
+                    createdById: order.workerId!, // Safe: validated at line 802
+                },
+            });
 
-        // System fee (15%) - Tracked in order.systemPayout
-        // No need to add to wallet as it's aggregated via getSystemWallet()
+            // 3. PAY WORKER (80% of order value)
+            await updateWalletBalance(
+                tx,
+                workerWallet.id,
+                workerPayout.toNumber(),
+                0
+            );
 
-        logger.info(`[OrderService] Payouts processed for order ${orderId}`);
+            await tx.walletTransaction.create({
+                data: {
+                    walletId: workerWallet.id,
+                    orderId: order.id,
+                    type: "EARNING",
+                    amount: workerPayout,
+                    balanceBefore: new Decimal(workerWallet.balance).add(depositAmount).toNumber(),
+                    balanceAfter: new Decimal(workerWallet.balance).add(depositAmount).add(workerPayout).toNumber(),
+                    status: "COMPLETED",
+                    reference: `Order #${order.orderNumber} - Payment (80%)`,
+                    notes: `Worker earnings`,
+                    createdById: order.customerId,
+                },
+            });
+
+            // 4. PAY SUPPORT (5% of order value)
+            await updateWalletBalance(
+                tx,
+                supportWallet.id,
+                supportPayout.toNumber(),
+                0
+            );
+
+            await tx.walletTransaction.create({
+                data: {
+                    walletId: supportWallet.id,
+                    orderId: order.id,
+                    type: "COMMISSION",
+                    amount: supportPayout,
+                    balanceBefore: supportWallet.balance,
+                    balanceAfter: new Decimal(supportWallet.balance).add(supportPayout).toNumber(),
+                    status: "COMPLETED",
+                    reference: `Order #${order.orderNumber} - Commission (5%)`,
+                    notes: `Support commission`,
+                    createdById: order.customerId,
+                },
+            });
+
+            // 5. System revenue (15%) tracked in order.systemPayout
+        });
+
+        logger.info(`[OrderService] Payouts completed for order ${orderId}:`);
+        logger.info(`  - Customer paid: $${orderValue.toNumber()}`);
+        logger.info(`  - Worker deposit returned: $${depositAmount.toNumber()}`);
+        logger.info(`  - Worker earned: $${workerPayout.toNumber()}`);
+        logger.info(`  - Support earned: $${supportPayout.toNumber()}`);
+        logger.info(`  - System profit: $${order.systemPayout?.toNumber() || 0}`);
     }
 
     /**

@@ -15,8 +15,9 @@ export class CreateTicketDto {
     @IsString()
     customerDiscordId: string;
 
+    @IsOptional()
     @IsString()
-    categoryId: string;
+    categoryId?: string;
 
     @IsOptional()
     @IsString()
@@ -48,8 +49,9 @@ export class CreateTicketFromDiscordDto {
     @IsString()
     customerDiscordId: string;
 
+    @IsOptional()
     @IsString()
-    categoryId: string;
+    categoryId?: string;
 
     @IsOptional()
     @IsString()

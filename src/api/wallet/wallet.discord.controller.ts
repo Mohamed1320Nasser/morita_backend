@@ -5,6 +5,7 @@ import {
     Param,
     Body,
     QueryParams,
+    UseBefore,
 } from "routing-controllers";
 import { Service } from "typedi";
 import WalletService from "./wallet.service";
@@ -14,10 +15,14 @@ import {
     WalletType,
 } from "./dtos";
 import logger from "../../common/loggers";
+import { DiscordAuthMiddleware, DiscordRateLimitMiddleware } from "../../common/middlewares/discordAuth.middleware";
 
 // Discord Wallet Controller (for bot API calls)
+// CRITICAL SECURITY: All endpoints protected with authentication
 @JsonController("/discord/wallets")
 @Service()
+@UseBefore(DiscordAuthMiddleware) // Require API key
+@UseBefore(DiscordRateLimitMiddleware) // Rate limiting
 export default class DiscordWalletController {
     constructor(private walletService: WalletService) {}
 
