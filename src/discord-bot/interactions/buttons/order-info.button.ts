@@ -1,7 +1,6 @@
 import { ButtonInteraction, EmbedBuilder } from "discord.js";
 import logger from "../../../common/loggers";
-import axios from "axios";
-import { discordConfig } from "../../config/discord.config";
+import { discordApiClient } from "../../clients/DiscordApiClient";
 
 /**
  * Handle "Order Info" button click
@@ -15,17 +14,12 @@ export async function handleOrderInfoButton(interaction: ButtonInteraction): Pro
 
         logger.info(`[OrderInfo] User ${interaction.user.id} requesting info for order ${orderId}`);
 
-        // Create API client
-        const apiClient = axios.create({
-            baseURL: discordConfig.apiBaseUrl,
-            timeout: 30000,
-        });
-
         // Get order details
-        const orderResponse = await apiClient.get(`/discord/orders/${orderId}`);
+        const orderResponse: any = await discordApiClient.get(`/discord/orders/${orderId}`);
 
         // Handle triple-nested response structure
-        const outerData = orderResponse.data.data || orderResponse.data;
+        // HttpClient interceptor already unwrapped one level
+        const outerData = orderResponse.data || orderResponse;
         const order = outerData.data || outerData;
 
         logger.info(`[OrderInfo] Retrieved order #${order.orderNumber}`);

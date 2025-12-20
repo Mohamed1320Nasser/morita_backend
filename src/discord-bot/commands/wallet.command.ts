@@ -4,9 +4,8 @@ import {
     EmbedBuilder,
 } from "discord.js";
 import { Command } from "../types/discord.types";
-import { discordConfig } from "../config/discord.config";
 import logger from "../../common/loggers";
-import axios from "axios";
+import { discordApiClient } from "../clients/DiscordApiClient";
 
 export default {
     data: new SlashCommandBuilder()
@@ -30,22 +29,17 @@ export default {
             const action = (interaction.options.get("action")?.value as string) || "balance";
             const discordId = interaction.user.id;
 
-            // Create API client
-            const apiClient = axios.create({
-                baseURL: discordConfig.apiBaseUrl,
-                timeout: 10000,
-            });
-
             if (action === "balance") {
                 // Get wallet balance
-                const response = await apiClient.get(
+                const response: any = await discordApiClient.get(
                     `/discord/wallets/balance/${discordId}`
                 );
 
-                logger.info(`[Wallet Command] Raw response: ${JSON.stringify(response.data)}`);
+                logger.info(`[Wallet Command] Raw response: ${JSON.stringify(response)}`);
 
                 // Extract the actual wallet data from the nested response structure
-                const responseData = response.data.data || response.data;
+                // HttpClient interceptor already unwrapped one level
+                const responseData = response.data || response;
                 const data = responseData.data || responseData;
 
                 logger.info(`[Wallet Command] Parsed data: ${JSON.stringify(data)}`);
@@ -108,13 +102,14 @@ export default {
                 });
             } else if (action === "transactions") {
                 // Get recent transactions
-                const response = await apiClient.get(
+                const response: any = await discordApiClient.get(
                     `/discord/wallets/transactions/${discordId}`,
                     { params: { limit: 10 } }
                 );
 
                 // Extract the actual transaction data from the nested response structure
-                const responseData = response.data.data || response.data;
+                // HttpClient interceptor already unwrapped one level
+                const responseData = response.data || response;
                 const data = responseData.data || responseData;
                 const transactions = data.list || [];
 

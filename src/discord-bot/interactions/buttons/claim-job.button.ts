@@ -1,7 +1,6 @@
 import { ButtonInteraction, EmbedBuilder } from "discord.js";
 import logger from "../../../common/loggers";
-import { discordConfig } from "../../config/discord.config";
-import axios from "axios";
+import { discordApiClient } from "../../clients/DiscordApiClient";
 import { createJobClaimedEmbed, createClaimButton } from "../../utils/jobClaimingEmbed";
 import { getOrderChannelService } from "../../services/orderChannel.service";
 
@@ -21,19 +20,14 @@ export async function handleClaimJobButton(
 
         logger.info(`[ClaimJob] Worker ${workerDiscordId} attempting to claim order ${orderId}`);
 
-        // Create API client
-        const apiClient = axios.create({
-            baseURL: discordConfig.apiBaseUrl,
-            timeout: 30000,
-        });
-
         // Check worker's wallet balance
         logger.info(`[ClaimJob] Checking worker balance...`);
-        const balanceResponse = await apiClient.get(
+        const balanceResponse: any = await discordApiClient.get(
             `/discord/wallets/balance/${workerDiscordId}`
         );
 
-        const responseData = balanceResponse.data.data || balanceResponse.data;
+        // HttpClient interceptor already unwrapped one level
+        const responseData = balanceResponse.data || balanceResponse;
         let balanceData = responseData.data || responseData;
 
         // If worker doesn't have a wallet, create one automatically
@@ -41,7 +35,7 @@ export async function handleClaimJobButton(
             logger.info(`[ClaimJob] Worker ${workerDiscordId} has no wallet, creating one automatically...`);
 
             try {
-                const createWalletResponse = await apiClient.post(
+                const createWalletResponse = await discordApiClient.post(
                     `/discord/wallets/discord/${workerDiscordId}`,
                     {
                         username: interaction.user.username,
@@ -52,10 +46,11 @@ export async function handleClaimJobButton(
                 logger.info(`[ClaimJob] Worker wallet created successfully for ${interaction.user.username}`);
 
                 // Fetch balance again after wallet creation
-                const newBalanceResponse = await apiClient.get(
+                const newBalanceResponse: any = await discordApiClient.get(
                     `/discord/wallets/balance/${workerDiscordId}`
                 );
-                const newResponseData = newBalanceResponse.data.data || newBalanceResponse.data;
+                // HttpClient interceptor already unwrapped one level
+                const newResponseData = newBalanceResponse.data || newBalanceResponse;
                 balanceData = newResponseData.data || newResponseData;
             } catch (createError: any) {
                 logger.error(`[ClaimJob] Failed to create worker wallet:`, createError);
@@ -70,10 +65,11 @@ export async function handleClaimJobButton(
 
         // Get order details to check deposit requirement
         logger.info(`[ClaimJob] Fetching order details...`);
-        const orderResponse = await apiClient.get(`/discord/orders/${orderId}`);
+        const orderResponse: any = await discordApiClient.get(`/discord/orders/${orderId}`);
 
         // Handle triple-nested response structure
-        const outerData = orderResponse.data.data || orderResponse.data;
+        // HttpClient interceptor already unwrapped one level
+        const outerData = orderResponse.data || orderResponse;
         const order = outerData.data || outerData;
 
         logger.info(`[ClaimJob] Order #${order.orderNumber} - Status: ${order.status} - Deposit: $${order.depositAmount} - Worker Balance: $${availableBalance}`);
@@ -112,12 +108,13 @@ export async function handleClaimJobButton(
 
         // Claim the job - assign worker to order
         logger.info(`[ClaimJob] Assigning worker to order...`);
-        const claimResponse = await apiClient.post(`/discord/orders/${orderId}/claim`, {
+        const claimResponse: any = await discordApiClient.post(`/discord/orders/${orderId}/claim`, {
             workerDiscordId,
         });
 
         // Handle triple-nested response structure
-        const claimOuterData = claimResponse.data.data || claimResponse.data;
+        // HttpClient interceptor already unwrapped one level
+        const claimOuterData = claimResponse.data || claimResponse;
         const claimedOrder = claimOuterData.data || claimOuterData;
 
         logger.info(`[ClaimJob] Order #${claimedOrder.orderNumber} claimed successfully by ${interaction.user.username}`);
@@ -163,8 +160,9 @@ export async function handleClaimJobButton(
 
             try {
                 // Fetch ticket to get channel ID
-                const ticketResponse = await apiClient.get(`/api/discord/tickets/${claimedOrder.ticketId}`);
-                const ticketData = ticketResponse.data.data?.data || ticketResponse.data.data || ticketResponse.data;
+                const ticketResponse: any = await discordApiClient.get(`/api/discord/tickets/${claimedOrder.ticketId}`);
+                // HttpClient interceptor already unwrapped one level
+                const ticketData = ticketResponse.data?.data || ticketResponse.data || ticketResponse;
 
                 if (ticketData && ticketData.channelId) {
                     logger.info(`[ClaimJob] Found ticket channel: ${ticketData.channelId}`);

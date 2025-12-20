@@ -1,7 +1,6 @@
 import { ButtonInteraction, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from "discord.js";
 import logger from "../../../common/loggers";
-import axios from "axios";
-import { discordConfig } from "../../config/discord.config";
+import { discordApiClient } from "../../clients/DiscordApiClient";
 
 /**
  * Handle "Mark Complete" button click (worker marks order as complete)
@@ -16,15 +15,10 @@ export async function handleCompleteOrder(interaction: ButtonInteraction): Promi
 
         logger.info(`[MarkComplete] Worker ${interaction.user.id} marking order ${orderId} as complete`);
 
-        // Create API client
-        const apiClient = axios.create({
-            baseURL: discordConfig.apiBaseUrl,
-            timeout: 30000,
-        });
-
         // Get order details first
-        const orderResponse = await apiClient.get(`/discord/orders/${orderId}`);
-        const orderData = orderResponse.data.data || orderResponse.data;
+        const orderResponse: any = await discordApiClient.get(`/discord/orders/${orderId}`);
+        // HttpClient interceptor already unwrapped one level
+        const orderData = orderResponse.data || orderResponse;
 
         // Validate worker is assigned to this order
         if (!orderData.worker || orderData.worker.discordId !== interaction.user.id) {

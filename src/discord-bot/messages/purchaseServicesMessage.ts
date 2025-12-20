@@ -1,10 +1,9 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder } from "discord.js";
-import axios from "axios";
 import {
     getActiveTicketTypesForGroup,
     buildButtonsFromTicketTypes,
 } from "../utils/ticketTypeHelper";
-import { discordConfig } from "../config/discord.config";
+import { discordApiClient } from "../clients/DiscordApiClient";
 import logger from "../../common/loggers";
 
 export async function buildPurchaseServicesMessage() {
@@ -20,12 +19,13 @@ export async function buildPurchaseServicesMessage() {
     let footerText = "morita | Professional Gaming Services";
 
     try {
-        const response = await axios.get(
-            `${discordConfig.apiBaseUrl}/ticket-type-settings/PURCHASE_SERVICES_OSRS`
+        const response: any = await discordApiClient.get(
+            `/ticket-type-settings/PURCHASE_SERVICES_OSRS`
         );
 
-        if (response.data && response.data.data) {
-            const settings = response.data.data;
+        // HttpClient interceptor already unwrapped response.data, so response IS the data
+        if (response && response.data) {
+            const settings = response.data;
             welcomeTitle = settings.welcomeTitle || "";
             welcomeMessage = settings.welcomeMessage || "";
             bannerUrl = settings.bannerUrl || "";

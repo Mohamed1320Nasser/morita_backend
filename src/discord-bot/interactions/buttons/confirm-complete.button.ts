@@ -1,7 +1,6 @@
 import { ButtonInteraction, EmbedBuilder, TextChannel } from "discord.js";
 import logger from "../../../common/loggers";
-import axios from "axios";
-import { discordConfig } from "../../config/discord.config";
+import { discordApiClient } from "../../clients/DiscordApiClient";
 
 /**
  * Handle "Confirm Complete" button click (customer confirms order completion)
@@ -15,15 +14,10 @@ export async function handleConfirmCompleteButton(interaction: ButtonInteraction
 
         logger.info(`[ConfirmComplete] Customer ${interaction.user.id} confirming order ${orderId}`);
 
-        // Create API client
-        const apiClient = axios.create({
-            baseURL: discordConfig.apiBaseUrl,
-            timeout: 30000,
-        });
-
         // Get order details first
-        const orderResponse = await apiClient.get(`/discord/orders/${orderId}`);
-        const orderData = orderResponse.data.data || orderResponse.data;
+        const orderResponse: any = await discordApiClient.get(`/discord/orders/${orderId}`);
+        // HttpClient interceptor already unwrapped one level
+        const orderData = orderResponse.data || orderResponse;
 
         // Validate customer is the one who placed this order
         if (!orderData.customer || orderData.customer.discordId !== interaction.user.id) {
@@ -42,11 +36,12 @@ export async function handleConfirmCompleteButton(interaction: ButtonInteraction
         }
 
         // Confirm order completion (triggers payout)
-        const confirmResponse = await apiClient.put(`/discord/orders/${orderId}/confirm`, {
+        const confirmResponse: any = await discordApiClient.put(`/discord/orders/${orderId}/confirm`, {
             customerDiscordId: interaction.user.id,
         });
 
-        const confirmedOrder = confirmResponse.data.data || confirmResponse.data;
+        // HttpClient interceptor already unwrapped one level
+        const confirmedOrder = confirmResponse.data || confirmResponse;
 
         logger.info(`[ConfirmComplete] Order ${orderId} confirmed, payouts triggered`);
 

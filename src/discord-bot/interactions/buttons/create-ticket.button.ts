@@ -5,10 +5,9 @@ import {
     TextInputStyle,
     ActionRowBuilder,
 } from "discord.js";
-import axios from "axios";
 import logger from "../../../common/loggers";
 import { TicketType } from "../../types/discord.types";
-import { discordConfig } from "../../config/discord.config";
+import { discordApiClient } from "../../clients/DiscordApiClient";
 import { CustomFieldDefinition } from "../../../api/ticketTypeSettings/dtos";
 
 /**
@@ -67,11 +66,12 @@ async function buildModalForTicketType(ticketType: TicketType): Promise<ModalBui
 
     try {
         // Fetch custom fields from API
-        const response = await axios.get(
-            `${discordConfig.apiBaseUrl}/discord/ticket-type-settings/${ticketType}/custom-fields`
+        const response: any = await discordApiClient.get(
+            `/discord/ticket-type-settings/${ticketType}/custom-fields`
         );
 
-        const customFieldsData = response.data?.data;
+        // HttpClient interceptor already unwrapped response.data, so response IS the data
+        const customFieldsData = response?.data;
 
         if (customFieldsData && customFieldsData.fields && customFieldsData.fields.length > 0) {
             // Use custom fields from database

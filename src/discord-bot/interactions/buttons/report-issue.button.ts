@@ -1,7 +1,6 @@
 import { ButtonInteraction, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from "discord.js";
 import logger from "../../../common/loggers";
-import axios from "axios";
-import { discordConfig } from "../../config/discord.config";
+import { discordApiClient } from "../../clients/DiscordApiClient";
 
 /**
  * Handle "Report Issue" button click (customer reports problem with order)
@@ -13,15 +12,10 @@ export async function handleReportIssueButton(interaction: ButtonInteraction): P
 
         logger.info(`[ReportIssue] Customer ${interaction.user.id} reporting issue for order ${orderId}`);
 
-        // Create API client
-        const apiClient = axios.create({
-            baseURL: discordConfig.apiBaseUrl,
-            timeout: 30000,
-        });
-
         // Get order details first
-        const orderResponse = await apiClient.get(`/discord/orders/${orderId}`);
-        const orderData = orderResponse.data.data || orderResponse.data;
+        const orderResponse: any = await discordApiClient.get(`/discord/orders/${orderId}`);
+        // HttpClient interceptor already unwrapped one level
+        const orderData = orderResponse.data || orderResponse;
 
         // Validate customer is the one who placed this order
         if (!orderData.customer || orderData.customer.discordId !== interaction.user.id) {

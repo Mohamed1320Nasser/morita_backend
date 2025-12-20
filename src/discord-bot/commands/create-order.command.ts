@@ -11,7 +11,7 @@ import {
 import { Command } from "../types/discord.types";
 import { discordConfig } from "../config/discord.config";
 import logger from "../../common/loggers";
-import axios from "axios";
+import { discordApiClient } from "../clients/DiscordApiClient";
 import { storeOrderData } from "../interactions/modals/create-order-job.modal";
 
 export default {
@@ -107,14 +107,9 @@ export default {
             }
 
             // Fetch ticket for this channel
-            const apiClient = axios.create({
-                baseURL: discordConfig.apiBaseUrl,
-                timeout: 10000,
-            });
-
             let ticketId = null;
             try {
-                const ticketResponse = await apiClient.get(`/api/discord/tickets/channel/${channel?.id}`);
+                const ticketResponse = await discordApiClient.get(`/api/discord/tickets/channel/${channel?.id}`);
                 const ticketData = ticketResponse.data.data?.data || ticketResponse.data.data || ticketResponse.data;
                 if (ticketData && ticketData.id) {
                     ticketId = ticketData.id;

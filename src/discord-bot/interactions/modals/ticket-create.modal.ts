@@ -2,7 +2,7 @@ import { ModalSubmitInteraction, TextChannel, Guild } from "discord.js";
 import logger from "../../../common/loggers";
 import { getTicketService, TicketData } from "../../services/ticket.service";
 import { discordConfig } from "../../config/discord.config";
-import axios from "axios";
+import { discordApiClient } from "../../clients/DiscordApiClient";
 
 /**
  * Handle the ticket creation modal submission
@@ -49,15 +49,12 @@ export async function handleTicketCreateModal(
         // If no category ID, try to get it from the service
         if (!categoryId && serviceId) {
             try {
-                const apiClient = axios.create({
-                    baseURL: discordConfig.apiBaseUrl,
-                    timeout: 10000,
-                });
-                const serviceResponse = await apiClient.get(
+                const serviceResponse: any = await discordApiClient.get(
                     `/api/public/services/${serviceId}/pricing`
                 );
-                if (serviceResponse.data.success && serviceResponse.data.data) {
-                    categoryId = serviceResponse.data.data.categoryId;
+                // HttpClient interceptor already unwrapped response.data
+                if (serviceResponse.success && serviceResponse.data) {
+                    categoryId = serviceResponse.data.categoryId;
                 }
             } catch (error) {
                 logger.warn(
@@ -71,18 +68,15 @@ export async function handleTicketCreateModal(
         if (!categoryId) {
             // Get the first active category as default
             try {
-                const apiClient = axios.create({
-                    baseURL: discordConfig.apiBaseUrl,
-                    timeout: 10000,
-                });
-                const categoriesResponse = await apiClient.get(
+                const categoriesResponse: any = await discordApiClient.get(
                     "/api/public/service-categories"
                 );
+                // HttpClient interceptor already unwrapped response.data
                 if (
-                    categoriesResponse.data.data?.success &&
-                    categoriesResponse.data.data.data?.length > 0
+                    categoriesResponse.data?.success &&
+                    categoriesResponse.data.data?.length > 0
                 ) {
-                    categoryId = categoriesResponse.data.data.data[0].id;
+                    categoryId = categoriesResponse.data.data[0].id;
                 }
             } catch (error) {
                 logger.error("Could not fetch default category:", error);

@@ -9,7 +9,7 @@ import { Command } from "../types/discord.types";
 import { getTicketService } from "../services/ticket.service";
 import { discordConfig } from "../config/discord.config";
 import logger from "../../common/loggers";
-import axios from "axios";
+import { discordApiClient } from "../clients/DiscordApiClient";
 
 export default {
     data: new SlashCommandBuilder()
@@ -130,16 +130,10 @@ export default {
                 return;
             }
 
-            // Create API client
-            const apiClient = axios.create({
-                baseURL: discordConfig.apiBaseUrl,
-                timeout: 10000,
-            });
-
             // Get or create support user
             let supportUserId: number = 1;
             try {
-                const supportUserResponse = await apiClient.post(
+                const supportUserResponse = await discordApiClient.post(
                     `/discord/wallets/discord/${interaction.user.id}`,
                     {
                         username: interaction.user.username,
@@ -157,7 +151,7 @@ export default {
             // Call add balance API
             logger.info(`[AddBalance] Adding $${amount} (${transactionType}) to user ${targetDiscordId}`);
 
-            const response = await apiClient.post("/discord/wallets/add-balance", {
+            const response: any = await discordApiClient.post("/discord/wallets/add-balance", {
                 customerDiscordId: targetDiscordId,
                 amount,
                 transactionType,
@@ -166,13 +160,14 @@ export default {
                 createdById: supportUserId,
             });
 
-            logger.info(`[AddBalance] API Response: ${JSON.stringify(response.data)}`);
+            logger.info(`[AddBalance] API Response: ${JSON.stringify(response)}`);
 
             // Handle triple-nested response
-            const outerData = response.data.data || response.data;
+            // HttpClient interceptor already unwrapped one level
+            const outerData = response.data || response;
             const responseData = outerData.data || outerData;
 
-            if (!response.data.success && response.data.success !== undefined) {
+            if (!response.success && response.success !== undefined) {
                 throw new Error("Failed to add balance");
             }
 

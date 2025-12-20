@@ -1,7 +1,6 @@
-import axios from "axios";
 import { ButtonBuilder, ButtonStyle } from "discord.js";
 import logger from "../../common/loggers";
-import { discordConfig } from "../config/discord.config";
+import { discordApiClient } from "../clients/DiscordApiClient";
 
 // Button color mapping
 const BUTTON_STYLE_MAP: Record<string, ButtonStyle> = {
@@ -19,12 +18,13 @@ const BUTTON_STYLE_MAP: Record<string, ButtonStyle> = {
  */
 export async function getActiveTicketTypesForGroup(groupKey: string) {
     try {
-        const response = await axios.get(
-            `${discordConfig.apiBaseUrl}/ticket-type-settings/group/${groupKey}`
+        const response: any = await discordApiClient.get(
+            `/ticket-type-settings/group/${groupKey}`
         );
 
-        if (response.data && response.data.data) {
-            const types = response.data.data;
+        // HttpClient interceptor already unwrapped response.data, so response IS the data
+        if (response && response.data) {
+            const types = response.data;
 
             const activeTypes = types
                 .filter((type: any) => type.isActive === true)

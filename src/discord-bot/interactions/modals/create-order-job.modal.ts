@@ -1,7 +1,7 @@
 import { ModalSubmitInteraction, EmbedBuilder, TextChannel } from "discord.js";
 import logger from "../../../common/loggers";
 import { discordConfig } from "../../config/discord.config";
-import axios from "axios";
+import { discordApiClient } from "../../clients/DiscordApiClient";
 import { createJobClaimingEmbed, createClaimButton } from "../../utils/jobClaimingEmbed";
 import { getOrderChannelService } from "../../services/orderChannel.service";
 
@@ -41,18 +41,13 @@ export async function handleCreateOrderJobModal(
 
         logger.info(`[CreateOrderJob] Processing order for customer ${orderData.customerDiscordId}`);
 
-        // Create API client
-        const apiClient = axios.create({
-            baseURL: discordConfig.apiBaseUrl,
-            timeout: 30000,
-        });
-
         // Check customer wallet balance
-        const balanceResponse = await apiClient.get(
+        const balanceResponse: any = await discordApiClient.get(
             `/discord/wallets/balance/${orderData.customerDiscordId}`
         );
 
-        const responseData = balanceResponse.data.data || balanceResponse.data;
+        // HttpClient interceptor already unwrapped one level
+        const responseData = balanceResponse.data || balanceResponse;
         const balanceData = responseData.data || responseData;
 
         if (!balanceData.hasWallet) {
@@ -110,12 +105,13 @@ export async function handleCreateOrderJobModal(
         logger.info(`[CreateOrderJob] Creating order with ticketId: ${orderData.ticketId || 'NULL'}`);
         logger.info(`[CreateOrderJob] Order data:`, createOrderData);
 
-        const response = await apiClient.post("/discord/orders/create", createOrderData);
+        const response: any = await discordApiClient.post("/discord/orders/create", createOrderData);
 
-        logger.info(`[CreateOrderJob] Raw API Response: ${JSON.stringify(response.data)}`);
+        logger.info(`[CreateOrderJob] Raw API Response: ${JSON.stringify(response)}`);
 
         // Handle triple-nested response structure (similar to add-balance command)
-        const outerData = response.data.data || response.data;
+        // HttpClient interceptor already unwrapped one level
+        const outerData = response.data || response;
         const order = outerData.data || outerData;
 
         logger.info(`[CreateOrderJob] Extracted - OrderNumber: ${order.orderNumber}, OrderId: ${order.orderId || order.id}, Status: ${order.status}`);
@@ -127,11 +123,11 @@ export async function handleCreateOrderJobModal(
 
         if (!orderNumber) {
             logger.error(`[CreateOrderJob] OrderNumber is missing from response!`);
-            logger.error(`[CreateOrderJob] Full response.data:`, response.data);
+            logger.error(`[CreateOrderJob] Full response:`, response);
         }
         if (!orderId) {
             logger.error(`[CreateOrderJob] OrderId is missing from response!`);
-            logger.error(`[CreateOrderJob] Full response.data:`, response.data);
+            logger.error(`[CreateOrderJob] Full response:`, response);
         }
 
         // Send confirmation embed

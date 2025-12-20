@@ -1,7 +1,7 @@
 import { ModalSubmitInteraction, EmbedBuilder, TextChannel } from "discord.js";
 import logger from "../../../common/loggers";
 import { discordConfig } from "../../config/discord.config";
-import axios from "axios";
+import { discordApiClient } from "../../clients/DiscordApiClient";
 
 /**
  * Handle issue report modal submission (customer reports problem)
@@ -18,15 +18,10 @@ export async function handleReportIssueModal(interaction: ModalSubmitInteraction
 
         logger.info(`[ReportIssue] Processing issue report for order ${orderId} by customer ${interaction.user.id}`);
 
-        // Create API client
-        const apiClient = axios.create({
-            baseURL: discordConfig.apiBaseUrl,
-            timeout: 30000,
-        });
-
         // Get order details
-        const orderResponse = await apiClient.get(`/discord/orders/${orderId}`);
-        const orderData = orderResponse.data.data || orderResponse.data;
+        const orderResponse: any = await discordApiClient.get(`/discord/orders/${orderId}`);
+        // HttpClient interceptor already unwrapped one level
+        const orderData = orderResponse.data || orderResponse;
 
         // Validate customer
         if (!orderData.customer || orderData.customer.discordId !== interaction.user.id) {
@@ -37,7 +32,7 @@ export async function handleReportIssueModal(interaction: ModalSubmitInteraction
         }
 
         // Update order status to DISPUTED and add the issue description
-        const disputeResponse = await apiClient.put(`/discord/orders/${orderId}/status`, {
+        const disputeResponse = await discordApiClient.put(`/discord/orders/${orderId}/status`, {
             status: "DISPUTED",
             changedByDiscordId: interaction.user.id,
             reason: "Customer reported issue",
