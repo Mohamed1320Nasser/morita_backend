@@ -31,6 +31,12 @@ export default class ServiceController {
         return result;
     }
 
+    @Get("/by-category/:categoryId")
+    async getServicesByCategory(@Param("categoryId") categoryId: string) {
+        const services = await this.serviceService.getList({ categoryId });
+        return { success: true, data: services };
+    }
+
     @Get("/:id")
     async getService(@Param("id") id: string) {
         const service = await this.serviceService.getSingle(id);

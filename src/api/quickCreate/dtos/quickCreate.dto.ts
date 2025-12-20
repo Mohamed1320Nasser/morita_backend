@@ -44,9 +44,18 @@ export class CategoryDataDto {
 }
 
 export class ServiceDataDto {
+    @IsOptional()
+    @IsString()
+    mode?: "existing" | "new";
+
+    @IsOptional()
+    @IsUUID()
+    existingId?: string;
+
+    @IsOptional()
     @IsString()
     @MaxLength(100)
-    name: string;
+    name?: string;
 
     @IsOptional()
     @IsString()
@@ -66,6 +75,11 @@ export class ServiceDataDto {
     @IsInt()
     @Min(0)
     displayOrder?: number;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(500)
+    imageUrl?: string;
 }
 
 export enum PricingUnitEnum {

@@ -114,7 +114,7 @@ export async function lockWalletForUpdate(
 ): Promise<any> {
     // Use raw query to lock the row
     const result = await tx.$queryRaw`
-        SELECT * FROM "Wallet"
+        SELECT * FROM \`Wallet\`
         WHERE id = ${walletId}
         FOR UPDATE
     `;
@@ -218,15 +218,15 @@ async function acquireLock(lockId: string, ttlSeconds: number): Promise<boolean>
         const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
 
         await prisma.$executeRaw`
-            INSERT INTO "Lock" (id, "expiresAt")
+            INSERT INTO \`Lock\` (id, \`expiresAt\`)
             VALUES (${lockId}, ${expiresAt})
-            ON CONFLICT (id) DO NOTHING
+            ON DUPLICATE KEY UPDATE id = id
         `;
 
         // Check if we got the lock
         const lock = await prisma.$queryRaw<any[]>`
-            SELECT id FROM "Lock"
-            WHERE id = ${lockId} AND "expiresAt" > NOW()
+            SELECT id FROM \`Lock\`
+            WHERE id = ${lockId} AND \`expiresAt\` > NOW()
         `;
 
         return lock.length > 0;
@@ -242,7 +242,7 @@ async function acquireLock(lockId: string, ttlSeconds: number): Promise<boolean>
 async function releaseLock(lockId: string): Promise<void> {
     try {
         await prisma.$executeRaw`
-            DELETE FROM "Lock" WHERE id = ${lockId}
+            DELETE FROM \`Lock\` WHERE id = ${lockId}
         `;
     } catch (error) {
         logger.error(`[Lock] Failed to release lock ${lockId}:`, error);
@@ -255,7 +255,7 @@ async function releaseLock(lockId: string): Promise<void> {
 export async function cleanupExpiredLocks(): Promise<number> {
     try {
         const result = await prisma.$executeRaw`
-            DELETE FROM "Lock" WHERE "expiresAt" < NOW()
+            DELETE FROM \`Lock\` WHERE \`expiresAt\` < NOW()
         `;
         return Number(result);
     } catch (error) {

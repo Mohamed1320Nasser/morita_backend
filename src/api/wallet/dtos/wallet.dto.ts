@@ -27,6 +27,7 @@ export enum WalletTransactionType {
     SYSTEM_FEE = "SYSTEM_FEE",
     ADJUSTMENT = "ADJUSTMENT",
     RELEASE = "RELEASE",
+    WORKER_DEPOSIT = "WORKER_DEPOSIT",
 }
 
 // Transaction Status enum (matches Prisma)

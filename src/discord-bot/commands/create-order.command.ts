@@ -66,26 +66,7 @@ export default {
                 `[create-order] Command executed by ${supportUser.tag} in channel ${channel?.id}`
             );
 
-            // Check if this is a ticket channel
-            const channelName = (channel as any)?.name;
-            if (!channelName || !channelName.startsWith("ticket-")) {
-                const embed = new EmbedBuilder()
-                    .setTitle("❌ Invalid Channel")
-                    .setDescription(
-                        "This command can only be used in ticket channels.\n\n" +
-                        "Please use this command in a customer's ticket channel."
-                    )
-                    .setColor(0xed4245)
-                    .setTimestamp();
-
-                await interaction.reply({
-                    embeds: [embed.toJSON() as any],
-                    ephemeral: true,
-                });
-                return;
-            }
-
-            // Get command options
+            // Get command options first
             const customerUser = interaction.options.get("customer")?.user;
             const orderValue = interaction.options.get("value")?.value as number;
             const deposit = interaction.options.get("deposit")?.value as number;
@@ -106,7 +87,7 @@ export default {
                 return;
             }
 
-            // Fetch ticket for this channel
+            // Fetch ticket for this channel to verify it's a ticket channel
             let ticketId = null;
             try {
                 const ticketResponse = await discordApiClient.get(`/api/discord/tickets/channel/${channel?.id}`);
@@ -116,9 +97,43 @@ export default {
                     logger.info(`[create-order] Found ticket ${ticketId} for channel ${channel?.id}`);
                 } else {
                     logger.warn(`[create-order] No ticket found for channel ${channel?.id}`);
+                    // Channel exists but no ticket found - not a ticket channel
+                    const embed = new EmbedBuilder()
+                        .setTitle("❌ Invalid Channel")
+                        .setDescription(
+                            "This command can only be used in ticket channels.\n\n" +
+                            "Please use this command in a customer's ticket channel."
+                        )
+                        .setColor(0xed4245)
+                        .setTimestamp();
+
+                    await interaction.reply({
+                        embeds: [embed.toJSON() as any],
+                        ephemeral: true,
+                    });
+                    return;
                 }
-            } catch (err) {
+            } catch (err: any) {
                 logger.error(`[create-order] Failed to fetch ticket for channel:`, err);
+                // If error is 404, channel is not a ticket channel
+                if (err?.response?.status === 404 || err?.status === 404) {
+                    const embed = new EmbedBuilder()
+                        .setTitle("❌ Invalid Channel")
+                        .setDescription(
+                            "This command can only be used in ticket channels.\n\n" +
+                            "Please use this command in a customer's ticket channel."
+                        )
+                        .setColor(0xed4245)
+                        .setTimestamp();
+
+                    await interaction.reply({
+                        embeds: [embed.toJSON() as any],
+                        ephemeral: true,
+                    });
+                    return;
+                }
+                // Other errors - let it proceed but log the issue
+                logger.warn(`[create-order] Proceeding without ticket association due to API error`);
             }
 
             // Generate unique key for this order

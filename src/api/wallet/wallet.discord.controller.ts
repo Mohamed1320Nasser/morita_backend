@@ -103,19 +103,29 @@ export default class DiscordWalletController {
                 data: {
                     balance: 0,
                     pendingBalance: 0,
+                    deposit: 0,
                     currency: "USD",
                     hasWallet: false,
                 },
             };
         }
 
+        const deposit = parseFloat(wallet.deposit?.toString() || "0");
+        const balance = parseFloat(wallet.balance.toString());
+        const pendingBalance = parseFloat(wallet.pendingBalance.toString());
+        const availableBalance = balance - pendingBalance;
+        const eligibilityBalance = deposit + availableBalance;
+
         logger.info(`[getBalance] Wallet found for discordId: ${discordId}, returning hasWallet: true`);
         return {
             success: true,
             data: {
                 walletId: wallet.id,
-                balance: parseFloat(wallet.balance.toString()),
-                pendingBalance: parseFloat(wallet.pendingBalance.toString()),
+                balance,
+                pendingBalance,
+                deposit,
+                availableBalance,
+                eligibilityBalance,
                 currency: wallet.currency,
                 walletType: wallet.walletType,
                 hasWallet: true,

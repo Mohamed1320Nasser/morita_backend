@@ -26,13 +26,12 @@ export default {
         .addStringOption(option =>
             option
                 .setName("type")
-                .setDescription("Transaction type (default: Deposit)")
+                .setDescription("Transaction type (default: Balance)")
                 .setRequired(false)
                 .addChoices(
-                    { name: "💰 Deposit", value: "DEPOSIT" },
-                    { name: "💸 Spent", value: "PAYMENT" },
-                    { name: "💵 Earnings", value: "EARNING" },
-                    { name: "🔧 Adjustment", value: "ADJUSTMENT" }
+                    { name: "💰 Balance (Customer)", value: "DEPOSIT" },
+                    { name: "🔐 Worker Deposit", value: "WORKER_DEPOSIT" },
+                    { name: "🔧 Adjustment (Manual Fix)", value: "ADJUSTMENT" }
                 )
         )
         .addUserOption(option =>
@@ -171,21 +170,34 @@ export default {
                 throw new Error("Failed to add balance");
             }
 
-            // Extract balance info
-            let previousBalance = "0.00";
-            let newBalance = "0.00";
+            // Extract balance info - handle both balance and deposit transactions
+            const isWorkerDeposit = transactionType === "WORKER_DEPOSIT";
+            let previousValue = "0.00";
+            let newValue = "0.00";
 
-            if (responseData.previousBalance !== undefined) {
-                previousBalance = parseFloat(responseData.previousBalance).toFixed(2);
+            if (isWorkerDeposit) {
+                // For worker deposits, use depositBefore and depositAfter
+                if (responseData.depositBefore !== undefined) {
+                    previousValue = parseFloat(responseData.depositBefore).toFixed(2);
+                }
+                if (responseData.depositAfter !== undefined) {
+                    newValue = parseFloat(responseData.depositAfter).toFixed(2);
+                } else if (responseData.wallet?.deposit !== undefined) {
+                    newValue = parseFloat(responseData.wallet.deposit).toFixed(2);
+                }
+            } else {
+                // For regular balance transactions
+                if (responseData.previousBalance !== undefined) {
+                    previousValue = parseFloat(responseData.previousBalance).toFixed(2);
+                }
+                if (responseData.newBalance !== undefined) {
+                    newValue = parseFloat(responseData.newBalance).toFixed(2);
+                } else if (responseData.wallet?.balance !== undefined) {
+                    newValue = parseFloat(responseData.wallet.balance).toFixed(2);
+                }
             }
 
-            if (responseData.newBalance !== undefined) {
-                newBalance = parseFloat(responseData.newBalance).toFixed(2);
-            } else if (responseData.wallet?.balance !== undefined) {
-                newBalance = parseFloat(responseData.wallet.balance).toFixed(2);
-            }
-
-            logger.info(`[AddBalance] Balance: ${previousBalance} -> ${newBalance}`);
+            logger.info(`[AddBalance] ${isWorkerDeposit ? 'Deposit' : 'Balance'}: ${previousValue} -> ${newValue}`);
 
             // Get target user mention
             const targetMention = `<@${targetDiscordId}>`;
@@ -205,30 +217,34 @@ export default {
 
             // Send SHORT confirmation to support (ephemeral - only they see it)
             await interaction.editReply({
-                content: `✅ Successfully added **$${amount.toFixed(2)} USD** to ${targetMention}'s wallet\n` +
-                    `New Balance: **$${newBalance} USD** ${note ? `\n📝 Note: ${note}` : ""}`,
+                content: `✅ Successfully added **$${amount.toFixed(2)} USD** to ${targetMention}'s ${isWorkerDeposit ? 'worker deposit' : 'wallet'}\n` +
+                    `New ${isWorkerDeposit ? 'Deposit' : 'Balance'}: **$${newValue} USD** ${note ? `\n📝 Note: ${note}` : ""}`,
             });
 
             // Send DETAILED notification to customer in channel (public - professional showcase)
             if (channel && channel instanceof TextChannel) {
+                const embedTitle = isWorkerDeposit ? "🔐 Worker Deposit Received" : "💰 Balance Deposit Received";
+                const embedDescription = isWorkerDeposit
+                    ? `${targetMention}, **$${amount.toFixed(2)} USD** has been added to your worker deposit!`
+                    : `${targetMention}, **$${amount.toFixed(2)} USD** has been added to your wallet!`;
+                const fieldLabel = isWorkerDeposit ? "Deposit" : "Balance";
+
                 const notificationEmbed = new EmbedBuilder()
                     .setAuthor({
                         name: "Morita Wallet",
                         iconURL: interaction.client.user?.displayAvatarURL() || undefined
                     })
-                    .setTitle("💰 Balance Deposit Received")
-                    .setDescription(
-                        `${targetMention}, **$${amount.toFixed(2)} USD** has been added to your wallet!`
-                    )
+                    .setTitle(embedTitle)
+                    .setDescription(embedDescription)
                     .addFields(
                         {
-                            name: "Previous Balance",
-                            value: `\`\`\`diff\n- $${previousBalance} USD\n\`\`\``,
+                            name: `Previous ${fieldLabel}`,
+                            value: `\`\`\`diff\n- $${previousValue} USD\n\`\`\``,
                             inline: true,
                         },
                         {
-                            name: "New Balance",
-                            value: `\`\`\`diff\n+ $${newBalance} USD\n\`\`\``,
+                            name: `New ${fieldLabel}`,
+                            value: `\`\`\`diff\n+ $${newValue} USD\n\`\`\``,
                             inline: true,
                         },
                         {
@@ -237,7 +253,7 @@ export default {
                             inline: true,
                         }
                     )
-                    .setColor(0xffd700)
+                    .setColor(isWorkerDeposit ? 0x5865f2 : 0xffd700)
                     .setTimestamp()
                     .setThumbnail(userAvatar);
 

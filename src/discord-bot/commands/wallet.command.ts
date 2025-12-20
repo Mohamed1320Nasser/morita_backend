@@ -64,13 +64,17 @@ export default {
                 // Format balance display
                 const balance = parseFloat(data.balance).toFixed(2);
                 const pendingBalance = parseFloat(data.pendingBalance).toFixed(2);
-                const availableBalance = (parseFloat(data.balance) - parseFloat(data.pendingBalance)).toFixed(2);
+                const deposit = parseFloat(data.deposit || 0).toFixed(2);
+                const availableBalance = parseFloat(data.availableBalance || (parseFloat(data.balance) - parseFloat(data.pendingBalance))).toFixed(2);
+                const eligibilityBalance = parseFloat(data.eligibilityBalance || (parseFloat(deposit) + parseFloat(availableBalance))).toFixed(2);
+
+                const isWorker = data.walletType === "WORKER";
 
                 const embed = new EmbedBuilder()
                     .setTitle("💰 Your Wallet")
                     .setColor(0x57f287)
                     .setTimestamp()
-                    .setFooter({ text: `Wallet ID: ${data.walletId}` });
+                    .setFooter({ text: `Wallet ID: ${data.walletId} • Type: ${data.walletType || 'CUSTOMER'}` });
 
                 // Balance breakdown
                 let balanceText = `\`\`\`yml\n`;
@@ -88,13 +92,35 @@ export default {
                     inline: false,
                 });
 
-                // Add info about pending balance
-                if (parseFloat(data.pendingBalance) > 0) {
+                // Add worker deposit info if applicable
+                if (isWorker) {
+                    let depositText = `\`\`\`yml\n`;
+                    depositText += `Worker Deposit:    $${deposit} ${data.currency}\n`;
+                    depositText += `Available Balance: $${availableBalance} ${data.currency}\n`;
+                    depositText += `─────────────────────────────\n`;
+                    depositText += `Total Eligibility: $${eligibilityBalance} ${data.currency}\n`;
+                    depositText += `\`\`\``;
+
                     embed.addFields({
-                        name: "ℹ️ Pending Balance",
-                        value: "Pending balance is locked for active orders and will be released upon completion.",
+                        name: "🔐 Job Claiming Eligibility",
+                        value: depositText,
                         inline: false,
                     });
+
+                    embed.addFields({
+                        name: "ℹ️ About Worker Deposit",
+                        value: "Your worker deposit increases your job claiming eligibility. The total eligibility (deposit + available balance) determines which jobs you can claim.",
+                        inline: false,
+                    });
+                } else {
+                    // Add info about pending balance for non-workers
+                    if (parseFloat(data.pendingBalance) > 0) {
+                        embed.addFields({
+                            name: "ℹ️ Pending Balance",
+                            value: "Pending balance is locked for active orders and will be released upon completion.",
+                            inline: false,
+                        });
+                    }
                 }
 
                 await interaction.editReply({

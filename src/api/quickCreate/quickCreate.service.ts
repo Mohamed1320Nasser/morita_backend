@@ -70,48 +70,82 @@ export default class QuickCreateService {
                 );
             }
 
-            let serviceSlug = slugify(data.service.name, {
-                lower: true,
-                strict: true,
-            });
+            let serviceId: string;
+            let serviceName: string;
+            let serviceSlug: string;
+            let serviceCreated = false;
 
-            const existingService = await tx.service.findFirst({
-                where: {
-                    categoryId,
-                    slug: serviceSlug,
-                },
-            });
+            // Handle service selection or creation
+            if (data.service.mode === "existing" && data.service.existingId) {
+                const existingService = await tx.service.findFirst({
+                    where: {
+                        id: data.service.existingId,
+                        categoryId, // Ensure service belongs to selected category
+                        deletedAt: null
+                    },
+                });
 
-            if (existingService) {
-                let counter = 1;
-                let uniqueSlug = `${serviceSlug}-${counter}`;
-
-                while (
-                    await tx.service.findFirst({
-                        where: {
-                            categoryId,
-                            slug: uniqueSlug,
-                        },
-                    })
-                ) {
-                    counter++;
-                    uniqueSlug = `${serviceSlug}-${counter}`;
+                if (!existingService) {
+                    throw new NotFoundError("Selected service not found or doesn't belong to this category");
                 }
 
-                serviceSlug = uniqueSlug;
-            }
+                serviceId = existingService.id;
+                serviceName = existingService.name;
+                serviceSlug = existingService.slug;
+            } else if (data.service.name) {
+                // Create new service
+                let newServiceSlug = slugify(data.service.name, {
+                    lower: true,
+                    strict: true,
+                });
 
-            const service = await tx.service.create({
-                data: {
-                    categoryId,
-                    name: data.service.name,
-                    slug: serviceSlug,
-                    emoji: data.service.emoji,
-                    description: data.service.description,
-                    active: data.service.active ?? true,
-                    displayOrder: data.service.displayOrder ?? 0,
-                },
-            });
+                const existingService = await tx.service.findFirst({
+                    where: {
+                        categoryId,
+                        slug: newServiceSlug,
+                    },
+                });
+
+                if (existingService) {
+                    let counter = 1;
+                    let uniqueSlug = `${newServiceSlug}-${counter}`;
+
+                    while (
+                        await tx.service.findFirst({
+                            where: {
+                                categoryId,
+                                slug: uniqueSlug,
+                            },
+                        })
+                    ) {
+                        counter++;
+                        uniqueSlug = `${newServiceSlug}-${counter}`;
+                    }
+
+                    newServiceSlug = uniqueSlug;
+                }
+
+                const service = await tx.service.create({
+                    data: {
+                        categoryId,
+                        name: data.service.name,
+                        slug: newServiceSlug,
+                        emoji: data.service.emoji,
+                        description: data.service.description,
+                        active: data.service.active ?? true,
+                        displayOrder: data.service.displayOrder ?? 0,
+                    },
+                });
+
+                serviceId = service.id;
+                serviceName = service.name;
+                serviceSlug = service.slug;
+                serviceCreated = true;
+            } else {
+                throw new BadRequestError(
+                    "Invalid service data: must specify either existing service or new service details"
+                );
+            }
 
             let methodsCreated = 0;
             let modifiersCreated = 0;
@@ -121,7 +155,7 @@ export default class QuickCreateService {
                 for (const methodData of data.methods) {
                     const pricingMethod = await tx.pricingMethod.create({
                         data: {
-                            serviceId: service.id,
+                            serviceId: serviceId,
                             name: methodData.name,
                             description: methodData.description,
                             basePrice: methodData.basePrice,
@@ -171,22 +205,22 @@ export default class QuickCreateService {
                     created: categoryCreated,
                 },
                 service: {
-                    id: service.id,
-                    name: service.name,
-                    slug: service.slug,
-                    created: true,
+                    id: serviceId,
+                    name: serviceName,
+                    slug: serviceSlug,
+                    created: serviceCreated,
                 },
                 summary: {
                     methodsCreated,
                     modifiersCreated,
                     totalItems:
                         (categoryCreated ? 1 : 0) +
-                        1 +
+                        (serviceCreated ? 1 : 0) +
                         methodsCreated +
                         modifiersCreated,
                 },
                 methods: createdMethods,
-                redirectUrl: `/services/${service.id}`,
+                redirectUrl: `/services/${serviceId}`,
             };
         });
 

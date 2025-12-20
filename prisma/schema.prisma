@@ -497,6 +497,7 @@ enum WalletTransactionType {
   SYSTEM_FEE        // System takes cut (15%)
   ADJUSTMENT        // Manual correction
   RELEASE           // Release locked funds after order complete
+  WORKER_DEPOSIT    // Worker security deposit payment
 }
 
 // Wallet Transaction Status
@@ -513,6 +514,7 @@ model Wallet {
   walletType      WalletType  @default(CUSTOMER)
   balance         Decimal     @default(0) @db.Decimal(18, 8)
   pendingBalance  Decimal     @default(0) @db.Decimal(18, 8) // Locked for orders
+  deposit         Decimal     @default(0) @db.Decimal(18, 8) // Worker security deposit
   currency        String      @default("USD")
   isActive        Boolean     @default(true)
   createdAt       DateTime    @default(now()) @db.DateTime(0)

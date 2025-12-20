@@ -61,7 +61,11 @@ export async function handleClaimJobButton(
             }
         }
 
-        const availableBalance = balanceData.balance - balanceData.pendingBalance;
+        const deposit = parseFloat(balanceData.deposit || "0");
+        const balance = parseFloat(balanceData.balance || "0");
+        const pendingBalance = parseFloat(balanceData.pendingBalance || "0");
+        const availableBalance = balance - pendingBalance;
+        const eligibilityBalance = deposit + availableBalance;
 
         // Get order details to check deposit requirement
         logger.info(`[ClaimJob] Fetching order details...`);
@@ -72,7 +76,7 @@ export async function handleClaimJobButton(
         const outerData = orderResponse.data || orderResponse;
         const order = outerData.data || outerData;
 
-        logger.info(`[ClaimJob] Order #${order.orderNumber} - Status: ${order.status} - Deposit: $${order.depositAmount} - Worker Balance: $${availableBalance}`);
+        logger.info(`[ClaimJob] Order #${order.orderNumber} - Status: ${order.status} - Deposit Required: $${order.depositAmount} - Worker Deposit: $${deposit} - Available: $${availableBalance} - Eligibility: $${eligibilityBalance}`);
 
         // Check if order is still available
         if (order.status !== "PENDING") {
@@ -90,18 +94,29 @@ export async function handleClaimJobButton(
             return;
         }
 
-        // Check if worker has sufficient balance
+        // Check if worker has sufficient eligibility (deposit + available balance)
         const requiredDeposit = parseFloat(order.depositAmount.toString());
-        if (availableBalance < requiredDeposit) {
-            const shortfall = requiredDeposit - availableBalance;
+        if (eligibilityBalance < requiredDeposit) {
+            const shortfall = requiredDeposit - eligibilityBalance;
+
+            // Build error message
+            let errorMessage = `❌ **Insufficient Balance**\n\n` +
+                `You need at least $${requiredDeposit.toFixed(2)} to claim this job.\n\n` +
+                `**Your Worker Deposit:** $${deposit.toFixed(2)}\n` +
+                `**Your Available Balance:** $${availableBalance.toFixed(2)}\n` +
+                `**Total Eligibility:** $${eligibilityBalance.toFixed(2)}\n` +
+                `**Required:** $${requiredDeposit.toFixed(2)}\n` +
+                `**Shortfall:** $${shortfall.toFixed(2)}\n\n`;
+
+            // Add special note if worker has no deposit
+            if (deposit === 0) {
+                errorMessage += `⚠️ **Note:** You have no worker deposit. Consider adding a deposit to increase your job claiming eligibility.\n\n`;
+            }
+
+            errorMessage += `Please add more balance or deposit to your wallet before claiming jobs.`;
+
             await interaction.editReply({
-                content:
-                    `❌ **Insufficient Balance**\n\n` +
-                    `You need at least $${requiredDeposit.toFixed(2)} to claim this job.\n\n` +
-                    `**Your Available Balance:** $${availableBalance.toFixed(2)}\n` +
-                    `**Required:** $${requiredDeposit.toFixed(2)}\n` +
-                    `**Shortfall:** $${shortfall.toFixed(2)}\n\n` +
-                    `Please add more balance to your wallet before claiming jobs.`,
+                content: errorMessage,
             });
             return;
         }

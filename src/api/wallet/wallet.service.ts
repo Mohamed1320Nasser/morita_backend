@@ -217,17 +217,28 @@ export default class WalletService {
         }
 
         const amount = new Decimal(data.amount);
+        const isDepositTransaction = data.transactionType === "WORKER_DEPOSIT";
+
+        // Determine which field to update
         const balanceBefore = new Decimal(wallet.balance.toString());
-        const balanceAfter = balanceBefore.add(amount);
+        const depositBefore = new Decimal(wallet.deposit.toString());
+
+        const balanceAfter = isDepositTransaction ? balanceBefore : balanceBefore.add(amount);
+        const depositAfter = isDepositTransaction ? depositBefore.add(amount) : depositBefore;
 
         // Use transaction to ensure atomicity
         const result = await prisma.$transaction(async (tx) => {
-            // Update wallet balance
+            // Update wallet - either balance or deposit
+            const updateData: any = {};
+            if (isDepositTransaction) {
+                updateData.deposit = depositAfter;
+            } else {
+                updateData.balance = balanceAfter;
+            }
+
             const updatedWallet = await tx.wallet.update({
                 where: { id: walletId },
-                data: {
-                    balance: balanceAfter,
-                },
+                data: updateData,
                 include: {
                     user: {
                         select: {
@@ -266,12 +277,20 @@ export default class WalletService {
                 transaction,
                 balanceBefore: balanceBefore.toNumber(),
                 balanceAfter: balanceAfter.toNumber(),
+                depositBefore: depositBefore.toNumber(),
+                depositAfter: depositAfter.toNumber(),
             };
         });
 
-        logger.info(
-            `Added ${amount} to wallet ${walletId}. Balance: ${balanceBefore} -> ${balanceAfter}`
-        );
+        if (isDepositTransaction) {
+            logger.info(
+                `Added ${amount} to worker deposit ${walletId}. Deposit: ${depositBefore} -> ${depositAfter}`
+            );
+        } else {
+            logger.info(
+                `Added ${amount} to wallet ${walletId}. Balance: ${balanceBefore} -> ${balanceAfter}`
+            );
+        }
 
         return result;
     }
