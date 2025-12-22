@@ -46,7 +46,9 @@ model User {
   deletedAt           DateTime?
 
   // Discord integration
-  discordId           String?       @unique // Discord user ID
+  discordId           String?       @unique // Discord user ID (e.g., "1135250199338549299")
+  discordUsername     String?       // Discord username (e.g., "monasser.eng_09706")
+  discordDisplayName  String?       // Discord display name / global name (e.g., "Mohamed Nasser")
   discordRole         DiscordRole?  @default(customer) // Discord server role
 
   sessions     Session[]
@@ -141,6 +143,7 @@ enum ModifierType {
 enum ModifierDisplayType {
   NORMAL // Standard modifier display
   UPCHARGE // Highlighted as upcharge (red)
+  DISCOUNT // Highlighted as discount (green)
   NOTE // Highlighted as note (green)
   WARNING // Highlighted as warning (yellow)
 }
@@ -278,6 +281,7 @@ model PricingMethod {
   id           String      @id @default(uuid())
   serviceId    String
   name         String
+  groupName    String? // Group name for organizing methods (e.g., "ARMA - Armadyl", "BANDOS - Bandos")
   description  String?     @db.Text
   basePrice    Decimal     @db.Decimal(18, 8)
   pricingUnit  PricingUnit @default(FIXED)
@@ -298,6 +302,7 @@ model PricingMethod {
   @@index([active])
   @@index([displayOrder])
   @@index([startLevel, endLevel])
+  @@index([groupName])
 }
 
 model PricingModifier {
@@ -404,6 +409,7 @@ model Order {
   workerPayout    Decimal?      @db.Decimal(18, 8)  // 80%
   supportPayout   Decimal?      @db.Decimal(18, 8)  // 5%
   systemPayout    Decimal?      @db.Decimal(18, 8)  // 15%
+  payoutProcessed Boolean       @default(false)     // Idempotency flag to prevent duplicate payouts
 
   // Status
   status          OrderStatus   @default(PENDING)
@@ -425,6 +431,9 @@ model Order {
   confirmedAt     DateTime?
   cancelledAt     DateTime?
 
+  // Optimistic locking - prevents race conditions
+  version         Int           @default(0)
+
   // Relations
   customer          User           @relation("customerOrders", fields: [customerId], references: [id])
   worker            User?          @relation("workerOrders", fields: [workerId], references: [id])
@@ -443,6 +452,8 @@ model Order {
   @@index([status])
   @@index([ticketId])
   @@index([createdAt])
+  @@index([workerId, status]) // Composite index for worker's orders filtered by status
+  @@index([customerId, status]) // Composite index for customer's orders filtered by status
 }
 
 model OrderStatusHistory {
@@ -535,6 +546,8 @@ model WalletTransaction {
   amount          Decimal                   @db.Decimal(18, 8)
   balanceBefore   Decimal                   @db.Decimal(18, 8)
   balanceAfter    Decimal                   @db.Decimal(18, 8)
+  depositBefore   Decimal?                  @db.Decimal(18, 8)  // For WORKER_DEPOSIT tracking
+  depositAfter    Decimal?                  @db.Decimal(18, 8)  // For WORKER_DEPOSIT tracking
   currency        String                    @default("USD")
   status          WalletTransactionStatus   @default(COMPLETED)
 

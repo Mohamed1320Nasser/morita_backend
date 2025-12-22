@@ -38,6 +38,7 @@ import { handleClaimJobButton } from "./claim-job.button";
 import { handleConfirmCompleteButton } from "./confirm-complete.button";
 import { handleReportIssueButton } from "./report-issue.button";
 import { handleOrderInfoButton } from "./order-info.button";
+import { handleStartWork } from "./start-work.button";
 
 // Button handler mapping
 const buttonHandlers: {
@@ -76,12 +77,28 @@ export default Object.entries(buttonHandlers).map(([customId, execute]) => ({
     execute,
 })) as Button[];
 
+// Global deduplication cache to prevent duplicate button executions
+const processingInteractions = new Set<string>();
+
 // Helper function to handle button interactions
 export async function handleButtonInteraction(
     interaction: ButtonInteraction
 ): Promise<void> {
     try {
         const customId = interaction.customId;
+        const interactionKey = `${interaction.id}`;
+
+        // Check if this interaction is already being processed
+        if (processingInteractions.has(interactionKey)) {
+            logger.warn(`[ButtonHandler] Duplicate execution prevented for ${customId}`);
+            return;
+        }
+
+        // Mark as processing
+        processingInteractions.add(interactionKey);
+
+        // Auto-cleanup after 10 seconds
+        setTimeout(() => processingInteractions.delete(interactionKey), 10000);
 
         // Check for exact match first
         if (buttonHandlers[customId]) {
@@ -161,6 +178,12 @@ export async function handleButtonInteraction(
 
         if (customId.startsWith("mark_complete_")) {
             await handleCompleteOrder(interaction);
+            return;
+        }
+
+        // Start work button
+        if (customId.startsWith("start_work_")) {
+            await handleStartWork(interaction);
             return;
         }
 

@@ -20,6 +20,7 @@ import WalletService from "../wallet/wallet.service";
 import { withTransactionRetry, checkWalletBalanceWithLock, updateWalletBalance } from "../../common/utils/transaction.util";
 import { PAYOUT_STRUCTURE, FINANCIAL_LIMITS, isValidAmount } from "../../common/constants/security.constants";
 import { InsufficientBalanceError } from "../../common/utils/errorHandler.util";
+import { OrderStatus as PrismaOrderStatus } from "@prisma/client";
 
 @Service()
 export default class OrderService {
@@ -113,7 +114,8 @@ export default class OrderService {
             if (!customerBalanceCheck.sufficient) {
                 throw new InsufficientBalanceError(
                     orderValue.toNumber(),
-                    customerBalanceCheck.available
+                    customerBalanceCheck.available,
+                    'customer'
                 );
             }
 
@@ -152,9 +154,25 @@ export default class OrderService {
                     );
 
                     if (!workerBalanceCheck.sufficient) {
+                        // Extract deposit and balance for detailed error message
+                        const workerDeposit = typeof workerWallet.deposit === 'object'
+                            ? parseFloat(workerWallet.deposit.toString())
+                            : workerWallet.deposit;
+                        const workerBalance = typeof workerWallet.balance === 'object'
+                            ? parseFloat(workerWallet.balance.toString())
+                            : workerWallet.balance;
+                        const workerPendingBalance = typeof workerWallet.pendingBalance === 'object'
+                            ? parseFloat(workerWallet.pendingBalance.toString())
+                            : workerWallet.pendingBalance;
+
                         throw new InsufficientBalanceError(
                             requiredDeposit.toNumber(),
-                            workerBalanceCheck.available
+                            workerBalanceCheck.available,
+                            'worker',
+                            {
+                                deposit: workerDeposit,
+                                balance: workerBalance - workerPendingBalance
+                            }
                         );
                     }
 
@@ -439,11 +457,19 @@ export default class OrderService {
         const where: any = {};
 
         if (search) {
-            where.OR = [
-                { orderNumber: { contains: search } },
-                { customer: { fullname: { contains: search } } },
-                { worker: { fullname: { contains: search } } },
-            ];
+            // Check if search is a number (order number) or text (name search)
+            const isNumber = /^\d+$/.test(search);
+
+            if (isNumber) {
+                // Search by exact order number
+                where.orderNumber = parseInt(search);
+            } else {
+                // Search by customer/worker names
+                where.OR = [
+                    { customer: { fullname: { contains: search } } },
+                    { worker: { fullname: { contains: search } } },
+                ];
+            }
         }
 
         if (status) {
@@ -520,17 +546,25 @@ export default class OrderService {
             throw new NotFoundError("Worker not found");
         }
 
-        // Check worker balance
+        // Check worker balance (deposit + available balance)
         const workerWallet = await this.walletService.getWalletByUserId(data.workerId);
         if (!workerWallet) {
             throw new BadRequestError("Worker does not have a wallet");
         }
 
-        const workerBalance = new Decimal(workerWallet.balance.toString());
+        // Calculate eligibility: deposit + (balance - pendingBalance)
+        const balance = new Decimal(workerWallet.balance.toString());
+        const pendingBalance = new Decimal(workerWallet.pendingBalance.toString());
+        const deposit = new Decimal(workerWallet.deposit.toString());
+        const availableBalance = balance.minus(pendingBalance);
+        const eligibilityBalance = deposit.plus(availableBalance);
         const requiredDeposit = new Decimal(order.depositAmount.toString());
 
-        if (workerBalance.lessThan(requiredDeposit)) {
-            throw new BadRequestError("Worker has insufficient balance for deposit");
+        if (eligibilityBalance.lessThan(requiredDeposit)) {
+            throw new BadRequestError(
+                `Worker has insufficient balance. Required: $${requiredDeposit.toFixed(2)}, ` +
+                `Available: $${eligibilityBalance.toFixed(2)} (Deposit: $${deposit.toFixed(2)}, Balance: $${availableBalance.toFixed(2)})`
+            );
         }
 
         // Update order
@@ -611,9 +645,25 @@ export default class OrderService {
             );
 
             if (!balanceCheck.sufficient) {
+                // Extract deposit and balance for detailed error message
+                const workerDeposit = typeof balanceCheck.wallet.deposit === 'object'
+                    ? parseFloat(balanceCheck.wallet.deposit.toString())
+                    : balanceCheck.wallet.deposit;
+                const workerBalance = typeof balanceCheck.wallet.balance === 'object'
+                    ? parseFloat(balanceCheck.wallet.balance.toString())
+                    : balanceCheck.wallet.balance;
+                const workerPendingBalance = typeof balanceCheck.wallet.pendingBalance === 'object'
+                    ? parseFloat(balanceCheck.wallet.pendingBalance.toString())
+                    : balanceCheck.wallet.pendingBalance;
+
                 throw new InsufficientBalanceError(
                     requiredDeposit.toNumber(),
-                    balanceCheck.available
+                    balanceCheck.available,
+                    'worker',
+                    {
+                        deposit: workerDeposit,
+                        balance: workerBalance - workerPendingBalance
+                    }
                 );
             }
 
@@ -642,7 +692,7 @@ export default class OrderService {
                 },
             });
 
-            // 4. Update order - assign worker
+            // 4. Update order - assign worker (worker must click "Start Work" to begin)
             const updated = await tx.order.update({
                 where: { id: orderId },
                 data: {
@@ -658,7 +708,7 @@ export default class OrderService {
                 },
             });
 
-            // 5. Create status history
+            // 5. Create status history for ASSIGNED
             await tx.orderStatusHistory.create({
                 data: {
                     orderId,
@@ -666,6 +716,17 @@ export default class OrderService {
                     toStatus: OrderStatus.ASSIGNED,
                     changedById: worker.id,
                     reason: "Job claimed by worker",
+                },
+            });
+
+            // 6. Create status history for IN_PROGRESS (auto-started)
+            await tx.orderStatusHistory.create({
+                data: {
+                    orderId,
+                    fromStatus: OrderStatus.ASSIGNED,
+                    toStatus: OrderStatus.IN_PROGRESS,
+                    changedById: worker.id,
+                    reason: "Work started automatically after claiming",
                 },
             });
 
@@ -684,6 +745,11 @@ export default class OrderService {
      */
     async updateOrderStatus(orderId: string, data: UpdateOrderStatusDto) {
         const order = await this.getOrderById(orderId);
+
+        // Validate status transition (unless it's the same status)
+        if (order.status !== data.status) {
+            this.validateStatusTransition(order.status, data.status);
+        }
 
         const updatedOrder = await prisma.order.update({
             where: { id: orderId },
@@ -786,6 +852,35 @@ export default class OrderService {
     }
 
     /**
+     * Validate status transition
+     * Enforces proper order flow and prevents invalid status changes
+     */
+    private validateStatusTransition(currentStatus: PrismaOrderStatus, newStatus: OrderStatus): void {
+        // Define valid transitions for each status
+        const validTransitions: Record<PrismaOrderStatus, PrismaOrderStatus[]> = {
+            [PrismaOrderStatus.PENDING]: [PrismaOrderStatus.CLAIMING, PrismaOrderStatus.ASSIGNED, PrismaOrderStatus.CANCELLED],
+            [PrismaOrderStatus.CLAIMING]: [PrismaOrderStatus.ASSIGNED, PrismaOrderStatus.CANCELLED],
+            [PrismaOrderStatus.ASSIGNED]: [PrismaOrderStatus.IN_PROGRESS, PrismaOrderStatus.CANCELLED],
+            [PrismaOrderStatus.IN_PROGRESS]: [PrismaOrderStatus.AWAITING_CONFIRM, PrismaOrderStatus.CANCELLED, PrismaOrderStatus.DISPUTED],
+            [PrismaOrderStatus.AWAITING_CONFIRM]: [PrismaOrderStatus.COMPLETED, PrismaOrderStatus.DISPUTED, PrismaOrderStatus.CANCELLED],
+            [PrismaOrderStatus.COMPLETED]: [PrismaOrderStatus.DISPUTED], // Can only dispute after completion
+            [PrismaOrderStatus.CANCELLED]: [PrismaOrderStatus.REFUNDED],
+            [PrismaOrderStatus.DISPUTED]: [PrismaOrderStatus.COMPLETED, PrismaOrderStatus.REFUNDED, PrismaOrderStatus.CANCELLED],
+            [PrismaOrderStatus.REFUNDED]: [], // Final status - no transitions allowed
+        };
+
+        const allowedStatuses = validTransitions[currentStatus] || [];
+        const newStatusAsPrisma = newStatus as unknown as PrismaOrderStatus;
+
+        if (!allowedStatuses.includes(newStatusAsPrisma)) {
+            throw new BadRequestError(
+                `Invalid status transition: Cannot change from ${currentStatus} to ${newStatus}. ` +
+                `Allowed transitions: ${allowedStatuses.join(', ') || 'None'}`
+            );
+        }
+    }
+
+    /**
      * Process order payouts (80% worker, 5% support, 15% system)
      */
     /**
@@ -798,6 +893,12 @@ export default class OrderService {
      */
     private async processOrderPayouts(orderId: string) {
         const order = await this.getOrderById(orderId);
+
+        // Idempotency check - prevent duplicate payout processing
+        if (order.payoutProcessed) {
+            logger.warn(`[OrderService] Payouts already processed for order ${orderId}, skipping`);
+            return;
+        }
 
         if (!order.workerId || !order.supportId) {
             logger.error(`[OrderService] Cannot process payouts: missing worker or support for order ${orderId}`);
@@ -914,6 +1015,12 @@ export default class OrderService {
             });
 
             // 5. System revenue (15%) tracked in order.systemPayout
+
+            // 6. Mark order as payout processed (idempotency)
+            await tx.order.update({
+                where: { id: orderId },
+                data: { payoutProcessed: true }
+            });
         });
 
         logger.info(`[OrderService] Payouts completed for order ${orderId}:`);

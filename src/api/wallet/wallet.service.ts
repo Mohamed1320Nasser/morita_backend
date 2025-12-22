@@ -152,7 +152,8 @@ export default class WalletService {
     async getOrCreateWalletByDiscordId(
         discordId: string,
         discordUsername: string,
-        walletType: WalletType = WalletType.CUSTOMER
+        walletType: WalletType = WalletType.CUSTOMER,
+        discordDisplayName?: string
     ) {
         // Find or create user
         let user = await prisma.user.findUnique({
@@ -161,16 +162,33 @@ export default class WalletService {
 
         if (!user) {
             // Create user with Discord ID
+            // Use display name for fullname if available, otherwise use username
+            const displayName = discordDisplayName || discordUsername;
+
             user = await prisma.user.create({
                 data: {
                     discordId,
-                    fullname: discordUsername,
+                    discordUsername: discordUsername,
+                    discordDisplayName: discordDisplayName,
+                    fullname: displayName,
                     username: discordUsername,
                     email: `${discordId}@discord.placeholder`,
                     role: "user",
                 },
             });
-            logger.info(`Created user for Discord ID ${discordId}`);
+        } else {
+            // Update existing user's Discord display name if it changed
+            if (discordDisplayName && user.discordDisplayName !== discordDisplayName) {
+                user = await prisma.user.update({
+                    where: { id: user.id },
+                    data: {
+                        discordUsername: discordUsername,
+                        discordDisplayName: discordDisplayName,
+                        fullname: discordDisplayName, // Update fullname too
+                    },
+                });
+                logger.info(`[getOrCreateWalletByDiscordId] Updated display name for user ${user.id}: ${discordDisplayName}`);
+            }
         }
 
         return this.getOrCreateWallet(user.id, walletType);
@@ -226,15 +244,22 @@ export default class WalletService {
         const balanceAfter = isDepositTransaction ? balanceBefore : balanceBefore.add(amount);
         const depositAfter = isDepositTransaction ? depositBefore.add(amount) : depositBefore;
 
+        logger.info(`[AddBalance] Transaction type: ${data.transactionType}, isDepositTransaction: ${isDepositTransaction}`);
+        logger.info(`[AddBalance] Before - Balance: ${balanceBefore}, Deposit: ${depositBefore}`);
+        logger.info(`[AddBalance] After - Balance: ${balanceAfter}, Deposit: ${depositAfter}`);
+
         // Use transaction to ensure atomicity
         const result = await prisma.$transaction(async (tx) => {
             // Update wallet - either balance or deposit
             const updateData: any = {};
             if (isDepositTransaction) {
                 updateData.deposit = depositAfter;
+                logger.info(`[AddBalance] Updating DEPOSIT field only to ${depositAfter}`);
             } else {
                 updateData.balance = balanceAfter;
+                logger.info(`[AddBalance] Updating BALANCE field only to ${balanceAfter}`);
             }
+            logger.info(`[AddBalance] Update data:`, updateData);
 
             const updatedWallet = await tx.wallet.update({
                 where: { id: walletId },
@@ -262,6 +287,12 @@ export default class WalletService {
                 status: "COMPLETED",
                 createdById: createdById || 1, // Fallback to admin user ID
             };
+
+            // Add deposit tracking for WORKER_DEPOSIT transactions
+            if (isDepositTransaction) {
+                transactionData.depositBefore = depositBefore;
+                transactionData.depositAfter = depositAfter;
+            }
 
             // Only add optional fields if they have values
             if (data.paymentMethodId) transactionData.paymentMethodId = data.paymentMethodId;
@@ -302,8 +333,9 @@ export default class WalletService {
         // Get or create wallet for customer
         const wallet = await this.getOrCreateWalletByDiscordId(
             data.customerDiscordId,
-            data.customerDiscordId, // Will be updated later with proper username
-            WalletType.CUSTOMER
+            data.customerDiscordUsername || data.customerDiscordId,
+            WalletType.CUSTOMER,
+            data.customerDiscordDisplayName
         );
 
         // Add balance

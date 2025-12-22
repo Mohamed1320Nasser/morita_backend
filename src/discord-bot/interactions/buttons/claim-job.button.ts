@@ -35,15 +35,16 @@ export async function handleClaimJobButton(
             logger.info(`[ClaimJob] Worker ${workerDiscordId} has no wallet, creating one automatically...`);
 
             try {
+                const displayName = interaction.user.displayName || interaction.user.globalName;
                 const createWalletResponse = await discordApiClient.post(
                     `/discord/wallets/discord/${workerDiscordId}`,
                     {
-                        username: interaction.user.username,
+                        username: displayName || interaction.user.username,
                         walletType: "WORKER",
                     }
                 );
 
-                logger.info(`[ClaimJob] Worker wallet created successfully for ${interaction.user.username}`);
+                logger.info(`[ClaimJob] Worker wallet created successfully for ${displayName || interaction.user.username}`);
 
                 // Fetch balance again after wallet creation
                 const newBalanceResponse: any = await discordApiClient.get(
@@ -227,7 +228,9 @@ export async function handleClaimJobButton(
             logger.error("[ClaimJob] API Error:", error.response.data);
         }
 
-        const errorMessage = error?.response?.data?.message || error?.message || "Unknown error occurred";
+        // Use extractErrorMessage utility for consistent error handling
+        const { extractErrorMessage } = require("../../utils/error-message.util");
+        const errorMessage = extractErrorMessage(error);
 
         try {
             if (interaction.replied || interaction.deferred) {

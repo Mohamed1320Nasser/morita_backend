@@ -85,6 +85,14 @@ export class DiscordAddBalanceDto {
     @IsString()
     customerDiscordId!: string;
 
+    @IsString()
+    @IsOptional()
+    customerDiscordUsername?: string;
+
+    @IsString()
+    @IsOptional()
+    customerDiscordDisplayName?: string;
+
     @IsNumber()
     @Min(0.01)
     @Type(() => Number)

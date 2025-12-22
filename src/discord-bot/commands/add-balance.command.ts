@@ -132,10 +132,11 @@ export default {
             // Get or create support user
             let supportUserId: number = 1;
             try {
+                const supportDisplayName = interaction.user.displayName || interaction.user.globalName;
                 const supportUserResponse = await discordApiClient.post(
                     `/discord/wallets/discord/${interaction.user.id}`,
                     {
-                        username: interaction.user.username,
+                        username: supportDisplayName || interaction.user.username,
                         walletType: "SUPPORT",
                     }
                 );
@@ -152,6 +153,8 @@ export default {
 
             const response: any = await discordApiClient.post("/discord/wallets/add-balance", {
                 customerDiscordId: targetDiscordId,
+                customerDiscordUsername: targetUser?.username,
+                customerDiscordDisplayName: targetUser?.displayName || targetUser?.globalName,
                 amount,
                 transactionType,
                 reference,

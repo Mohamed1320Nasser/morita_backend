@@ -24,6 +24,11 @@ export class CreatePricingMethodDto {
 
     @IsOptional()
     @IsString()
+    @MaxLength(100)
+    groupName?: string;
+
+    @IsOptional()
+    @IsString()
     @MaxLength(500)
     description?: string;
 

@@ -1,27 +1,62 @@
 import { ButtonInteraction } from "discord.js";
 import { EmbedBuilder } from "../../utils/embedBuilder";
 import logger from "../../../common/loggers";
+import { requireSupportOrAdmin } from "../../utils/permissions.util";
+import { discordApiClient } from "../../clients/DiscordApiClient";
 
 export async function handleCancelOrder(
     interaction: ButtonInteraction
 ): Promise<void> {
     try {
-        await interaction.deferReply();
+        await interaction.deferReply({ ephemeral: true });
 
-        const embed = EmbedBuilder.createErrorEmbed(
-            "Order cancelled. You can start a new order anytime using /order or /services.",
-            "Order Cancelled"
+        // Check permission - only Support/Admin can cancel orders
+        const hasPermission = await requireSupportOrAdmin(interaction);
+        if (!hasPermission) {
+            return;
+        }
+
+        // Extract orderId from customId: cancel_order_{orderId}
+        const orderId = interaction.customId.replace("cancel_order_", "");
+
+        logger.info(`[CancelOrder] Support ${interaction.user.tag} cancelling order ${orderId}`);
+
+        // Get order details
+        const orderResponse: any = await discordApiClient.get(`/discord/orders/${orderId}`);
+        const orderData = orderResponse.data || orderResponse;
+
+        // Cancel the order via API
+        await discordApiClient.put(`/discord/orders/${orderId}/status`, {
+            status: "CANCELLED",
+            supportDiscordId: interaction.user.id,
+            reason: "Cancelled by support",
+        });
+
+        const embed = EmbedBuilder.createSuccessEmbed(
+            `Order #${orderData.orderNumber} has been cancelled.\n\n` +
+            `Customer and worker have been notified.`,
+            "✅ Order Cancelled"
         );
 
         await interaction.editReply({
             embeds: [embed as any],
         });
 
-        logger.info(`Order cancelled by ${interaction.user.tag}`);
-    } catch (error) {
-        logger.error("Error handling cancel order button:", error);
+        // Notify in channel
+        if (interaction.channel) {
+            await interaction.channel.send({
+                content: `⚠️ **Order #${orderData.orderNumber} Cancelled**\n\nCancelled by <@${interaction.user.id}>`,
+            });
+        }
+
+        logger.info(`[CancelOrder] Order ${orderId} cancelled by support ${interaction.user.tag}`);
+    } catch (error: any) {
+        logger.error("[CancelOrder] Error handling cancel order button:", error);
+
+        const errorMessage = error?.response?.data?.message || error?.message || "Unknown error";
+
         await interaction.editReply({
-            content: "Failed to cancel order. Please try again.",
+            content: `❌ **Failed to cancel order**\n\n${errorMessage}\n\nPlease try again or contact an administrator.`,
         });
     }
 }

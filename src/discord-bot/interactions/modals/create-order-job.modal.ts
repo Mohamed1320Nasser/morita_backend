@@ -4,6 +4,7 @@ import { discordConfig } from "../../config/discord.config";
 import { discordApiClient } from "../../clients/DiscordApiClient";
 import { createJobClaimingEmbed, createClaimButton } from "../../utils/jobClaimingEmbed";
 import { getOrderChannelService } from "../../services/orderChannel.service";
+import { extractErrorMessage, isInsufficientBalanceError } from "../../utils/error-message.util";
 
 // Temporary storage for order data (in production, use Redis or database)
 const orderDataCache = new Map<string, any>();
@@ -17,11 +18,20 @@ export function storeOrderData(key: string, data: any) {
 export async function handleCreateOrderJobModal(
     interaction: ModalSubmitInteraction
 ): Promise<void> {
+    // Defer reply IMMEDIATELY to prevent timeout
     try {
         await interaction.deferReply({ ephemeral: true });
+    } catch (deferError) {
+        logger.error("[CreateOrderJob] Failed to defer:", deferError);
+        return;
+    }
 
+    try {
         // Parse custom ID: create_order_job_order_{customerId}_{timestamp}
         const orderKey = interaction.customId.replace("create_order_job_", "");
+
+        // Get job details from modal BEFORE any async operations
+        const jobDetails = interaction.fields.getTextInputValue("job_details").trim() || null;
 
         // Get stored order data
         const orderData = orderDataCache.get(orderKey);
@@ -36,10 +46,31 @@ export async function handleCreateOrderJobModal(
         // Delete from cache
         orderDataCache.delete(orderKey);
 
-        // Get job details from modal
-        const jobDetails = interaction.fields.getTextInputValue("job_details").trim() || null;
-
         logger.info(`[CreateOrderJob] Processing order for customer ${orderData.customerDiscordId}`);
+
+        // Fetch ticket for this channel (moved from command to avoid timeout)
+        let ticketId = orderData.ticketId; // May be null if not fetched yet
+        if (!ticketId && orderData.channelId) {
+            try {
+                logger.info(`[CreateOrderJob] Fetching ticket for channel ${orderData.channelId}`);
+                const ticketResponse = await discordApiClient.get(`/api/discord/tickets/channel/${orderData.channelId}`);
+                const ticketData = ticketResponse.data.data?.data || ticketResponse.data.data || ticketResponse.data;
+                if (ticketData && ticketData.id) {
+                    ticketId = ticketData.id;
+                    logger.info(`[CreateOrderJob] Found ticket ${ticketId} for channel ${orderData.channelId}`);
+                } else {
+                    logger.warn(`[CreateOrderJob] No ticket found for channel ${orderData.channelId}`);
+                }
+            } catch (err: any) {
+                logger.error(`[CreateOrderJob] Failed to fetch ticket for channel:`, err);
+                // If error is 404, channel is not a ticket channel - but don't fail the order
+                if (err?.response?.status === 404 || err?.status === 404) {
+                    logger.warn(`[CreateOrderJob] Channel ${orderData.channelId} is not a ticket channel`);
+                } else {
+                    logger.warn(`[CreateOrderJob] Proceeding without ticket association due to API error`);
+                }
+            }
+        }
 
         // Check customer wallet balance
         const balanceResponse: any = await discordApiClient.get(
@@ -92,7 +123,7 @@ export async function handleCreateOrderJobModal(
             customerDiscordId: orderData.customerDiscordId,
             workerDiscordId: orderData.workerDiscordId,
             supportDiscordId: orderData.supportDiscordId,
-            ticketId: orderData.ticketId || null,
+            ticketId: ticketId || null, // Use the ticketId we just fetched
             serviceId: null,
             methodId: null,
             paymentMethodId: null,
@@ -102,7 +133,7 @@ export async function handleCreateOrderJobModal(
             jobDetails: jobDetails ? { description: jobDetails } : null,
         };
 
-        logger.info(`[CreateOrderJob] Creating order with ticketId: ${orderData.ticketId || 'NULL'}`);
+        logger.info(`[CreateOrderJob] Creating order with ticketId: ${ticketId || 'NULL'}`);
         logger.info(`[CreateOrderJob] Order data:`, createOrderData);
 
         const response: any = await discordApiClient.post("/discord/orders/create", createOrderData);
@@ -328,7 +359,29 @@ export async function handleCreateOrderJobModal(
             logger.error("[CreateOrderJob] Validation errors:", error.errors);
         }
 
-        const errorMessage = error?.message || String(error) || "Unknown error occurred";
+        // Extract user-friendly error message from API response
+        const errorMessage = extractErrorMessage(error);
+
+        // Make error messages more user-friendly
+        if (isInsufficientBalanceError(error)) {
+            const embed = new EmbedBuilder()
+                .setTitle("❌ Insufficient Balance")
+                .setDescription(errorMessage)
+                .setColor(0xed4245)
+                .setTimestamp()
+                .setFooter({ text: "Please add more balance using /add-balance" });
+
+            try {
+                if (interaction.replied || interaction.deferred) {
+                    await interaction.editReply({ embeds: [embed.toJSON() as any] });
+                } else {
+                    await interaction.reply({ embeds: [embed.toJSON() as any], ephemeral: true });
+                }
+            } catch (replyError) {
+                logger.error("[CreateOrderJob] Failed to send error message:", replyError);
+            }
+            return;
+        }
 
         try {
             if (interaction.replied || interaction.deferred) {

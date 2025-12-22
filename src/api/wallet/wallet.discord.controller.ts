@@ -69,18 +69,30 @@ export default class DiscordWalletController {
         try {
             const result = await this.walletService.addBalanceByDiscord(data);
 
+            // For WORKER_DEPOSIT, return deposit values; otherwise return balance values
+            const isWorkerDeposit = data.transactionType === "WORKER_DEPOSIT";
+
+            const responseData: any = {
+                wallet: {
+                    ...result.wallet,
+                    balance: parseFloat(result.wallet.balance.toString()),
+                    pendingBalance: parseFloat(result.wallet.pendingBalance.toString()),
+                    deposit: parseFloat(result.wallet.deposit.toString()),
+                },
+                transaction: result.transaction,
+                previousBalance: isWorkerDeposit ? (result.depositBefore || 0) : (result.balanceBefore || 0),
+                newBalance: isWorkerDeposit ? (result.depositAfter || 0) : (result.balanceAfter || parseFloat(result.wallet.balance.toString())),
+            };
+
+            // Add separate deposit fields for WORKER_DEPOSIT transactions
+            if (isWorkerDeposit) {
+                responseData.depositBefore = result.depositBefore || 0;
+                responseData.depositAfter = result.depositAfter || 0;
+            }
+
             return {
                 success: true,
-                data: {
-                    wallet: {
-                        ...result.wallet,
-                        balance: parseFloat(result.wallet.balance.toString()),
-                        pendingBalance: parseFloat(result.wallet.pendingBalance.toString()),
-                    },
-                    transaction: result.transaction,
-                    previousBalance: result.balanceBefore || 0,
-                    newBalance: result.balanceAfter || parseFloat(result.wallet.balance.toString()),
-                },
+                data: responseData,
             };
         } catch (error) {
             logger.error(`[Discord] Add balance error:`, error);

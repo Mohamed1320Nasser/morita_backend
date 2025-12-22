@@ -130,11 +130,39 @@ export async function handleCompleteOrderModal(interaction: ModalSubmitInteracti
             const buttonRow = new ActionRowBuilder<ButtonBuilder>()
                 .addComponents(confirmButton, issueButton);
 
-            await channel.send({
+            const confirmationMessage = await channel.send({
                 content: `<@${orderData.customer.discordId}>`,
                 embeds: [customerEmbed.toJSON() as any],
                 components: [buttonRow.toJSON() as any],
             });
+
+            // Pin the confirmation message so customer doesn't miss it
+            try {
+                await confirmationMessage.pin();
+                logger.info(`[CompleteOrder] Pinned confirmation message in channel ${channel.id}`);
+            } catch (pinError) {
+                logger.warn(`[CompleteOrder] Could not pin confirmation message:`, pinError);
+            }
+
+            // Find and update the original pinned order message to remove buttons
+            try {
+                const pinnedMessages = await channel.messages.fetchPinned();
+                const orderMessage = pinnedMessages.find(msg =>
+                    msg.embeds.length > 0 &&
+                    msg.embeds[0].title?.includes(`Order #${orderData.orderNumber}`) &&
+                    msg.id !== confirmationMessage.id
+                );
+
+                if (orderMessage) {
+                    // Remove all action buttons from original message
+                    await orderMessage.edit({
+                        components: [],
+                    });
+                    logger.info(`[CompleteOrder] Removed buttons from original order message`);
+                }
+            } catch (updateError) {
+                logger.warn(`[CompleteOrder] Could not update original message:`, updateError);
+            }
 
             logger.info(`[CompleteOrder] Sent confirmation request to customer in channel ${channel.id}`);
         }

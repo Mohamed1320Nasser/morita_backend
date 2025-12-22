@@ -407,6 +407,7 @@ export default class ServiceService {
                     select: {
                         id: true,
                         name: true,
+                        groupName: true,
                         description: true,
                         basePrice: true,
                         pricingUnit: true,

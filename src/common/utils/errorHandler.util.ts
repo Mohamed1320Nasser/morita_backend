@@ -54,12 +54,38 @@ export class ConflictError extends AppError {
 }
 
 export class InsufficientBalanceError extends AppError {
-    constructor(required: number, available: number) {
+    constructor(
+        required: number,
+        available: number,
+        role?: 'customer' | 'worker',
+        additionalDetails?: { deposit?: number; balance?: number }
+    ) {
+        // Build role-specific message
+        let message = `Insufficient balance. Required: $${required.toFixed(2)}, Available: $${available.toFixed(2)}`;
+
+        if (role === 'customer') {
+            message = `Customer has insufficient balance to place this order.\n\n` +
+                `**Required Deposit:** $${required.toFixed(2)}\n` +
+                `**Customer's Available Balance:** $${available.toFixed(2)}\n\n` +
+                `Please ask the customer to add more funds using /add-balance first.`;
+        } else if (role === 'worker') {
+            message = `Worker has insufficient balance to accept this order.\n\n` +
+                `**Required Deposit:** $${required.toFixed(2)}\n` +
+                `**Worker's Available Balance:** $${available.toFixed(2)}`;
+
+            if (additionalDetails?.deposit !== undefined && additionalDetails?.balance !== undefined) {
+                message += `\n**Worker's Deposit:** $${additionalDetails.deposit.toFixed(2)}\n` +
+                    `**Worker's Free Balance:** $${additionalDetails.balance.toFixed(2)}`;
+            }
+
+            message += `\n\nWorker needs to complete existing orders or add more funds to their deposit.`;
+        }
+
         super(
             ErrorCode.INSUFFICIENT_BALANCE,
-            `Insufficient balance. Required: $${required.toFixed(2)}, Available: $${available.toFixed(2)}`,
+            message,
             400,
-            { required, available }
+            { required, available, role, ...additionalDetails }
         );
         this.name = "InsufficientBalanceError";
     }

@@ -66,7 +66,7 @@ export default {
                 `[create-order] Command executed by ${supportUser.tag} in channel ${channel?.id}`
             );
 
-            // Get command options first
+            // Get command options first (synchronous - no timeout risk)
             const customerUser = interaction.options.get("customer")?.user;
             const orderValue = interaction.options.get("value")?.value as number;
             const deposit = interaction.options.get("deposit")?.value as number;
@@ -87,65 +87,20 @@ export default {
                 return;
             }
 
-            // Fetch ticket for this channel to verify it's a ticket channel
-            let ticketId = null;
-            try {
-                const ticketResponse = await discordApiClient.get(`/api/discord/tickets/channel/${channel?.id}`);
-                const ticketData = ticketResponse.data.data?.data || ticketResponse.data.data || ticketResponse.data;
-                if (ticketData && ticketData.id) {
-                    ticketId = ticketData.id;
-                    logger.info(`[create-order] Found ticket ${ticketId} for channel ${channel?.id}`);
-                } else {
-                    logger.warn(`[create-order] No ticket found for channel ${channel?.id}`);
-                    // Channel exists but no ticket found - not a ticket channel
-                    const embed = new EmbedBuilder()
-                        .setTitle("❌ Invalid Channel")
-                        .setDescription(
-                            "This command can only be used in ticket channels.\n\n" +
-                            "Please use this command in a customer's ticket channel."
-                        )
-                        .setColor(0xed4245)
-                        .setTimestamp();
-
-                    await interaction.reply({
-                        embeds: [embed.toJSON() as any],
-                        ephemeral: true,
-                    });
-                    return;
-                }
-            } catch (err: any) {
-                logger.error(`[create-order] Failed to fetch ticket for channel:`, err);
-                // If error is 404, channel is not a ticket channel
-                if (err?.response?.status === 404 || err?.status === 404) {
-                    const embed = new EmbedBuilder()
-                        .setTitle("❌ Invalid Channel")
-                        .setDescription(
-                            "This command can only be used in ticket channels.\n\n" +
-                            "Please use this command in a customer's ticket channel."
-                        )
-                        .setColor(0xed4245)
-                        .setTimestamp();
-
-                    await interaction.reply({
-                        embeds: [embed.toJSON() as any],
-                        ephemeral: true,
-                    });
-                    return;
-                }
-                // Other errors - let it proceed but log the issue
-                logger.warn(`[create-order] Proceeding without ticket association due to API error`);
-            }
+            // CRITICAL: Don't fetch ticket here - it causes timeout!
+            // The modal handler will fetch the ticket after deferring.
+            // We only store the channelId here for the modal handler to use.
 
             // Generate unique key for this order
             const orderKey = `order_${customerUser.id}_${Date.now()}`;
 
-            // Store order data temporarily
+            // Store order data temporarily (ticketId will be fetched in modal handler)
             const orderData = {
                 customerDiscordId: customerUser.id,
                 workerDiscordId: workerUser?.id || null,
                 supportDiscordId: supportUser.id,
                 channelId: channel?.id,
-                ticketId: ticketId,
+                ticketId: null, // Will be fetched in modal handler after deferring
                 orderValue,
                 deposit,
                 currency,
@@ -153,7 +108,7 @@ export default {
 
             storeOrderData(orderKey, orderData);
 
-            // Show job details modal
+            // Show job details modal IMMEDIATELY (before any async operations)
             const modal = new ModalBuilder()
                 .setCustomId(`create_order_job_${orderKey}`)
                 .setTitle("📋 Job Description");
@@ -177,25 +132,50 @@ export default {
         } catch (error) {
             logger.error("Error executing create-order command:", error);
 
-            const embed = new EmbedBuilder()
-                .setTitle("❌ Error")
-                .setDescription(
-                    `Failed to create order.\n\n` +
-                    `**Error:** ${error instanceof Error ? error.message : "Unknown error"}\n\n` +
-                    `Please try again or contact an administrator.`
-                )
-                .setColor(0xed4245)
-                .setTimestamp();
+            // CRITICAL: If modal was already shown, we can't reply/defer anymore
+            // showModal() acknowledges the interaction in a special way
+            // Only try to send error if interaction hasn't been acknowledged yet
+            try {
+                if (interaction.replied || interaction.deferred) {
+                    // Already replied or deferred - try to edit
+                    const embed = new EmbedBuilder()
+                        .setTitle("❌ Error")
+                        .setDescription(
+                            `Failed to create order.\n\n` +
+                            `**Error:** ${error instanceof Error ? error.message : "Unknown error"}\n\n` +
+                            `Please try again or contact an administrator.`
+                        )
+                        .setColor(0xed4245)
+                        .setTimestamp();
 
-            if (interaction.replied || interaction.deferred) {
-                await interaction.editReply({
-                    embeds: [embed.toJSON() as any],
-                });
-            } else {
-                await interaction.reply({
-                    embeds: [embed.toJSON() as any],
-                    ephemeral: true,
-                });
+                    await interaction.editReply({
+                        embeds: [embed.toJSON() as any],
+                    });
+                } else if (!interaction.isModalSubmit()) {
+                    // Not yet replied and not a modal - safe to reply
+                    // Note: showModal() counts as "acknowledged" but not "replied"
+                    // We can check if this is a command interaction that hasn't shown a modal yet
+                    const embed = new EmbedBuilder()
+                        .setTitle("❌ Error")
+                        .setDescription(
+                            `Failed to create order.\n\n` +
+                            `**Error:** ${error instanceof Error ? error.message : "Unknown error"}\n\n` +
+                            `Please try again or contact an administrator.`
+                        )
+                        .setColor(0xed4245)
+                        .setTimestamp();
+
+                    await interaction.reply({
+                        embeds: [embed.toJSON() as any],
+                        ephemeral: true,
+                    });
+                } else {
+                    // Modal was already shown - can't reply
+                    logger.warn("[create-order] Modal already shown, cannot send error message to user");
+                }
+            } catch (replyError) {
+                logger.error("[create-order] Failed to send error message:", replyError);
+                // Don't rethrow - error is already logged
             }
         }
     },

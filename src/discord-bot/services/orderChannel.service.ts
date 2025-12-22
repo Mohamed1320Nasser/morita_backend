@@ -54,6 +54,147 @@ export class OrderChannelService {
     }
 
     /**
+     * Update pinned order message when status changes
+     */
+    async updateOrderMessageStatus(
+        channelId: string,
+        orderNumber: number,
+        orderId: string,
+        newStatus: string,
+        orderData: {
+            customerDiscordId: string;
+            workerDiscordId: string;
+            orderValue: number;
+            depositAmount: number;
+            currency: string;
+            serviceName?: string;
+            jobDetails?: string;
+        }
+    ): Promise<void> {
+        try {
+            const channel = await this.client.channels.fetch(channelId);
+            if (!channel || channel.type !== ChannelType.GuildText) {
+                logger.warn(`[OrderChannel] Cannot update message - channel not found`);
+                return;
+            }
+
+            const textChannel = channel as TextChannel;
+
+            // Find the pinned order message
+            const pinnedMessages = await textChannel.messages.fetchPinned();
+            const orderMessage = pinnedMessages.find(msg =>
+                msg.embeds.length > 0 &&
+                msg.embeds[0].title?.includes(`Order #${orderNumber}`) &&
+                msg.embeds[0].title?.includes("WORKER ASSIGNED")
+            );
+
+            if (!orderMessage) {
+                logger.warn(`[OrderChannel] Could not find pinned order message for #${orderNumber}`);
+                return;
+            }
+
+            // Update the embed with new status
+            const existingEmbed = orderMessage.embeds[0];
+            const workerPayout = orderData.orderValue * 0.8;
+            const supportPayout = orderData.orderValue * 0.05;
+            const systemFee = orderData.orderValue * 0.15;
+
+            const updatedEmbed = new EmbedBuilder()
+                .setTitle(`📦 ORDER #${orderNumber} - WORKER ASSIGNED`)
+                .setDescription(
+                    `A worker has been assigned to this order!\n\n` +
+                    `This ticket channel will now be used for order communication.`
+                )
+                .addFields([
+                    { name: "👤 Customer", value: `<@${orderData.customerDiscordId}>`, inline: true },
+                    { name: "👷 Worker", value: `<@${orderData.workerDiscordId}>`, inline: true },
+                    { name: "📊 Status", value: this.getStatusEmoji(newStatus), inline: true },
+                    { name: "💰 Order Value", value: `$${orderData.orderValue.toFixed(2)} ${orderData.currency}`, inline: true },
+                    { name: "💵 Worker Payout", value: `$${workerPayout.toFixed(2)} ${orderData.currency} (80%)`, inline: true },
+                    { name: "🔒 Worker Deposit", value: `$${orderData.depositAmount.toFixed(2)} ${orderData.currency}`, inline: true },
+                ])
+                .setColor(0xf59e0b)
+                .setTimestamp();
+
+            if (orderData.serviceName) {
+                updatedEmbed.addFields([
+                    { name: "🎮 Service", value: orderData.serviceName, inline: false }
+                ]);
+            }
+
+            if (orderData.jobDetails) {
+                updatedEmbed.addFields([
+                    { name: "📋 Job Details", value: orderData.jobDetails.substring(0, 1024), inline: false }
+                ]);
+            }
+
+            updatedEmbed.addFields([
+                {
+                    name: "💸 Payout Distribution (After Customer Confirms)",
+                    value:
+                        `✅ Worker receives: **$${workerPayout.toFixed(2)}** (80%)\n` +
+                        `✅ Support receives: **$${supportPayout.toFixed(2)}** (5%)\n` +
+                        `✅ System fee: **$${systemFee.toFixed(2)}** (15%)\n` +
+                        `🔄 Worker deposit: **$${orderData.depositAmount.toFixed(2)}** (returned to worker)`,
+                    inline: false,
+                },
+                {
+                    name: "ℹ️ Instructions",
+                    value: this.getInstructionsForStatus(newStatus),
+                    inline: false,
+                }
+            ]);
+
+            // Update buttons based on new status
+            const buttons: ButtonBuilder[] = [];
+
+            if (newStatus === "ASSIGNED") {
+                const startWorkButton = new ButtonBuilder()
+                    .setCustomId(`start_work_${orderId}`)
+                    .setLabel("🚀 Start Work")
+                    .setStyle(ButtonStyle.Success);
+                buttons.push(startWorkButton);
+            }
+
+            if (newStatus === "IN_PROGRESS") {
+                const markCompleteButton = new ButtonBuilder()
+                    .setCustomId(`mark_complete_${orderId}`)
+                    .setLabel("✅ Mark Complete")
+                    .setStyle(ButtonStyle.Success);
+                buttons.push(markCompleteButton);
+            }
+
+            const orderInfoButton = new ButtonBuilder()
+                .setCustomId(`order_info_${orderId}`)
+                .setLabel("📊 Order Info")
+                .setStyle(ButtonStyle.Primary);
+            buttons.push(orderInfoButton);
+
+            if (newStatus !== "AWAITING_CONFIRMATION" && newStatus !== "AWAITING_CONFIRM" && newStatus !== "COMPLETED") {
+                const cancelOrderButton = new ButtonBuilder()
+                    .setCustomId(`cancel_order_${orderId}`)
+                    .setLabel("❌ Cancel Order")
+                    .setStyle(ButtonStyle.Danger);
+                buttons.push(cancelOrderButton);
+            }
+
+            const buttonRow = buttons.length > 0
+                ? [new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons)]
+                : [];
+
+            // Update the message
+            await orderMessage.edit({
+                embeds: [updatedEmbed.toJSON() as any],
+                components: buttonRow.length > 0 ? [buttonRow[0].toJSON() as any] : [],
+            });
+
+            logger.info(`[OrderChannel] Updated pinned message for order #${orderNumber} - new status: ${newStatus}`);
+        } catch (error) {
+            logger.error("[OrderChannel] Error updating order message:", error);
+        }
+    }
+
+    /**
      * Add worker to existing ticket channel (instead of creating new order channel)
      */
     async addWorkerToTicketChannel(data: {
@@ -101,6 +242,40 @@ export class OrderChannelService {
     }
 
     /**
+     * Get status-based instructions
+     */
+    private getInstructionsForStatus(status: string): string {
+        switch (status) {
+            case "ASSIGNED":
+                return (
+                    `• **Worker**: Click "🚀 Start Work" below to begin working\n` +
+                    `• **Customer**: The worker will start soon, stay available for communication\n` +
+                    `• **Support**: Monitor progress if needed`
+                );
+            case "IN_PROGRESS":
+                return (
+                    `• **Worker**: Communicate progress updates with the customer\n` +
+                    `• **Worker**: Click "✅ Mark Complete" when finished (requires typing COMPLETE)\n` +
+                    `• **Customer**: Stay in touch with your worker for updates\n` +
+                    `• **Support**: Available if issues arise`
+                );
+            case "AWAITING_CONFIRMATION":
+            case "AWAITING_CONFIRM":
+                return (
+                    `• **Customer**: Review the work and click "✅ Confirm Complete" when satisfied\n` +
+                    `• **Worker**: Waiting for customer confirmation\n` +
+                    `• **Payouts**: Will be distributed automatically after customer confirms`
+                );
+            default:
+                return (
+                    `• **Worker**: Start working and communicate with the customer here\n` +
+                    `• **Customer**: Stay in touch with your worker for updates\n` +
+                    `• **Support**: Available to help if needed`
+                );
+        }
+    }
+
+    /**
      * Post worker assignment message in ticket channel
      */
     async postWorkerAssignmentMessage(channel: TextChannel, data: {
@@ -117,6 +292,8 @@ export class OrderChannelService {
     }): Promise<void> {
         try {
             const workerPayout = data.orderValue * 0.8; // 80%
+            const supportPayout = data.orderValue * 0.05; // 5%
+            const systemFee = data.orderValue * 0.15; // 15%
 
             const orderEmbed = new EmbedBuilder()
                 .setTitle(`📦 ORDER #${data.orderNumber} - WORKER ASSIGNED`)
@@ -130,7 +307,7 @@ export class OrderChannelService {
                     { name: "📊 Status", value: this.getStatusEmoji(data.status), inline: true },
                     { name: "💰 Order Value", value: `$${data.orderValue.toFixed(2)} ${data.currency}`, inline: true },
                     { name: "💵 Worker Payout", value: `$${workerPayout.toFixed(2)} ${data.currency} (80%)`, inline: true },
-                    { name: "🔒 Deposit Locked", value: `$${data.depositAmount.toFixed(2)} ${data.currency}`, inline: true },
+                    { name: "🔒 Worker Deposit", value: `$${data.depositAmount.toFixed(2)} ${data.currency}`, inline: true },
                 ])
                 .setColor(0xf59e0b) // Orange
                 .setTimestamp();
@@ -147,36 +324,67 @@ export class OrderChannelService {
                 ]);
             }
 
+            // Add payout breakdown with deposit return info
             orderEmbed.addFields([
                 {
-                    name: "ℹ️ Instructions",
+                    name: "💸 Payout Distribution (After Customer Confirms)",
                     value:
-                        `• **Worker**: Start working and communicate with the customer here\n` +
-                        `• **Customer**: Stay in touch with your worker for updates\n` +
-                        `• **Worker**: Click "✅ Mark Complete" when finished\n` +
-                        `• **Support**: Available to help if needed`,
+                        `✅ Worker receives: **$${workerPayout.toFixed(2)}** (80%)\n` +
+                        `✅ Support receives: **$${supportPayout.toFixed(2)}** (5%)\n` +
+                        `✅ System fee: **$${systemFee.toFixed(2)}** (15%)\n` +
+                        `🔄 Worker deposit: **$${data.depositAmount.toFixed(2)}** (returned to worker)`,
                     inline: false,
                 }
             ]);
 
-            // Create action buttons
-            const markCompleteButton = new ButtonBuilder()
-                .setCustomId(`mark_complete_${data.orderId}`)
-                .setLabel("✅ Mark Complete")
-                .setStyle(ButtonStyle.Success);
+            // Add status-based instructions
+            orderEmbed.addFields([
+                {
+                    name: "ℹ️ Instructions",
+                    value: this.getInstructionsForStatus(data.status),
+                    inline: false,
+                }
+            ]);
 
+            // Create status-based action buttons
+            const buttons: ButtonBuilder[] = [];
+
+            // Start Work button (only for ASSIGNED status)
+            if (data.status === "ASSIGNED") {
+                const startWorkButton = new ButtonBuilder()
+                    .setCustomId(`start_work_${data.orderId}`)
+                    .setLabel("🚀 Start Work")
+                    .setStyle(ButtonStyle.Success);
+                buttons.push(startWorkButton);
+            }
+
+            // Mark Complete button (only for IN_PROGRESS status)
+            if (data.status === "IN_PROGRESS") {
+                const markCompleteButton = new ButtonBuilder()
+                    .setCustomId(`mark_complete_${data.orderId}`)
+                    .setLabel("✅ Mark Complete")
+                    .setStyle(ButtonStyle.Success);
+                buttons.push(markCompleteButton);
+            }
+
+            // Always show Order Info
             const orderInfoButton = new ButtonBuilder()
                 .setCustomId(`order_info_${data.orderId}`)
                 .setLabel("📊 Order Info")
                 .setStyle(ButtonStyle.Primary);
+            buttons.push(orderInfoButton);
 
-            const cancelOrderButton = new ButtonBuilder()
-                .setCustomId(`cancel_order_${data.orderId}`)
-                .setLabel("❌ Cancel Order")
-                .setStyle(ButtonStyle.Danger);
+            // Cancel Order button (not for AWAITING_CONFIRM or COMPLETED)
+            if (data.status !== "AWAITING_CONFIRMATION" && data.status !== "AWAITING_CONFIRM" && data.status !== "COMPLETED") {
+                const cancelOrderButton = new ButtonBuilder()
+                    .setCustomId(`cancel_order_${data.orderId}`)
+                    .setLabel("❌ Cancel Order")
+                    .setStyle(ButtonStyle.Danger);
+                buttons.push(cancelOrderButton);
+            }
 
             const buttonRow = new ActionRowBuilder<ButtonBuilder>()
-                .addComponents(markCompleteButton, orderInfoButton, cancelOrderButton);
+                .addComponents(...buttons);
 
             // Send and pin the message
             const message = await channel.send({

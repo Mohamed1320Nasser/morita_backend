@@ -88,20 +88,32 @@ export async function handleModalInteraction(
         } catch (error) {
             logger.error(`Error handling modal ${customId}:`, error);
 
-            // Only try to reply if not already replied
-            if (!interaction.replied && !interaction.deferred) {
-                await interaction.reply({
-                    content: "An error occurred while processing this form.",
-                    ephemeral: true,
-                }).catch((err) => logger.error("Failed to send error reply:", err));
+            // Try to send error message
+            try {
+                if (interaction.deferred && !interaction.replied) {
+                    await interaction.editReply({
+                        content: "❌ An error occurred while processing this form. Please try again or contact support.",
+                    });
+                } else if (!interaction.replied) {
+                    await interaction.reply({
+                        content: "❌ An error occurred while processing this form. Please try again or contact support.",
+                        ephemeral: true,
+                    });
+                }
+            } catch (replyError) {
+                logger.error("Failed to send error reply:", replyError);
             }
         }
     } else {
         logger.warn(`No modal handler found for: ${customId}`);
-        await interaction.reply({
-            content: "This form is not implemented yet.",
-            ephemeral: true,
-        }).catch((err) => logger.error("Failed to send not-found reply:", err));
+        try {
+            await interaction.reply({
+                content: "This form is not implemented yet.",
+                ephemeral: true,
+            });
+        } catch (err) {
+            logger.error("Failed to send not-found reply:", err);
+        }
     }
 }
 

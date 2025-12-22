@@ -89,6 +89,7 @@ export default class PricingMethodService {
                 select: {
                     id: true,
                     name: true,
+                    groupName: true,
                     description: true,
                     basePrice: true,
                     pricingUnit: true,
@@ -157,6 +158,7 @@ export default class PricingMethodService {
             select: {
                 id: true,
                 name: true,
+                groupName: true,
                 description: true,
                 basePrice: true,
                 pricingUnit: true,

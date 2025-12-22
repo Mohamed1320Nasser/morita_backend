@@ -10,6 +10,10 @@ import { TicketType } from "../../types/discord.types";
 import { discordApiClient } from "../../clients/DiscordApiClient";
 import { CustomFieldDefinition } from "../../../api/ticketTypeSettings/dtos";
 
+// Cache for modal building to prevent duplicate API calls
+const modalCache = new Map<string, { modal: ModalBuilder; timestamp: number }>();
+const CACHE_TTL = 30000; // 30 seconds
+
 /**
  * Handle Create Ticket button clicks
  * Supports all ticket types:
@@ -28,8 +32,8 @@ export async function handleCreateTicket(
 
         logger.info(`[CreateTicket] Opening modal for ${ticketType} by ${interaction.user.tag}`);
 
-        // Build modal based on ticket type (dynamically from API)
-        const modal = await buildModalForTicketType(ticketType);
+        // Build modal based on ticket type (use cache to avoid duplicate API calls)
+        const modal = await buildModalForTicketTypeCached(ticketType);
 
         await interaction.showModal(modal as any);
     } catch (error: any) {
@@ -54,6 +58,45 @@ export async function handleCreateTicket(
             }
         }
     }
+}
+
+/**
+ * Build modal with caching to prevent duplicate API calls
+ */
+async function buildModalForTicketTypeCached(ticketType: TicketType): Promise<ModalBuilder> {
+    const now = Date.now();
+    const cached = modalCache.get(ticketType);
+
+    // Check cache
+    if (cached && (now - cached.timestamp) < CACHE_TTL) {
+        logger.info(`[CreateTicket] Using cached modal for ${ticketType}`);
+        // Return a NEW instance with same structure but different ID
+        return cloneModal(cached.modal, ticketType);
+    }
+
+    // Build fresh modal
+    const modal = await buildModalForTicketType(ticketType);
+
+    // Cache it
+    modalCache.set(ticketType, { modal, timestamp: now });
+
+    return modal;
+}
+
+/**
+ * Clone modal with new ID (Discord requires unique modal IDs per interaction)
+ */
+function cloneModal(originalModal: ModalBuilder, ticketType: TicketType): ModalBuilder {
+    const modal = new ModalBuilder()
+        .setCustomId(`ticket_modal_${ticketType}`)
+        .setTitle(originalModal.data.title || getModalTitle(ticketType));
+
+    // Copy all components
+    if (originalModal.data.components) {
+        modal.addComponents(...(originalModal.data.components as any));
+    }
+
+    return modal;
 }
 
 /**

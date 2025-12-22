@@ -220,7 +220,7 @@ export default class AdminUserController {
      * Get user detail by ID
      */
     @Get("/:userId")
-    @Authorized(["admin", "support"])
+    @Authorized(API.Role.admin)
     async getUserDetail(@Param("userId") userId: string) {
         logger.info(`[Admin] Fetching user ${userId}`);
 

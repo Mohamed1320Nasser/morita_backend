@@ -24,62 +24,86 @@ export async function handleOrderInfoButton(interaction: ButtonInteraction): Pro
 
         logger.info(`[OrderInfo] Retrieved order #${order.orderNumber}`);
 
-        // Calculate payouts
+        // Calculate order value
         const orderValue = parseFloat(order.orderValue);
-        const workerPayout = orderValue * 0.8; // 80%
-        const supportPayout = orderValue * 0.05; // 5%
-        const systemPayout = orderValue * 0.15; // 15%
+        const depositAmount = parseFloat(order.depositAmount);
 
-        // Build order info embed
+        // Build order info embed with improved design
         const orderInfoEmbed = new EmbedBuilder()
-            .setTitle(`📊 Order #${order.orderNumber} Details`)
-            .addFields([
-                { name: "🆔 Order ID", value: order.id, inline: false },
-                { name: "👤 Customer", value: `<@${order.customer.discordId}>`, inline: true },
-                { name: "👷 Worker", value: order.worker ? `<@${order.worker.discordId}>` : "Unassigned", inline: true },
-                { name: "🎧 Support", value: order.support ? `<@${order.support.discordId}>` : "None", inline: true },
-                { name: "📊 Status", value: getStatusDisplay(order.status), inline: true },
-                { name: "💰 Order Value", value: `$${orderValue.toFixed(2)} ${order.currency}`, inline: true },
-                { name: "🔒 Deposit", value: `$${parseFloat(order.depositAmount).toFixed(2)} ${order.currency}`, inline: true },
-            ])
+            .setTitle(`📦 Order #${order.orderNumber} Details`)
             .setColor(getStatusColor(order.status))
             .setTimestamp();
 
+        // Order ID (compact format - only show first part)
+        const shortId = order.id.split('-')[0];
+        orderInfoEmbed.addFields([
+            { name: "🆔 Order ID", value: `\`${shortId}...\``, inline: false }
+        ]);
+
+        // People section - all in one row
+        const peopleFields = [
+            { name: "👤 Customer", value: `<@${order.customer.discordId}>`, inline: true },
+            { name: "👷 Worker", value: order.worker ? `<@${order.worker.discordId}>` : "`Unassigned`", inline: true },
+            { name: "🎧 Support", value: order.support ? `<@${order.support.discordId}>` : "`None`", inline: true }
+        ];
+        orderInfoEmbed.addFields(peopleFields);
+
+        // Status and Financial info
+        const statusFinanceFields = [
+            { name: "📊 Status", value: getStatusDisplay(order.status), inline: true },
+            { name: "💰 Order Value", value: `**$${orderValue.toFixed(2)}** ${order.currency}`, inline: true },
+            { name: "🔒 Deposit", value: `$${depositAmount.toFixed(2)} ${order.currency}`, inline: true }
+        ];
+        orderInfoEmbed.addFields(statusFinanceFields);
+
+        // Service info
         if (order.service) {
             orderInfoEmbed.addFields([
-                { name: "🎮 Service", value: order.service.name, inline: false }
+                { name: "🎮 Service", value: `**${order.service.name}**`, inline: false }
             ]);
         }
 
+        // Job details
         if (order.jobDetails?.description) {
+            const jobDetails = order.jobDetails.description.length > 500
+                ? order.jobDetails.description.substring(0, 500) + "..."
+                : order.jobDetails.description;
             orderInfoEmbed.addFields([
-                { name: "📋 Job Details", value: order.jobDetails.description.substring(0, 1024), inline: false }
+                { name: "📋 Job Details", value: jobDetails, inline: false }
             ]);
         }
 
-        // Add payout breakdown if worker assigned
-        if (order.worker) {
-            orderInfoEmbed.addFields([
-                {
-                    name: "💸 Payout Breakdown",
-                    value:
-                        `• Worker: $${workerPayout.toFixed(2)} (80%)\n` +
-                        `• Support: $${supportPayout.toFixed(2)} (5%)\n` +
-                        `• System: $${systemPayout.toFixed(2)} (15%)`,
-                    inline: false,
-                }
-            ]);
-        }
-
-        // Add timestamps
+        // Timeline section - formatted as code blocks
         const timestamps: string[] = [];
-        if (order.createdAt) timestamps.push(`📅 Created: <t:${Math.floor(new Date(order.createdAt).getTime() / 1000)}:R>`);
-        if (order.assignedAt) timestamps.push(`👷 Assigned: <t:${Math.floor(new Date(order.assignedAt).getTime() / 1000)}:R>`);
-        if (order.startedAt) timestamps.push(`🚀 Started: <t:${Math.floor(new Date(order.startedAt).getTime() / 1000)}:R>`);
-        if (order.completedAt) timestamps.push(`✅ Completed: <t:${Math.floor(new Date(order.completedAt).getTime() / 1000)}:R>`);
-        if (order.confirmedAt) timestamps.push(`🎉 Confirmed: <t:${Math.floor(new Date(order.confirmedAt).getTime() / 1000)}:R>`);
+        if (order.createdAt) {
+            const createdTimestamp = Math.floor(new Date(order.createdAt).getTime() / 1000);
+            timestamps.push(`\`📅 Created: \` <t:${createdTimestamp}:R>`);
+        }
+        if (order.assignedAt) {
+            const assignedTimestamp = Math.floor(new Date(order.assignedAt).getTime() / 1000);
+            timestamps.push(`\`👷 Assigned: \` <t:${assignedTimestamp}:R>`);
+        }
+        if (order.startedAt) {
+            const startedTimestamp = Math.floor(new Date(order.startedAt).getTime() / 1000);
+            timestamps.push(`\`🚀 Started: \` <t:${startedTimestamp}:R>`);
+        }
+        if (order.completedAt) {
+            const completedTimestamp = Math.floor(new Date(order.completedAt).getTime() / 1000);
+            timestamps.push(`\`✅ Completed: \` <t:${completedTimestamp}:R>`);
+        }
+        if (order.confirmedAt) {
+            const confirmedTimestamp = Math.floor(new Date(order.confirmedAt).getTime() / 1000);
+            timestamps.push(`\`🎉 Confirmed: \` <t:${confirmedTimestamp}:R>`);
+        }
 
         if (timestamps.length > 0) {
+            // Add absolute timestamp at the end (e.g., "Today at 11:50 PM")
+            const lastTimestamp = order.confirmedAt || order.completedAt || order.startedAt || order.assignedAt || order.createdAt;
+            if (lastTimestamp) {
+                const absoluteTime = Math.floor(new Date(lastTimestamp).getTime() / 1000);
+                timestamps.push(`<t:${absoluteTime}:f>`);
+            }
+
             orderInfoEmbed.addFields([
                 { name: "⏱️ Timeline", value: timestamps.join("\n"), inline: false }
             ]);

@@ -29,10 +29,10 @@ export async function handleCompleteOrder(interaction: ButtonInteraction): Promi
             return;
         }
 
-        // Validate order status
-        if (orderData.status !== "IN_PROGRESS" && orderData.status !== "ASSIGNED") {
+        // Validate order status - only allow IN_PROGRESS
+        if (orderData.status !== "IN_PROGRESS") {
             await interaction.reply({
-                content: `❌ Order cannot be marked as complete. Current status: ${orderData.status}`,
+                content: `❌ Order must be IN_PROGRESS to complete. Current status: ${orderData.status}\n\nIf the order is ASSIGNED, use the "Start Work" button first.`,
                 ephemeral: true,
             });
             return;

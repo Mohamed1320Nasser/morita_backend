@@ -162,6 +162,7 @@ export async function updateWalletBalance(
 
 /**
  * Check wallet balance with lock (for atomic balance checks)
+ * Includes worker deposit in eligibility calculation: deposit + (balance - pendingBalance)
  */
 export async function checkWalletBalanceWithLock(
     tx: TransactionClient,
@@ -176,13 +177,19 @@ export async function checkWalletBalanceWithLock(
     const pendingBalance = typeof wallet.pendingBalance === 'object'
         ? parseFloat(wallet.pendingBalance.toString())
         : wallet.pendingBalance;
+    const deposit = typeof wallet.deposit === 'object'
+        ? parseFloat(wallet.deposit.toString())
+        : wallet.deposit;
 
-    const available = balance - pendingBalance;
-    const sufficient = available >= requiredAmount;
+    // For workers: deposit + (balance - pendingBalance)
+    // For customers: just (balance - pendingBalance) since deposit field is 0
+    const availableBalance = balance - pendingBalance;
+    const totalEligibility = deposit + availableBalance;
+    const sufficient = totalEligibility >= requiredAmount;
 
     return {
         sufficient,
-        available,
+        available: totalEligibility, // Return total eligibility (deposit + available)
         wallet
     };
 }

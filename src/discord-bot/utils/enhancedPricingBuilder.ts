@@ -208,7 +208,23 @@ export class EnhancedPricingBuilder {
      */
     /**
      * Build service info embed with pricing in MMOGoldHut style
-     * (Clean Discord embed format with sections, no ANSI codes)
+     * (Clean Discord embed format with sections, ANSI codes for colors)
+     *
+     * STRUCTURE:
+     * 1. Service description
+     * 2. Pricing methods grouped by type
+     *    - Each pricing method shows its price
+     *    - Method-specific modifiers show UNDER each method (indented with colored icons)
+     * 3. Service-level modifiers at bottom (applies to ALL methods)
+     *    - Grouped by type: Upcharges, Discounts, Notes, Warnings, Modifiers
+     *    - Clearly labeled as "Applies to All Methods"
+     *
+     * MODIFIER TYPES & COLORS:
+     * - 🔺 UPCHARGE (Red): Additional costs
+     * - 💰 DISCOUNT (Green): Price reductions
+     * - 📝 NOTE (Green): Informational notes
+     * - ⚠️ WARNING (Yellow): Important warnings
+     * - ⚙️ NORMAL (Yellow): Standard modifiers
      */
     static buildServiceInfoEmbed(
         service: Service,
@@ -283,76 +299,87 @@ export class EnhancedPricingBuilder {
             }
         }
 
-        // Add service modifiers at the end (applies to ALL pricing methods)
+        // Add service-level modifiers at the end (applies to ALL pricing methods in this service)
+        // NOTE: Method-specific modifiers are shown under each pricing method above
         // Group modifiers by displayType for better organization
         if (service.serviceModifiers && service.serviceModifiers.length > 0) {
             // Group modifiers by display type
             const upcharges = service.serviceModifiers.filter(m => m.displayType === 'UPCHARGE');
+            const discounts = service.serviceModifiers.filter(m => m.displayType === 'DISCOUNT');
             const notes = service.serviceModifiers.filter(m => m.displayType === 'NOTE');
             const warnings = service.serviceModifiers.filter(m => m.displayType === 'WARNING');
             const normal = service.serviceModifiers.filter(m => m.displayType === 'NORMAL' || !m.displayType);
 
-            // Check if there are bulk discount modifiers
-            const bulkDiscounts = notes.filter(m =>
-                m.name.toLowerCase().includes('bulk') ||
-                m.name.toLowerCase().includes('discount')
-            );
-            const otherNotes = notes.filter(m =>
-                !m.name.toLowerCase().includes('bulk') &&
-                !m.name.toLowerCase().includes('discount')
-            );
-
-            // Helper function to format modifiers
-            const formatModifiers = (modifiers: any[], colorCode: string, icon: string) => {
+            // Helper function to format modifiers with consistent styling
+            const formatModifiers = (modifiers: any[], defaultColorCode: string, defaultIcon: string) => {
                 return modifiers.map(modifier => {
                     const sign = Number(modifier.value) >= 0 ? '+' : '';
                     const value = modifier.modifierType === 'PERCENTAGE'
                         ? `${sign}${modifier.value}%`
-                        : `${sign}$${modifier.value}`;
+                        : `${sign}$${Math.abs(Number(modifier.value)).toFixed(2)}`;
+
+                    // Use displayType to determine color and icon
+                    let colorCode = defaultColorCode;
+                    let icon = defaultIcon;
+
+                    if (modifier.displayType === 'UPCHARGE') {
+                        colorCode = '\u001b[31m'; // Red
+                        icon = '🔺';
+                    } else if (modifier.displayType === 'DISCOUNT') {
+                        colorCode = '\u001b[32m'; // Green
+                        icon = '💰';
+                    } else if (modifier.displayType === 'NOTE') {
+                        colorCode = '\u001b[32m'; // Green
+                        icon = '📝';
+                    } else if (modifier.displayType === 'WARNING') {
+                        colorCode = '\u001b[33m'; // Yellow
+                        icon = '⚠️';
+                    }
+
                     return `\`\`\`ansi\n${colorCode}${icon} ${value} ${modifier.name}\u001b[0m\n\`\`\``;
                 }).join('\n');
             };
 
-            // Add Upcharges section (red)
+            // Add Upcharges section (red) - applies to ALL pricing methods
             if (upcharges.length > 0) {
                 embed.addFields({
-                    name: "🔺 **Upcharges** (Additional Costs)",
+                    name: "🔺 **General Upcharges** (Applies to All Methods)",
                     value: formatModifiers(upcharges, '\u001b[31m', '🔺'),
                     inline: false,
                 });
             }
 
-            // Add Bulk Discounts section (green) if any
-            if (bulkDiscounts.length > 0) {
+            // Add Discounts section (green) - applies to ALL pricing methods
+            if (discounts.length > 0) {
                 embed.addFields({
-                    name: "💰 **Bulk Discounts**",
-                    value: formatModifiers(bulkDiscounts, '\u001b[32m', '📝'),
+                    name: "💰 **Discounts** (Applies to All Methods)",
+                    value: formatModifiers(discounts, '\u001b[32m', '💰'),
                     inline: false,
                 });
             }
 
-            // Add Other Notes section (green) if any
-            if (otherNotes.length > 0) {
+            // Add Notes section (green) - applies to ALL pricing methods
+            if (notes.length > 0) {
                 embed.addFields({
-                    name: "📝 **Additional Notes**",
-                    value: formatModifiers(otherNotes, '\u001b[32m', '📝'),
+                    name: "📝 **Additional Notes** (Applies to All Methods)",
+                    value: formatModifiers(notes, '\u001b[32m', '📝'),
                     inline: false,
                 });
             }
 
-            // Add Warnings section (yellow)
+            // Add Warnings section (yellow) - applies to ALL pricing methods
             if (warnings.length > 0) {
                 embed.addFields({
-                    name: "⚠️ **Warnings**",
+                    name: "⚠️ **General Warnings** (Applies to All Methods)",
                     value: formatModifiers(warnings, '\u001b[33m', '⚠️'),
                     inline: false,
                 });
             }
 
-            // Add Other Modifiers section (yellow) for NORMAL type
+            // Add Other Modifiers section (yellow) for NORMAL type - applies to ALL pricing methods
             if (normal.length > 0) {
                 embed.addFields({
-                    name: "⚙️ **Available Modifiers**",
+                    name: "⚙️ **Available Modifiers** (Applies to All Methods)",
                     value: formatModifiers(normal, '\u001b[33m', '⚙️'),
                     inline: false,
                 });
@@ -393,77 +420,128 @@ export class EnhancedPricingBuilder {
 
                 const items: string[] = [];
 
-                for (const method of methods) {
-                    const price = this.formatPriceNumber(method.basePrice);
-                    const unit = this.formatPricingUnit(method.pricingUnit);
+                // Check if this is a real group (multiple methods with same groupName)
+                // or just a single method without groupName
+                const isRealGroup = methods.length > 1 || (methods.length === 1 && methods[0].groupName);
 
-                // Format based on whether it has level ranges
-                // Use ANSI color codes for MMOGoldHut-style colored text
-                if (method.startLevel && method.endLevel) {
-                    // Add extra spacing around the dash: "50  -  60" instead of "50-60"
-                    const priceText = `${method.startLevel}  -  ${method.endLevel} = ${price} ${unit}`;
-                    // Cyan color for level ranges
-                    items.push(`\`\`\`ansi\n\u001b[36m${priceText}\u001b[0m\n\`\`\``);
+                if (isRealGroup && methods[0].groupName) {
+                    // GROUP FORMAT: All methods in ONE code block (Image #2 style)
+                    const groupLines: string[] = [];
+
+                    for (const method of methods) {
+                        const price = this.formatPriceNumber(method.basePrice);
+                        const unit = this.formatPricingUnit(method.pricingUnit);
+
+                        // Format based on whether it has level ranges
+                        if (method.startLevel && method.endLevel) {
+                            const priceText = `${method.startLevel}  -  ${method.endLevel} = ${price} ${unit}`;
+                            groupLines.push(`\u001b[36m${priceText}\u001b[0m`);
+                        } else {
+                            const name = method.name.length > 40 ? method.name.substring(0, 37) + "..." : method.name;
+                            const priceText = `${name} = ${price} ${unit}`;
+                            groupLines.push(`\u001b[36m${priceText}\u001b[0m`);
+                        }
+
+                        // Add method-specific modifiers
+                        if (method.modifiers && method.modifiers.length > 0) {
+                            const activeModifiers = method.modifiers.filter(m => m.active);
+                            for (const modifier of activeModifiers) {
+                                const sign = Number(modifier.value) >= 0 ? '+' : '';
+                                const value = modifier.modifierType === 'PERCENTAGE'
+                                    ? `${sign}${modifier.value}%`
+                                    : `${sign}$${Math.abs(Number(modifier.value)).toFixed(2)}`;
+
+                                let colorCode = '\u001b[33m';
+                                let icon = '⚙️';
+
+                                if (modifier.displayType === 'UPCHARGE') {
+                                    colorCode = '\u001b[31m';
+                                    icon = '🔺';
+                                } else if (modifier.displayType === 'DISCOUNT') {
+                                    colorCode = '\u001b[32m';
+                                    icon = '💰';
+                                } else if (modifier.displayType === 'NOTE') {
+                                    colorCode = '\u001b[32m';
+                                    icon = '📝';
+                                } else if (modifier.displayType === 'WARNING') {
+                                    colorCode = '\u001b[33m';
+                                    icon = '⚠️';
+                                }
+
+                                const nameBox = `${colorCode}[ ${modifier.name} ]\u001b[0m`;
+                                const valueBox = `${colorCode}[ ${icon} ${value} ]\u001b[0m`;
+                                const modifierText = `  ${nameBox}  ${valueBox}`;
+                                groupLines.push(modifierText);
+                            }
+                        }
+                    }
+
+                    // Combine all lines into ONE code block
+                    items.push(`\`\`\`ansi\n${groupLines.join('\n')}\n\`\`\``);
+
                 } else {
-                    const name = method.name.length > 40 ? method.name.substring(0, 37) + "..." : method.name;
-                    const priceText = `${name} = ${price} ${unit}`;
-                    // Cyan color for prices
-                    items.push(`\`\`\`ansi\n\u001b[36m${priceText}\u001b[0m\n\`\`\``);
-                }
-            }
+                    // NORMAL FORMAT: Each method in separate code blocks (current style)
+                    for (const method of methods) {
+                        const price = this.formatPriceNumber(method.basePrice);
+                        const unit = this.formatPricingUnit(method.pricingUnit);
 
-            // Add section as embed field with spacing
-            // Use # for big heading (MMOGoldHut style - much bolder!)
-            const fieldValue = items.join('\n'); // Single newline - ANSI blocks already have padding
-            if (fieldValue.length <= DISCORD_LIMITS.EMBED.MAX_FIELD_VALUE) {
-                embed.addFields({
-                    name: `# ${groupName}`, // Big header with # symbol
-                    value: fieldValue,
-                    inline: false
-                });
-                fieldsAdded++;
-            }
-        }
+                        // Format based on whether it has level ranges
+                        if (method.startLevel && method.endLevel) {
+                            const priceText = `${method.startLevel}  -  ${method.endLevel} = ${price} ${unit}`;
+                            items.push(`\`\`\`ansi\n\u001b[36m${priceText}\u001b[0m\n\`\`\``);
+                        } else {
+                            const name = method.name.length > 40 ? method.name.substring(0, 37) + "..." : method.name;
+                            const priceText = `${name} = ${price} ${unit}`;
+                            items.push(`\`\`\`ansi\n\u001b[36m${priceText}\u001b[0m\n\`\`\``);
+                        }
 
-        // Add upcharges section if any (only if we have room)
-        if (fieldsAdded < availableFields) {
-            const upcharges = this.extractUpcharges(pricingMethods);
-            if (upcharges.length > 0) {
-                const upchargeLines = upcharges.slice(0, 5).map(u => `⚠️ ${u}`);
-                if (upcharges.length > 5) {
-                    upchargeLines.push(`*+${upcharges.length - 5} more upcharges*`);
+                        // Add method-specific modifiers
+                        if (method.modifiers && method.modifiers.length > 0) {
+                            const activeModifiers = method.modifiers.filter(m => m.active);
+                            for (const modifier of activeModifiers) {
+                                const sign = Number(modifier.value) >= 0 ? '+' : '';
+                                const value = modifier.modifierType === 'PERCENTAGE'
+                                    ? `${sign}${modifier.value}%`
+                                    : `${sign}$${Math.abs(Number(modifier.value)).toFixed(2)}`;
+
+                                let colorCode = '\u001b[33m';
+                                let icon = '⚙️';
+
+                                if (modifier.displayType === 'UPCHARGE') {
+                                    colorCode = '\u001b[31m';
+                                    icon = '🔺';
+                                } else if (modifier.displayType === 'DISCOUNT') {
+                                    colorCode = '\u001b[32m';
+                                    icon = '💰';
+                                } else if (modifier.displayType === 'NOTE') {
+                                    colorCode = '\u001b[32m';
+                                    icon = '📝';
+                                } else if (modifier.displayType === 'WARNING') {
+                                    colorCode = '\u001b[33m';
+                                    icon = '⚠️';
+                                }
+
+                                const nameBox = `${colorCode}[ ${modifier.name} ]\u001b[0m`;
+                                const valueBox = `${colorCode}[ ${icon} ${value} ]\u001b[0m`;
+                                const modifierText = `  ${nameBox}  ${valueBox}`;
+                                items.push(`\`\`\`ansi\n${modifierText}\n\`\`\``);
+                            }
+                        }
+                    }
                 }
-                const upchargeValue = upchargeLines.join('\n');
-                if (upchargeValue.length <= 1024) {
+
+                // Add section as embed field with spacing
+                // Use # for big heading (MMOGoldHut style - much bolder!)
+                const fieldValue = items.join('\n');
+                if (fieldValue.length <= DISCORD_LIMITS.EMBED.MAX_FIELD_VALUE) {
                     embed.addFields({
-                        name: "⚠️ Additional Charges",
-                        value: upchargeValue,
+                        name: `# ${groupName}`, // Big header with # symbol
+                        value: fieldValue,
                         inline: false
                     });
                     fieldsAdded++;
                 }
             }
-        }
-
-        // Add notes section if any (only if we have room)
-        if (fieldsAdded < availableFields) {
-            const notes = this.extractNotes(pricingMethods);
-            if (notes.length > 0) {
-                const noteLines = notes.slice(0, 5).map(n => `→ ${n}`);
-                if (notes.length > 5) {
-                    noteLines.push(`*+${notes.length - 5} more notes*`);
-                }
-                const noteValue = noteLines.join('\n');
-                if (noteValue.length <= 1024) {
-                    embed.addFields({
-                        name: "📝 Important Notes",
-                        value: noteValue,
-                        inline: false
-                    });
-                    fieldsAdded++;
-                }
-            }
-        }
 
         logger.debug(`[addPricingSectionsToEmbed] Added ${fieldsAdded} fields total`);
         } catch (error) {
@@ -1512,14 +1590,17 @@ export class EnhancedPricingBuilder {
         const groups: Record<string, PricingMethod[]> = {};
 
         for (const method of methods) {
-            // Extract group name from method name
-            // If name contains " - ", use it to split (e.g., "Main Accounts - Parsec")
-            // Otherwise, use the full name as the group
+            // Use the groupName field if it exists, otherwise use the method name as the group
             let groupName: string;
-            if (method.name.includes(" - ")) {
+
+            if (method.groupName && method.groupName.trim()) {
+                // Use the explicit groupName field from the database
+                groupName = method.groupName.trim();
+            } else if (method.name.includes(" - ")) {
+                // Fallback: If name contains " - ", use the full name
                 groupName = method.name;
             } else {
-                // Group by the first part of the name (before any numbers or special chars)
+                // Fallback: Group by the first part of the name (before any numbers or special chars)
                 groupName = method.name.split(/\d/)[0].trim() || method.name;
             }
 

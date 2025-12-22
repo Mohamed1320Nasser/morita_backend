@@ -31,6 +31,34 @@ export default class DiscordOrderController {
         return await this.orderService.getOrderById(orderId);
     }
 
+    @Get("/number/:orderNumber")
+    async getOrderByNumber(@Param("orderNumber") orderNumber: string) {
+        const orderNum = parseInt(orderNumber);
+
+        if (isNaN(orderNum) || orderNum <= 0) {
+            throw new Error("Order number must be a positive integer");
+        }
+
+        const order = await prisma.order.findUnique({
+            where: { orderNumber: orderNum },
+            include: {
+                customer: true,
+                worker: true,
+                support: true,
+                service: true,
+                method: true,
+                paymentMethod: true,
+                account: true,
+            },
+        });
+
+        if (!order) {
+            throw new Error(`Order #${orderNumber} not found`);
+        }
+
+        return order;
+    }
+
     @Post("/:orderId/claim")
     async claimJob(
         @Param("orderId") orderId: string,
@@ -173,18 +201,45 @@ export default class DiscordOrderController {
         @Param("orderId") orderId: string,
         @Body() data: {
             status: string;
-            changedByDiscordId: string;
-            reason: string;
+            changedByDiscordId?: string;
+            workerDiscordId?: string;
+            reason?: string;
             notes?: string;
         }
     ) {
-        const changedBy = await prisma.user.findUnique({ where: { discordId: data.changedByDiscordId } });
+        // Support both changedByDiscordId and workerDiscordId for backwards compatibility
+        const discordId = data.changedByDiscordId || data.workerDiscordId;
+
+        if (!discordId) {
+            throw new Error("Either changedByDiscordId or workerDiscordId is required");
+        }
+
+        // Get user with role to check admin status server-side
+        const changedBy = await prisma.user.findUnique({
+            where: { discordId },
+            select: { id: true, role: true, fullname: true }
+        });
         if (!changedBy) throw new Error("User not found");
+
+        // Check if user is admin/system based on their role in database (server-side validation)
+        const isAdmin = changedBy.role === 'admin' || changedBy.role === 'system';
+
+        // Get order details to validate assignment
+        const order = await this.orderService.getOrderById(orderId);
+
+        // If order has a worker assigned and caller is not admin, validate they are the assigned worker
+        if (order.workerId && !isAdmin) {
+            if (order.worker?.discordId !== discordId) {
+                throw new Error(
+                    `Only the assigned worker can change this order's status. This order is assigned to ${order.worker?.fullname || 'another worker'}.`
+                );
+            }
+        }
 
         return await this.orderService.updateOrderStatus(orderId, {
             status: data.status as any,
             changedById: changedBy.id,
-            reason: data.reason,
+            reason: data.reason || `Status changed to ${data.status}`,
             notes: data.notes,
         });
     }

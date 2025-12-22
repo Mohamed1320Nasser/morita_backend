@@ -69,7 +69,7 @@ export interface ServiceModifier {
     name: string;
     modifierType: "PERCENTAGE" | "FIXED";
     value: number;
-    displayType: "NORMAL" | "UPCHARGE" | "NOTE" | "WARNING";
+    displayType: "NORMAL" | "UPCHARGE" | "DISCOUNT" | "NOTE" | "WARNING";
     priority: number;
     condition?: string;
     active: boolean;
@@ -94,6 +94,7 @@ export interface Service {
 export interface PricingMethod {
     id: string;
     name: string;
+    groupName?: string; // Group name for organizing methods (e.g., "BANDOS", "ARMA - Armadyl")
     description?: string;
     basePrice: number;
     pricingUnit: "FIXED" | "PER_LEVEL" | "PER_KILL" | "PER_ITEM" | "PER_HOUR";
@@ -112,7 +113,7 @@ export interface PricingModifier {
     modifierType: "PERCENTAGE" | "FIXED";
     value: number;
     condition?: string;
-    displayType?: "NORMAL" | "UPCHARGE" | "NOTE" | "WARNING"; // How to display this modifier
+    displayType?: "NORMAL" | "UPCHARGE" | "DISCOUNT" | "NOTE" | "WARNING"; // How to display this modifier
     priority: number;
     active: boolean;
 }
