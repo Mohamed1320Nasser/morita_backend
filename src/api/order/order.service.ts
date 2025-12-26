@@ -154,7 +154,6 @@ export default class OrderService {
                     );
 
                     if (!workerBalanceCheck.sufficient) {
-                        // Extract deposit and balance for detailed error message
                         const workerDeposit = typeof workerWallet.deposit === 'object'
                             ? parseFloat(workerWallet.deposit.toString())
                             : workerWallet.deposit;
@@ -552,18 +551,15 @@ export default class OrderService {
             throw new BadRequestError("Worker does not have a wallet");
         }
 
-        // Calculate eligibility: deposit + (balance - pendingBalance)
         const balance = new Decimal(workerWallet.balance.toString());
-        const pendingBalance = new Decimal(workerWallet.pendingBalance.toString());
         const deposit = new Decimal(workerWallet.deposit.toString());
-        const availableBalance = balance.minus(pendingBalance);
-        const eligibilityBalance = deposit.plus(availableBalance);
+        const eligibilityBalance = deposit.plus(balance);
         const requiredDeposit = new Decimal(order.depositAmount.toString());
 
         if (eligibilityBalance.lessThan(requiredDeposit)) {
             throw new BadRequestError(
-                `Worker has insufficient balance. Required: $${requiredDeposit.toFixed(2)}, ` +
-                `Available: $${eligibilityBalance.toFixed(2)} (Deposit: $${deposit.toFixed(2)}, Balance: $${availableBalance.toFixed(2)})`
+                `Worker has insufficient eligibility. Required: $${requiredDeposit.toFixed(2)}, ` +
+                `Available: $${eligibilityBalance.toFixed(2)} (Deposit: $${deposit.toFixed(2)}, Balance: $${balance.toFixed(2)})`
             );
         }
 
@@ -600,11 +596,7 @@ export default class OrderService {
     }
 
     /**
-     * Worker claims an unassigned order (from job claiming channel)
-     */
-    /**
      * Worker claims an unassigned order
-     * Worker must lock DEPOSIT when claiming
      */
     async claimOrder(orderId: string, data: ClaimOrderDto) {
         const order = await this.getOrderById(orderId);
@@ -635,9 +627,7 @@ export default class OrderService {
 
         const requiredDeposit = new Decimal(order.depositAmount.toString());
 
-        // Execute claim in transaction - LOCK WORKER'S DEPOSIT
         const updatedOrder = await withTransactionRetry(async (tx) => {
-            // 1. Lock worker wallet and check balance for DEPOSIT
             const balanceCheck = await checkWalletBalanceWithLock(
                 tx,
                 workerWallet.id,
@@ -645,7 +635,6 @@ export default class OrderService {
             );
 
             if (!balanceCheck.sufficient) {
-                // Extract deposit and balance for detailed error message
                 const workerDeposit = typeof balanceCheck.wallet.deposit === 'object'
                     ? parseFloat(balanceCheck.wallet.deposit.toString())
                     : balanceCheck.wallet.deposit;
@@ -667,7 +656,6 @@ export default class OrderService {
                 );
             }
 
-            // 2. Lock worker's DEPOSIT
             await updateWalletBalance(
                 tx,
                 workerWallet.id,
@@ -675,7 +663,6 @@ export default class OrderService {
                 requiredDeposit.toNumber()   // Add to pending
             );
 
-            // 3. Create worker deposit transaction
             await tx.walletTransaction.create({
                 data: {
                     walletId: workerWallet.id,
@@ -692,7 +679,6 @@ export default class OrderService {
                 },
             });
 
-            // 4. Update order - assign worker (worker must click "Start Work" to begin)
             const updated = await tx.order.update({
                 where: { id: orderId },
                 data: {
@@ -708,7 +694,6 @@ export default class OrderService {
                 },
             });
 
-            // 5. Create status history for ASSIGNED
             await tx.orderStatusHistory.create({
                 data: {
                     orderId,
@@ -719,7 +704,6 @@ export default class OrderService {
                 },
             });
 
-            // 6. Create status history for IN_PROGRESS (auto-started)
             await tx.orderStatusHistory.create({
                 data: {
                     orderId,

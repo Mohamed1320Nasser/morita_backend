@@ -65,8 +65,7 @@ export async function handleClaimJobButton(
         const deposit = parseFloat(balanceData.deposit || "0");
         const balance = parseFloat(balanceData.balance || "0");
         const pendingBalance = parseFloat(balanceData.pendingBalance || "0");
-        const availableBalance = balance - pendingBalance;
-        const eligibilityBalance = deposit + availableBalance;
+        const eligibilityBalance = deposit + balance;
 
         // Get order details to check deposit requirement
         logger.info(`[ClaimJob] Fetching order details...`);
@@ -77,7 +76,7 @@ export async function handleClaimJobButton(
         const outerData = orderResponse.data || orderResponse;
         const order = outerData.data || outerData;
 
-        logger.info(`[ClaimJob] Order #${order.orderNumber} - Status: ${order.status} - Deposit Required: $${order.depositAmount} - Worker Deposit: $${deposit} - Available: $${availableBalance} - Eligibility: $${eligibilityBalance}`);
+        logger.info(`[ClaimJob] Order #${order.orderNumber} - Status: ${order.status} - Deposit Required: $${order.depositAmount} - Worker Deposit: $${deposit} - Balance: $${balance} - Eligibility: $${eligibilityBalance}`);
 
         // Check if order is still available
         if (order.status !== "PENDING") {
@@ -101,17 +100,17 @@ export async function handleClaimJobButton(
             const shortfall = requiredDeposit - eligibilityBalance;
 
             // Build error message
-            let errorMessage = `❌ **Insufficient Balance**\n\n` +
-                `You need at least $${requiredDeposit.toFixed(2)} to claim this job.\n\n` +
+            let errorMessage = `❌ **Insufficient Eligibility**\n\n` +
+                `You need at least $${requiredDeposit.toFixed(2)} eligibility to claim this job.\n\n` +
                 `**Your Worker Deposit:** $${deposit.toFixed(2)}\n` +
-                `**Your Available Balance:** $${availableBalance.toFixed(2)}\n` +
+                `**Your Balance:** $${balance.toFixed(2)}\n` +
                 `**Total Eligibility:** $${eligibilityBalance.toFixed(2)}\n` +
                 `**Required:** $${requiredDeposit.toFixed(2)}\n` +
                 `**Shortfall:** $${shortfall.toFixed(2)}\n\n`;
 
             // Add special note if worker has no deposit
             if (deposit === 0) {
-                errorMessage += `⚠️ **Note:** You have no worker deposit. Consider adding a deposit to increase your job claiming eligibility.\n\n`;
+                errorMessage += `⚠️ **Note:** You have no worker deposit. Adding a deposit increases your job claiming eligibility.\n\n`;
             }
 
             errorMessage += `Please add more balance or deposit to your wallet before claiming jobs.`;

@@ -61,12 +61,10 @@ export default {
                     return;
                 }
 
-                // Format balance display
                 const balance = parseFloat(data.balance).toFixed(2);
                 const pendingBalance = parseFloat(data.pendingBalance).toFixed(2);
                 const deposit = parseFloat(data.deposit || 0).toFixed(2);
-                const availableBalance = parseFloat(data.availableBalance || (parseFloat(data.balance) - parseFloat(data.pendingBalance))).toFixed(2);
-                const eligibilityBalance = parseFloat(data.eligibilityBalance || (parseFloat(deposit) + parseFloat(availableBalance))).toFixed(2);
+                const eligibilityBalance = parseFloat(data.eligibilityBalance || (parseFloat(deposit) + parseFloat(data.balance))).toFixed(2);
 
                 const isWorker = data.walletType === "WORKER";
 

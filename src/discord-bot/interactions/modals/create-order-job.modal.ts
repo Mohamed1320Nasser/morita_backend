@@ -97,16 +97,16 @@ export async function handleCreateOrderJobModal(
             return;
         }
 
-        const availableBalance = balanceData.balance - balanceData.pendingBalance;
+        const customerBalance = balanceData.balance;
 
-        // Check if customer has sufficient balance
-        if (availableBalance < orderData.deposit) {
+        if (customerBalance < orderData.orderValue) {
             const embed = new EmbedBuilder()
                 .setTitle("❌ Insufficient Balance")
                 .setDescription(
                     `Customer <@${orderData.customerDiscordId}> has insufficient balance.\n\n` +
-                    `**Required:** $${orderData.deposit.toFixed(2)}\n` +
-                    `**Available:** $${availableBalance.toFixed(2)}\n\n` +
+                    `**Order Value:** $${orderData.orderValue.toFixed(2)}\n` +
+                    `**Current Balance:** $${customerBalance.toFixed(2)}\n` +
+                    `**Shortfall:** $${(orderData.orderValue - customerBalance).toFixed(2)}\n\n` +
                     `Please add more balance using /add-balance first.`
                 )
                 .setColor(0xed4245)
