@@ -177,7 +177,7 @@ export async function handleCreateOrderJobModal(
                 { name: "💰 Order Value", value: `$${orderData.orderValue.toFixed(2)} ${orderData.currency}`, inline: true },
                 { name: "🔒 Deposit Locked", value: `$${orderData.deposit.toFixed(2)} ${orderData.currency}`, inline: true },
                 { name: "📊 Status", value: orderStatus, inline: true },
-                { name: "💵 Available Balance", value: `$${(availableBalance - orderData.deposit).toFixed(2)} ${orderData.currency}`, inline: true },
+                { name: "💵 Customer Balance", value: `$${(customerBalance - orderData.orderValue).toFixed(2)} ${orderData.currency}`, inline: true },
             ])
             .setColor(orderData.workerDiscordId ? 0x57f287 : 0xf59e0b)
             .setTimestamp()

@@ -76,11 +76,9 @@ export default {
 
                 // Balance breakdown
                 let balanceText = `\`\`\`yml\n`;
-                balanceText += `Total Balance:     $${balance} ${data.currency}\n`;
+                balanceText += `Balance:           $${balance} ${data.currency}\n`;
                 if (parseFloat(data.pendingBalance) > 0) {
                     balanceText += `Pending (Locked):  $${pendingBalance} ${data.currency}\n`;
-                    balanceText += `─────────────────────────────\n`;
-                    balanceText += `Available:         $${availableBalance} ${data.currency}\n`;
                 }
                 balanceText += `\`\`\``;
 
@@ -94,7 +92,7 @@ export default {
                 if (isWorker) {
                     let depositText = `\`\`\`yml\n`;
                     depositText += `Worker Deposit:    $${deposit} ${data.currency}\n`;
-                    depositText += `Available Balance: $${availableBalance} ${data.currency}\n`;
+                    depositText += `Balance:           $${balance} ${data.currency}\n`;
                     depositText += `─────────────────────────────\n`;
                     depositText += `Total Eligibility: $${eligibilityBalance} ${data.currency}\n`;
                     depositText += `\`\`\``;
