@@ -71,6 +71,10 @@ model User {
   supportTickets     Ticket[]        @relation("supportTickets")
   ticketMessages     TicketMessage[] @relation("ticketMessageAuthor")
 
+  // Onboarding relations
+  tosAcceptances      TosAcceptance[]      @relation("userTosAcceptances")
+  onboardingAnswers   OnboardingAnswer[]   @relation("userOnboardingAnswers")
+
   @@index([email])
   @@index([role])
   @@index([discordId])
@@ -798,4 +802,105 @@ model TicketTypeSettings {
   @@index([ticketType])
   @@index([isActive])
   @@index([groupKey])
+}
+
+// ============================================
+// ONBOARDING SYSTEM
+// ============================================
+
+// Terms of Service Content
+model TermsOfService {
+  id            String    @id @default(uuid())
+  title         String    @db.VarChar(255)
+  content       String    @db.Text          // Main TOS text content
+  bannerUrl     String?   @db.Text          // GIF/Image URL for banner
+  thumbnailUrl  String?   @db.Text          // Thumbnail image
+  embedColor    String    @default("5865F2") @db.VarChar(6) // Hex color without #
+  footerText    String?   @db.Text
+  buttonLabel   String    @default("Accept Terms") @db.VarChar(100)
+  isActive      Boolean   @default(true)
+  version       Int       @default(1)       // Track TOS versions
+  createdAt     DateTime  @default(now()) @db.DateTime(0)
+  updatedAt     DateTime  @default(now()) @updatedAt @db.DateTime(0)
+
+  acceptances   TosAcceptance[]
+
+  @@index([isActive])
+  @@index([version])
+}
+
+// User TOS Acceptances
+model TosAcceptance {
+  id              String    @id @default(uuid())
+  userId          Int       @db.UnsignedInt
+  tosId           String
+  discordId       String    // Discord user ID
+  discordUsername String
+  acceptedAt      DateTime  @default(now()) @db.DateTime(0)
+  ipAddress       String?   @db.VarChar(45)  // Optional: track IP
+
+  user          User      @relation("userTosAcceptances", fields: [userId], references: [id])
+  tos           TermsOfService @relation(fields: [tosId], references: [id])
+
+  @@unique([userId, tosId])
+  @@index([discordId])
+  @@index([acceptedAt])
+}
+
+// Onboarding Questions (Admin-managed) - Only TEXT and TEXTAREA supported
+model OnboardingQuestion {
+  id            String    @id @default(uuid())
+  question      String    @db.Text
+  fieldType     QuestionFieldType @default(TEXT)
+  placeholder   String?   @db.VarChar(255)
+  required      Boolean   @default(true)
+  minLength     Int?      // For text validation
+  maxLength     Int?      // For text validation
+  displayOrder  Int       @default(0)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now()) @db.DateTime(0)
+  updatedAt     DateTime  @default(now()) @updatedAt @db.DateTime(0)
+
+  answers       OnboardingAnswer[]
+
+  @@index([displayOrder])
+  @@index([isActive])
+}
+
+enum QuestionFieldType {
+  TEXT           // Short text input (Discord TextInputStyle.Short)
+  TEXTAREA       // Long text input (Discord TextInputStyle.Paragraph)
+}
+
+// User Answers to Onboarding Questions
+model OnboardingAnswer {
+  id            String    @id @default(uuid())
+  userId        Int       @db.UnsignedInt
+  questionId    String
+  answer        String    @db.Text
+  discordId     String
+  answeredAt    DateTime  @default(now()) @db.DateTime(0)
+
+  user          User      @relation("userOnboardingAnswers", fields: [userId], references: [id])
+  question      OnboardingQuestion @relation(fields: [questionId], references: [id])
+
+  @@unique([userId, questionId])
+  @@index([discordId])
+  @@index([userId])
+}
+
+// Onboarding Sessions (Track onboarding progress)
+model OnboardingSession {
+  id                  String    @id @default(uuid())
+  discordId           String    @unique
+  discordUsername     String
+  tosAccepted         Boolean   @default(false)
+  questionsCompleted  Boolean   @default(false)
+  roleAssigned        Boolean   @default(false)
+  registeredInDb      Boolean   @default(false)
+  startedAt           DateTime  @default(now()) @db.DateTime(0)
+  completedAt         DateTime?
+
+  @@index([discordId])
+  @@index([tosAccepted, questionsCompleted])
 }

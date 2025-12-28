@@ -14,6 +14,7 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers, // Required for onboarding
     ],
     rest: {
         timeout: 30000,
@@ -139,6 +140,15 @@ client.once(Events.ClientReady, async readyClient => {
             "Failed to initialize ticket category manager:",
             error
         );
+    }
+
+    try {
+        const { TosManagerService } = await import("./services/tosManager.service");
+        client.tosManager = new TosManagerService(client);
+        await client.tosManager.initializeTosChannel();
+        logger.info("TOS channel initialized successfully");
+    } catch (error) {
+        logger.error("Failed to initialize TOS channel:", error);
     }
 });
 

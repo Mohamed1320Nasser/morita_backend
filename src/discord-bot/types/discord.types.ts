@@ -10,6 +10,7 @@ import { ApiService } from "../services/api.service";
 import { ChannelManagerService } from "../services/channelManager.service";
 import { ImprovedChannelManager } from "../services/improvedChannelManager.service";
 import { TicketCategoryManager } from "../services/ticketCategoryManager.service";
+import { TosManagerService } from "../services/tosManager.service";
 
 // Extend Discord client with custom properties
 declare module "discord.js" {
@@ -19,6 +20,7 @@ declare module "discord.js" {
         channelManager: ChannelManagerService; // Legacy (keep for compatibility)
         improvedChannelManager: ImprovedChannelManager; // New real-time system
         ticketCategoryManager: TicketCategoryManager; // Multi-type ticket channels
+        tosManager: TosManagerService; // TOS/Onboarding channel manager
     }
 }
 
