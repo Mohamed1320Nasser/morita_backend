@@ -9,6 +9,7 @@ import {
     IsInt,
     Min,
     Max,
+    IsNumber,
 } from "class-validator";
 import { PricingUnit } from "@prisma/client";
 import { Transform } from "class-transformer";
@@ -55,8 +56,8 @@ export class CreatePricingMethodDto {
 
     @IsOptional()
     @Transform(({ value }) => (value === "string" ? parseInt(value) : value))
-    @IsPositive({ message: "Display order must be greater than 0" })
-    displayOrder?: number = 0;
+    @IsNumber({}, { message: "Display order must be greater than 0" })
+    displayOrder?: number;
 
     @IsOptional()
     @Transform(({ value }) => (value === "string" ? Boolean(value) : value))
