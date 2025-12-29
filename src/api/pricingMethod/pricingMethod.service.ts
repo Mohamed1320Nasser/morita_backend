@@ -51,45 +51,20 @@ export default class PricingMethodService {
     async getList(query: GetPricingMethodListDto) {
         const where: any = {
             deletedAt: null,
+             OR: query.search
+                    ? [
+                        { name: {contains: query.search, } },
+                        { description: {contains: query.search, } },
+                        { groupName: {contains: query.search, } },
+                        { service: { name: { contains: query.search } } },
+                    ]
+                    : undefined,
+            serviceId: query.serviceId,
+            active: query.active,
+            pricingUnit: query.pricingUnit,
+            
         };
-
-        // Add optional filters
-        if (query.serviceId) {
-            where.serviceId = query.serviceId;
-        }
-
-        if (query.active !== undefined) {
-            where.active = query.active;
-        }
-
-        if (query.pricingUnit) {
-            where.pricingUnit = query.pricingUnit;
-        }
-
-        // Add search functionality
-        if (query.search) {
-            where.OR = [
-                {
-                    name: {
-                        contains: query.search,
-                        mode: "insensitive",
-                    },
-                },
-                {
-                    description: {
-                        contains: query.search,
-                        mode: "insensitive",
-                    },
-                },
-                {
-                    groupName: {
-                        contains: query.search,
-                        mode: "insensitive",
-                    },
-                },
-            ];
-        }
-
+        
         const [methods, filterCount, totalCount] = await Promise.all([
             prisma.pricingMethod.findMany({
                 select: {
