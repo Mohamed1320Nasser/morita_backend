@@ -5,14 +5,23 @@ import { discordApiClient } from "../../clients/DiscordApiClient";
 import { createJobClaimingEmbed, createClaimButton } from "../../utils/jobClaimingEmbed";
 import { getOrderChannelService } from "../../services/orderChannel.service";
 import { extractErrorMessage, isInsufficientBalanceError } from "../../utils/error-message.util";
+import { getRedisService } from "../../../common/services/redis.service";
 
-// Temporary storage for order data (in production, use Redis or database)
-const orderDataCache = new Map<string, any>();
+// Get Redis service instance
+const redisService = getRedisService();
 
-export function storeOrderData(key: string, data: any) {
-    orderDataCache.set(key, data);
-    // Auto-cleanup after 10 minutes
-    setTimeout(() => orderDataCache.delete(key), 600000);
+/**
+ * Store order data using Redis (with in-memory fallback)
+ * This ensures data persists even if bot restarts
+ */
+export async function storeOrderData(key: string, data: any): Promise<void> {
+    try {
+        await redisService.storeOrderData(key, data);
+        logger.info(`[CreateOrder] Stored order data for key: ${key}`);
+    } catch (error) {
+        logger.error(`[CreateOrder] Failed to store order data:`, error);
+        throw error;
+    }
 }
 
 export async function handleCreateOrderJobModal(
@@ -33,18 +42,18 @@ export async function handleCreateOrderJobModal(
         // Get job details from modal BEFORE any async operations
         const jobDetails = interaction.fields.getTextInputValue("job_details").trim() || null;
 
-        // Get stored order data
-        const orderData = orderDataCache.get(orderKey);
+        // Get stored order data from Redis
+        const orderData = await redisService.getOrderData(orderKey);
 
         if (!orderData) {
             await interaction.editReply({
-                content: `❌ **Order data expired**\n\nPlease try creating the order again.`,
+                content: `❌ **Order data expired or not found**\n\nPlease try creating the order again.\n\n*Tip: If the bot restarted recently, you'll need to re-run /create-order*`,
             });
             return;
         }
 
         // Delete from cache
-        orderDataCache.delete(orderKey);
+        await redisService.deleteOrderData(orderKey);
 
         logger.info(`[CreateOrderJob] Processing order for customer ${orderData.customerDiscordId}`);
 

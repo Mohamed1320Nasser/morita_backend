@@ -106,7 +106,7 @@ export default {
                 currency,
             };
 
-            storeOrderData(orderKey, orderData);
+            await storeOrderData(orderKey, orderData);
 
             // Show job details modal IMMEDIATELY (before any async operations)
             const modal = new ModalBuilder()

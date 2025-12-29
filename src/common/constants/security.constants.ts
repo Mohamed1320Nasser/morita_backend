@@ -30,7 +30,7 @@ if (Math.abs(totalPercentage - 1.0) > 0.001) {
 
 // Cache TTLs (Time To Live)
 export const CACHE_TTL = {
-    ORDER_DATA_TTL_MS: 10 * 60 * 1000, // 10 minutes
+    ORDER_DATA_TTL_MS: 30 * 60 * 1000, // 30 minutes (increased from 10 min to handle bot restarts)
     IDEMPOTENCY_KEY_TTL_SECONDS: 24 * 60 * 60, // 24 hours
     SESSION_TTL_MS: 30 * 60 * 1000, // 30 minutes
     TICKET_SETTINGS_TTL_MS: 5 * 60 * 1000, // 5 minutes
