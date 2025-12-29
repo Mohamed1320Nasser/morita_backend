@@ -1012,7 +1012,7 @@ export default class OrderService {
         logger.info(`  - Worker deposit returned: $${depositAmount.toNumber()}`);
         logger.info(`  - Worker earned: $${workerPayout.toNumber()}`);
         logger.info(`  - Support earned: $${supportPayout.toNumber()}`);
-        logger.info(`  - System profit: $${order.systemPayout?.toNumber() || 0}`);
+        logger.info(`  - System profit: $${order.systemPayout || 0}`);
     }
 
     /**

@@ -225,8 +225,10 @@ export default class TicketTypeSettingsService {
             orderBy: { displayOrder: "asc" },
         });
 
+        // Return empty array instead of throwing error - allows graceful fallback
         if (!settings || settings.length === 0) {
-            throw new NotFoundError(`No ticket types found for group: ${groupKey}`);
+            logger.warn(`No ticket types found for group: ${groupKey}`);
+            return [];
         }
 
         return settings;

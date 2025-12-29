@@ -1,6 +1,7 @@
 import { ButtonInteraction, EmbedBuilder, TextChannel, ButtonBuilder, ButtonStyle, ActionRowBuilder } from "discord.js";
 import logger from "../../../common/loggers";
 import { discordApiClient } from "../../clients/DiscordApiClient";
+import { notifySupportOrderUpdate } from "../../utils/notification.util";
 
 /**
  * Handle "Confirm Complete" button click (customer confirms order completion)
@@ -45,6 +46,18 @@ export async function handleConfirmCompleteButton(interaction: ButtonInteraction
 
         logger.info(`[ConfirmComplete] Order ${orderId} confirmed, payouts triggered`);
 
+        // Notify support/admin about order confirmation
+        await notifySupportOrderUpdate(interaction.client, {
+            orderNumber: orderData.orderNumber,
+            orderId,
+            status: "COMPLETED",
+            customer: orderData.customer,
+            worker: orderData.worker,
+            orderValue: orderData.orderValue,
+            action: "order_confirmed",
+            actionBy: interaction.user.id,
+        });
+
         // Calculate payout amounts for display
         const orderValue = parseFloat(orderData.orderValue);
         const workerPayout = orderValue * 0.8; // 80%
@@ -56,20 +69,12 @@ export async function handleConfirmCompleteButton(interaction: ButtonInteraction
             .setTitle("✅ Order Confirmed!")
             .setDescription(
                 `Thank you for confirming completion of Order #${orderData.orderNumber}!\n\n` +
-                `Payouts have been automatically distributed.`
+                `All payouts have been processed successfully.`
             )
             .addFields([
                 { name: "📦 Order", value: `#${orderData.orderNumber}`, inline: true },
                 { name: "💰 Order Value", value: `$${orderValue.toFixed(2)} USD`, inline: true },
                 { name: "📊 Status", value: "✅ COMPLETED", inline: true },
-                {
-                    name: "💸 Payout Distribution",
-                    value:
-                        `• 👷 Worker: $${workerPayout.toFixed(2)} (80%)\n` +
-                        `• 🎧 Support: $${supportPayout.toFixed(2)} (5%)\n` +
-                        `• 🏢 System: $${systemPayout.toFixed(2)} (15%)`,
-                    inline: false,
-                },
                 {
                     name: "⭐ Rate Your Experience",
                     value: "Please take a moment to rate this order!",
@@ -93,6 +98,19 @@ export async function handleConfirmCompleteButton(interaction: ButtonInteraction
             embeds: [customerEmbed.toJSON() as any],
             components: [buttonRow.toJSON() as any],
         });
+
+        // Disable the action buttons in the thread to prevent duplicate clicks
+        try {
+            const originalMessage = interaction.message;
+            await originalMessage.edit({
+                content: `✅ **Order confirmed successfully!** All buttons have been disabled.`,
+                components: [] // Remove all buttons
+            });
+            logger.info(`[ConfirmComplete] Disabled action buttons in thread message`);
+        } catch (buttonError) {
+            logger.warn(`[ConfirmComplete] Could not disable buttons:`, buttonError);
+            // Don't fail - button disable is nice-to-have
+        }
 
         // Send celebration DM to customer
         try {
@@ -157,20 +175,19 @@ export async function handleConfirmCompleteButton(interaction: ButtonInteraction
                     .setTitle(`📦 ORDER #${orderData.orderNumber} - ✅ COMPLETED`)
                     .setDescription(
                         `This order has been successfully completed and confirmed!\n\n` +
-                        `Payouts have been automatically distributed.`
+                        `All payouts have been processed.`
                     )
                     .addFields([
                         { name: "👤 Customer", value: `<@${orderData.customer.discordId}>`, inline: true },
                         { name: "👷 Worker", value: `<@${orderData.worker.discordId}>`, inline: true },
-                        { name: "💰 Total Value", value: `$${orderValue.toFixed(2)} USD`, inline: true },
+                        { name: "💰 Order Value", value: `$${orderValue.toFixed(2)} USD`, inline: true },
                         { name: "📊 Final Status", value: "✅ **COMPLETED & PAID**", inline: false },
                         {
-                            name: "💸 Payouts Processed",
+                            name: "✅ Completion Summary",
                             value:
-                                `✅ Worker received: $${workerPayout.toFixed(2)} USD (80%)\n` +
-                                `✅ Support received: $${supportPayout.toFixed(2)} USD (5%)\n` +
-                                `✅ System collected: $${systemPayout.toFixed(2)} USD (15%)\n` +
-                                `🔄 Deposit returned: $${orderData.depositAmount.toFixed(2)} USD`,
+                                `• Worker received payment\n` +
+                                `• Worker deposit returned\n` +
+                                `• All transactions processed`,
                             inline: false,
                         },
                     ])

@@ -7,6 +7,7 @@ import logger from "../../common/loggers";
 import { discordApiClient } from "../clients/DiscordApiClient";
 import { findOrderByNumber } from "../utils/order-search.util";
 import { extractErrorMessage } from "../utils/error-message.util";
+import { notifySupportOrderUpdate } from "../utils/notification.util";
 
 export const data = new SlashCommandBuilder()
     .setName("start-work")
@@ -97,8 +98,20 @@ async function execute(interaction: ChatInputCommandInteraction) {
         });
 
         logger.info(
-            `[StartWork] Order ${orderId} (# ${orderNumber}) status changed to IN_PROGRESS by ${interaction.user.tag}`
+            `[StartWork] Order ${orderId} (#${orderNumber}) status changed to IN_PROGRESS by ${interaction.user.tag}`
         );
+
+        // Notify support/admin about work started
+        await notifySupportOrderUpdate(interaction.client, {
+            orderNumber: orderData.orderNumber,
+            orderId,
+            status: "IN_PROGRESS",
+            customer: orderData.customer,
+            worker: orderData.worker,
+            orderValue: orderData.orderValue,
+            action: "work_started",
+            actionBy: interaction.user.id,
+        });
     } catch (error: any) {
         logger.error("[StartWork] Error starting work:", error);
 
