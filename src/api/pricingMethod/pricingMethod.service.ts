@@ -81,6 +81,12 @@ export default class PricingMethodService {
                         mode: "insensitive",
                     },
                 },
+                {
+                    groupName: {
+                        contains: query.search,
+                        mode: "insensitive",
+                    },
+                },
             ];
         }
 
