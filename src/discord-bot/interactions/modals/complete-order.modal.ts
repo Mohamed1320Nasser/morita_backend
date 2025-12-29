@@ -82,89 +82,150 @@ export async function handleCompleteOrderModal(interaction: ModalSubmitInteracti
             embeds: [workerEmbed.toJSON() as any],
         });
 
-        // Send notification to customer in order channel
+        // Update the pinned message in ticket channel
         const channel = interaction.channel;
-        if (channel && channel instanceof TextChannel) {
-            const customerEmbed = new EmbedBuilder()
-                .setTitle("📦 ORDER COMPLETION NOTIFICATION")
-                .setDescription(
-                    `<@${orderData.customer.discordId}>, your order has been marked as complete!\n\n` +
-                    `**Please verify the work and confirm completion.**`
-                )
-                .addFields([
-                    { name: "📦 Order", value: `#${orderData.orderNumber}`, inline: true },
-                    { name: "👷 Worker", value: `<@${orderData.worker.discordId}>`, inline: true },
-                    { name: "💰 Order Value", value: `$${orderValue.toFixed(2)} USD`, inline: true },
-                    { name: "📊 Status", value: "🟠 AWAITING YOUR CONFIRMATION", inline: false },
-                ])
-                .setColor(0xf59e0b)
-                .setTimestamp();
+        if (channel && channel instanceof TextChannel && orderData.pinnedMessageId) {
+            try {
+                // Fetch the existing pinned message
+                const pinnedMessage = await channel.messages.fetch(orderData.pinnedMessageId);
 
-            if (completionNotes) {
-                customerEmbed.addFields([
-                    { name: "📝 Completion Notes", value: completionNotes.substring(0, 1024), inline: false }
-                ]);
-            }
+                // Create updated embed with AWAITING_CONFIRM status
+                const updatedEmbed = new EmbedBuilder()
+                    .setTitle(`📦 ORDER #${orderData.orderNumber} - ⚠️ AWAITING CONFIRMATION`)
+                    .setDescription(
+                        `**<@${orderData.customer.discordId}>, please confirm order completion!**\n\n` +
+                        `The worker has marked this order as complete. Please review and confirm.`
+                    )
+                    .addFields([
+                        { name: "👤 Customer", value: `<@${orderData.customer.discordId}>`, inline: true },
+                        { name: "👷 Worker", value: `<@${orderData.worker.discordId}>`, inline: true },
+                        { name: "💰 Order Value", value: `$${orderValue.toFixed(2)} USD`, inline: true },
+                        { name: "📊 Status", value: "🟠 **AWAITING YOUR CONFIRMATION**", inline: false },
+                        {
+                            name: "💸 Pending Payout Distribution",
+                            value:
+                                `✅ Worker will receive: $${workerPayout.toFixed(2)} USD (80%)\n` +
+                                `✅ Support will receive: $${supportPayout.toFixed(2)} USD (5%)\n` +
+                                `✅ System fee: $${systemPayout.toFixed(2)} USD (15%)\n` +
+                                `🔄 Worker deposit: $${orderData.depositAmount.toFixed(2)} USD (returned)`,
+                            inline: false
+                        },
+                    ])
+                    .setColor(0xf59e0b) // Orange for attention
+                    .setTimestamp();
 
-            customerEmbed.addFields([
-                {
-                    name: "ℹ️ Next Steps",
-                    value:
-                        "• Click **✅ Confirm Complete** if you're satisfied with the work\n" +
-                        "• Click **❌ Report Issue** if there are problems",
-                    inline: false,
+                if (completionNotes) {
+                    updatedEmbed.addFields([
+                        {
+                            name: "📝 Completion Notes from Worker",
+                            value: completionNotes.substring(0, 1024),
+                            inline: false
+                        }
+                    ]);
                 }
-            ]);
 
-            // Create confirmation buttons
-            const confirmButton = new ButtonBuilder()
-                .setCustomId(`confirm_complete_${orderId}`)
-                .setLabel("✅ Confirm Complete")
-                .setStyle(ButtonStyle.Success);
+                // Create action buttons for customer
+                const confirmButton = new ButtonBuilder()
+                    .setCustomId(`confirm_complete_${orderId}`)
+                    .setLabel("✅ Confirm Complete")
+                    .setStyle(ButtonStyle.Success);
 
-            const issueButton = new ButtonBuilder()
-                .setCustomId(`report_issue_${orderId}`)
-                .setLabel("❌ Report Issue")
-                .setStyle(ButtonStyle.Danger);
+                const issueButton = new ButtonBuilder()
+                    .setCustomId(`report_issue_${orderId}`)
+                    .setLabel("❌ Report Issue")
+                    .setStyle(ButtonStyle.Danger);
 
-            const buttonRow = new ActionRowBuilder<ButtonBuilder>()
-                .addComponents(confirmButton, issueButton);
+                const infoButton = new ButtonBuilder()
+                    .setCustomId(`order_info_${orderId}`)
+                    .setLabel("📊 Order Details")
+                    .setStyle(ButtonStyle.Primary);
 
-            const confirmationMessage = await channel.send({
-                content: `<@${orderData.customer.discordId}>`,
-                embeds: [customerEmbed.toJSON() as any],
-                components: [buttonRow.toJSON() as any],
-            });
+                const buttonRow = new ActionRowBuilder<ButtonBuilder>()
+                    .addComponents(confirmButton, issueButton, infoButton);
 
-            // Pin the confirmation message so customer doesn't miss it
-            try {
-                await confirmationMessage.pin();
-                logger.info(`[CompleteOrder] Pinned confirmation message in channel ${channel.id}`);
-            } catch (pinError) {
-                logger.warn(`[CompleteOrder] Could not pin confirmation message:`, pinError);
-            }
+                // Update the pinned message
+                await pinnedMessage.edit({
+                    content: `🔔 <@${orderData.customer.discordId}> **ACTION REQUIRED** - Please confirm order completion!`,
+                    embeds: [updatedEmbed.toJSON() as any],
+                    components: [buttonRow.toJSON() as any],
+                });
 
-            // Find and update the original pinned order message to remove buttons
-            try {
-                const pinnedMessages = await channel.messages.fetchPinned();
-                const orderMessage = pinnedMessages.find(msg =>
-                    msg.embeds.length > 0 &&
-                    msg.embeds[0].title?.includes(`Order #${orderData.orderNumber}`) &&
-                    msg.id !== confirmationMessage.id
-                );
+                logger.info(`[CompleteOrder] Updated pinned message ${orderData.pinnedMessageId}`);
 
-                if (orderMessage) {
-                    // Remove all action buttons from original message
-                    await orderMessage.edit({
-                        components: [],
+                // Create a thread for completion discussion (optional but nice)
+                try {
+                    const thread = await pinnedMessage.startThread({
+                        name: `Order #${orderData.orderNumber} - Completion Review`,
+                        autoArchiveDuration: 60, // 1 hour
+                        reason: 'Order completion review thread'
                     });
-                    logger.info(`[CompleteOrder] Removed buttons from original order message`);
-                }
-            } catch (updateError) {
-                logger.warn(`[CompleteOrder] Could not update original message:`, updateError);
-            }
 
-            logger.info(`[CompleteOrder] Sent confirmation request to customer in channel ${channel.id}`);
+                    await thread.send({
+                        content: `<@${orderData.customer.discordId}>`,
+                        embeds: [
+                            new EmbedBuilder()
+                                .setDescription(
+                                    `**Worker has completed the order!**\n\n` +
+                                    `Please review the work and use the buttons above to:\n` +
+                                    `✅ **Confirm Complete** if satisfied\n` +
+                                    `❌ **Report Issue** if there are problems\n\n` +
+                                    `If you have questions, reply in this thread.`
+                                )
+                                .setColor(0xf59e0b)
+                                .toJSON() as any
+                        ]
+                    });
+
+                    logger.info(`[CompleteOrder] Created completion review thread`);
+                } catch (threadError) {
+                    logger.warn(`[CompleteOrder] Could not create thread:`, threadError);
+                    // Thread creation is optional, don't fail
+                }
+
+            } catch (err) {
+                logger.error(`[CompleteOrder] Failed to update pinned message:`, err);
+                // Fallback: send new message if update fails
+                const customerEmbed = new EmbedBuilder()
+                    .setTitle("📦 ORDER COMPLETION NOTIFICATION")
+                    .setDescription(
+                        `<@${orderData.customer.discordId}>, your order has been marked as complete!\n\n` +
+                        `**Please verify the work and confirm completion.**`
+                    )
+                    .addFields([
+                        { name: "📦 Order", value: `#${orderData.orderNumber}`, inline: true },
+                        { name: "👷 Worker", value: `<@${orderData.worker.discordId}>`, inline: true },
+                        { name: "💰 Order Value", value: `$${orderValue.toFixed(2)} USD`, inline: true },
+                        { name: "📊 Status", value: "🟠 AWAITING YOUR CONFIRMATION", inline: false },
+                    ])
+                    .setColor(0xf59e0b);
+
+                if (completionNotes) {
+                    customerEmbed.addFields([
+                        { name: "📝 Completion Notes", value: completionNotes.substring(0, 1024), inline: false }
+                    ]);
+                }
+
+                const confirmButton = new ButtonBuilder()
+                    .setCustomId(`confirm_complete_${orderId}`)
+                    .setLabel("✅ Confirm Complete")
+                    .setStyle(ButtonStyle.Success);
+
+                const issueButton = new ButtonBuilder()
+                    .setCustomId(`report_issue_${orderId}`)
+                    .setLabel("❌ Report Issue")
+                    .setStyle(ButtonStyle.Danger);
+
+                const buttonRow = new ActionRowBuilder<ButtonBuilder>()
+                    .addComponents(confirmButton, issueButton);
+
+                await channel.send({
+                    content: `<@${orderData.customer.discordId}>`,
+                    embeds: [customerEmbed.toJSON() as any],
+                    components: [buttonRow.toJSON() as any],
+                });
+
+                logger.info(`[CompleteOrder] Sent fallback notification message`);
+            }
         }
 
         logger.info(`[CompleteOrder] Order ${orderId} completion flow initiated successfully`);

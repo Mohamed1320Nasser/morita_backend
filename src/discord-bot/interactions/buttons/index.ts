@@ -39,6 +39,7 @@ import { handleConfirmCompleteButton } from "./confirm-complete.button";
 import { handleReportIssueButton } from "./report-issue.button";
 import { handleOrderInfoButton } from "./order-info.button";
 import { handleStartWork } from "./start-work.button";
+import { handleLeaveReviewButton } from "./leave-review.button";
 
 // Button handler mapping
 const buttonHandlers: {
@@ -184,6 +185,12 @@ export async function handleButtonInteraction(
         // Start work button
         if (customId.startsWith("start_work_")) {
             await handleStartWork(interaction);
+            return;
+        }
+
+        // Leave review button
+        if (customId.startsWith("leave_review_")) {
+            await handleLeaveReviewButton(interaction);
             return;
         }
 

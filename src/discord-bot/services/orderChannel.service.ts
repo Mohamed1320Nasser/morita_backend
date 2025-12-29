@@ -10,6 +10,7 @@ import {
 } from "discord.js";
 import { discordConfig } from "../config/discord.config";
 import logger from "../../common/loggers";
+import { discordApiClient } from "../clients/DiscordApiClient";
 
 /**
  * Order Channel Manager Service
@@ -395,6 +396,18 @@ export class OrderChannelService {
 
             await message.pin();
             logger.info(`[OrderChannel] Order assignment message posted and pinned in ${channel.name}`);
+
+            // Store message ID in database for future updates
+            try {
+                await discordApiClient.put(`/discord/orders/${data.orderId}/message`, {
+                    ticketChannelId: channel.id,
+                    pinnedMessageId: message.id,
+                });
+                logger.info(`[OrderChannel] Stored pinned message ID ${message.id} for order ${data.orderId}`);
+            } catch (err) {
+                logger.warn(`[OrderChannel] Failed to store message ID:`, err);
+                // Don't fail the whole flow if this fails
+            }
 
             // Send welcome message to worker
             await channel.send(

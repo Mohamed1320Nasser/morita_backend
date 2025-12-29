@@ -13,6 +13,7 @@ import { handleTicketModal } from "./ticket-modal.modal"; // NEW
 import { handleCreateOrderJobModal } from "./create-order-job.modal";
 import { handleCompleteOrderModal } from "./complete-order.modal";
 import { handleReportIssueModal } from "./report-issue.modal";
+import { handleOrderReviewModal } from "./order-review.modal";
 
 // Modal handler mapping (exact matches)
 const modalHandlers: {
@@ -54,6 +55,10 @@ const patternModalHandlers: Array<{
     {
         pattern: /^report_issue_/,
         handler: handleReportIssueModal,
+    },
+    {
+        pattern: /^order_review_/,
+        handler: handleOrderReviewModal,
     },
 ];
 

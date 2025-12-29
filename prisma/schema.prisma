@@ -403,6 +403,8 @@ model Order {
   // Discord
   orderChannelId  String?       @unique // Order channel ID
   claimMessageId  String?       // Message in job claiming channel
+  pinnedMessageId String?       // Main pinned status message in ticket channel
+  ticketChannelId String?       // Ticket channel ID (for quick access)
 
   // Financials
   orderValue      Decimal       @db.Decimal(18, 8)
@@ -424,6 +426,11 @@ model Order {
   // Notes
   completionNotes   String?       @db.Text
   cancellationReason String?      @db.Text
+
+  // Customer feedback
+  rating            Int?          // 1-5 stars
+  review            String?       @db.Text
+  reviewedAt        DateTime?     @db.DateTime(0)
 
   // Timestamps
   createdAt       DateTime      @default(now()) @db.DateTime(0)

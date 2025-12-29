@@ -196,6 +196,70 @@ export default class DiscordOrderController {
         });
     }
 
+    @Put("/:orderId/message")
+    async updateOrderMessage(
+        @Param("orderId") orderId: string,
+        @Body() data: {
+            ticketChannelId?: string;
+            pinnedMessageId?: string;
+        }
+    ) {
+        return await prisma.order.update({
+            where: { id: orderId },
+            data: {
+                ticketChannelId: data.ticketChannelId,
+                pinnedMessageId: data.pinnedMessageId,
+            },
+        });
+    }
+
+    @Put("/:orderId/review")
+    async submitOrderReview(
+        @Param("orderId") orderId: string,
+        @Body() data: {
+            customerDiscordId: string;
+            rating: number;
+            review?: string;
+        }
+    ) {
+        // Validate customer
+        const customer = await prisma.user.findUnique({
+            where: { discordId: data.customerDiscordId }
+        });
+        if (!customer) throw new Error("Customer not found");
+
+        // Validate rating
+        if (data.rating < 1 || data.rating > 5) {
+            throw new Error("Rating must be between 1 and 5");
+        }
+
+        // Get order and validate it belongs to customer
+        const order = await prisma.order.findUnique({
+            where: { id: orderId },
+            include: { customer: true }
+        });
+
+        if (!order) throw new Error("Order not found");
+        if (order.customerId !== customer.id) {
+            throw new Error("You are not the customer for this order");
+        }
+
+        // Check if already reviewed
+        if (order.rating || order.review) {
+            throw new Error("Order has already been reviewed");
+        }
+
+        // Update order with review
+        return await prisma.order.update({
+            where: { id: orderId },
+            data: {
+                rating: data.rating,
+                review: data.review,
+                reviewedAt: new Date(),
+            },
+        });
+    }
+
     @Put("/:orderId/status")
     async updateOrderStatus(
         @Param("orderId") orderId: string,
