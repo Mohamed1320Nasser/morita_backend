@@ -157,6 +157,7 @@ export default class QuickCreateService {
                         data: {
                             serviceId: serviceId,
                             name: methodData.name,
+                            groupName: methodData.groupName,
                             description: methodData.description,
                             basePrice: methodData.basePrice,
                             pricingUnit: methodData.pricingUnit,

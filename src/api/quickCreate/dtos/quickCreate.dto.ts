@@ -147,6 +147,11 @@ export class PricingMethodDataDto {
     description?: string;
 
     @IsOptional()
+    @IsString()
+    @MaxLength(100)
+    groupName?: string;
+
+    @IsOptional()
     @IsInt()
     startLevel?: number;
 
