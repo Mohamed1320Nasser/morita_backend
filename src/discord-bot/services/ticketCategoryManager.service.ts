@@ -65,7 +65,6 @@ export class TicketCategoryManager {
             c => c.name.toLowerCase() === "create ticket" && c.type === ChannelType.GuildCategory
         );
         if (existingByName) {
-            logger.info(`[TicketCategoryManager] Found category by name: ${existingByName.name}`);
             return existingByName as CategoryChannel;
         }
 
@@ -137,7 +136,6 @@ export class TicketCategoryManager {
                  c.parentId === this.ticketCategory?.id
         );
         if (existingByName) {
-            logger.info(`[TicketCategoryManager] Found channel by name: ${existingByName.name}`);
             return existingByName as TextChannel;
         }
 
@@ -223,7 +221,6 @@ export class TicketCategoryManager {
 
             // Send new message
             await channel.send(messageData);
-            logger.info(`[TicketCategoryManager] Message sent to ${channel.name}`);
         } catch (error) {
             logger.error(`[TicketCategoryManager] Error in ${channel.name}:`, error);
         }

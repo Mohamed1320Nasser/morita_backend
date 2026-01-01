@@ -489,9 +489,9 @@ export async function logError(error: DiscordError, includeStack: boolean = true
 
     return true;
   } catch (loggingError) {
-    // Fallback if logging fails
-    console.error('Failed to log Discord error:', loggingError);
-    console.error('Original error:', error);
+    // Fallback if logging fails - use logger as last resort
+    logger.error('Failed to log Discord error:', loggingError);
+    logger.error('Original error:', error);
     return false;
   }
 }

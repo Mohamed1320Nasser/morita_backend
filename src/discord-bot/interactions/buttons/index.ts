@@ -15,7 +15,7 @@ import {
     handleTicketCalculate,
     handleTicketClose,
 } from "./open-ticket.button";
-import { handleCreateTicket } from "./create-ticket.button"; // NEW
+import { handleCreateTicket } from "./create-ticket.button";
 import { handleCalculate } from "./calculate.button";
 import { handleResetCalculator } from "./reset-calculator.button";
 import { handleOrderFromPrice } from "./order-from-price.button";
@@ -30,7 +30,6 @@ import { handleHelpServices } from "./help-services.button";
 import { handleHelpPricing } from "./help-pricing.button";
 import { handleHelpOrders } from "./help-orders.button";
 import { handleHelpSupport } from "./help-support.button";
-// import { handleCategoryToggle } from "./pricing-category-toggle.button"; // DISABLED - old system
 import { handleServiceDetails } from "./pricing-service-details.button";
 import { handleAdminRefreshPricing } from "./admin-refresh-pricing.button";
 import { handlePricingPagination } from "./pricing-pagination.button";
@@ -66,8 +65,6 @@ const buttonHandlers: {
     help_pricing: handleHelpPricing,
     help_orders: handleHelpOrders,
     help_support: handleHelpSupport,
-    // Pricing channel buttons
-    // pricing_category_toggle: handleCategoryToggle, // DISABLED - old system
     pricing_service_details: handleServiceDetails,
     admin_refresh_pricing_channel: handleAdminRefreshPricing,
 };
@@ -108,15 +105,6 @@ export async function handleButtonInteraction(
         }
 
         // Check for pattern matches
-        // Category toggle disabled - old system
-        // if (
-        //     customId.startsWith("pricing_category_") &&
-        //     customId.endsWith("_toggle")
-        // ) {
-        //     await handleCategoryToggle(interaction);
-        //     return;
-        // }
-
         if (
             customId.startsWith("pricing_service_") &&
             customId.endsWith("_details")
@@ -151,6 +139,12 @@ export async function handleButtonInteraction(
         // Recalculate buttons (including inticket variant)
         if (customId.startsWith("recalculate_")) {
             await handleRecalculate(interaction);
+            return;
+        }
+
+        // Calculate price buttons (from pricing channel service details)
+        if (customId.startsWith("calculate_price_")) {
+            await handleCalculatePrice(interaction);
             return;
         }
 

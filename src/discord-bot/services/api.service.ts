@@ -21,28 +21,16 @@ export class ApiService {
             },
         });
 
-        // Request interceptor
         this.client.interceptors.request.use(
-            config => {
-                logger.debug(
-                    `API Request: ${config.method?.toUpperCase()} ${config.url}`
-                );
-                return config;
-            },
+            config => config,
             error => {
                 logger.error("API Request Error:", error);
                 return Promise.reject(error);
             }
         );
 
-        // Response interceptor
         this.client.interceptors.response.use(
-            response => {
-                logger.debug(
-                    `API Response: ${response.status} ${response.config.url}`
-                );
-                return response;
-            },
+            response => response,
             error => {
                 logger.error(
                     "API Response Error:",

@@ -2,6 +2,7 @@ import { Client, TextChannel, Message, AttachmentBuilder } from "discord.js";
 import { PrismaClient } from "@prisma/client";
 import { ApiService } from "./api.service";
 import { EnhancedPricingBuilder } from "../utils/enhancedPricingBuilder";
+import { getSelectMenuResetManager } from "./selectMenuResetManager";
 import {
     pricingEventService,
     PricingEventData,
@@ -132,9 +133,6 @@ export class ImprovedChannelManager {
         eventData: PricingEventData
     ): Promise<void> {
         if (this.isUpdating) {
-            logger.debug(
-                "[ImprovedChannelManager] Update already in progress, queuing..."
-            );
             return;
         }
 
@@ -180,11 +178,7 @@ export class ImprovedChannelManager {
                     logger.info(
                         "[ImprovedChannelManager] Pricing method/modifier changed, updating affected service"
                     );
-                    // These don't affect the main channel, only service detail views
-                    // Service detail views are ephemeral, so no update needed
-                    logger.debug(
-                        "[ImprovedChannelManager] No channel update needed for pricing method/modifier changes"
-                    );
+                    // Service detail views are ephemeral, no channel update needed
                     break;
 
                 default:
@@ -212,15 +206,9 @@ export class ImprovedChannelManager {
             this.categoriesCache &&
             now - this.cacheTimestamp < this.CACHE_TTL
         ) {
-            logger.debug(
-                "[ImprovedChannelManager] Using cached categories data"
-            );
             return this.categoriesCache;
         }
 
-        logger.debug(
-            "[ImprovedChannelManager] Fetching fresh categories data from API"
-        );
         const categories = await this.apiService.getCategoriesWithServices();
 
         this.categoriesCache = categories;
@@ -247,7 +235,6 @@ export class ImprovedChannelManager {
             await this.clearChannel();
 
             // Wait 2 seconds for Discord to process deletions (prevents duplicate banners)
-            logger.debug("[ImprovedChannelManager] Waiting for Discord to process deletions...");
             await new Promise(resolve => setTimeout(resolve, 2000));
 
             // Create header
@@ -255,9 +242,6 @@ export class ImprovedChannelManager {
 
             // Create category messages
             await this.createAllCategoryMessages();
-
-            // Footer removed per user request
-            // await this.createFooter();
 
             logger.info(
                 "[ImprovedChannelManager] Channel rebuild complete"
@@ -278,10 +262,6 @@ export class ImprovedChannelManager {
         if (!this.pricingChannel) return;
 
         try {
-            logger.debug(
-                "[ImprovedChannelManager] Clearing channel messages"
-            );
-
             // Fetch ALL messages, not just 100 (force: true to bypass cache)
             let allMessages: Message[] = [];
             let lastMessageId: string | undefined = undefined;
@@ -305,14 +285,10 @@ export class ImprovedChannelManager {
                 if (messagesCollection.size < 100) break;
             }
 
-            logger.debug(`[ImprovedChannelManager] Found ${allMessages.length} total messages in channel`);
-
             // Filter bot messages
             const botMessages = allMessages.filter(
                 msg => msg.author.id === this.client.user?.id
             );
-
-            logger.debug(`[ImprovedChannelManager] Deleting ${botMessages.length} bot messages`);
 
             // Delete messages in batches
             for (const msg of botMessages) {
@@ -340,8 +316,6 @@ export class ImprovedChannelManager {
 
             // Clear Discord's message cache to prevent stale data
             this.pricingChannel.messages.cache.clear();
-
-            logger.debug("[ImprovedChannelManager] Channel cleared");
         } catch (error) {
             logger.error(
                 "[ImprovedChannelManager] Error clearing channel:",
@@ -366,8 +340,6 @@ export class ImprovedChannelManager {
                 this.headerMessage,
                 "HEADER"
             );
-
-            logger.debug("[ImprovedChannelManager] Header created with banner only");
         } catch (error) {
             logger.error(
                 "[ImprovedChannelManager] Error creating header:",
@@ -377,7 +349,7 @@ export class ImprovedChannelManager {
     }
 
     /**
-     * Create all category messages
+     * Create all category messages (GROUPED: 5 categories per message)
      */
     private async createAllCategoryMessages(): Promise<void> {
         try {
@@ -389,15 +361,29 @@ export class ImprovedChannelManager {
             );
 
             logger.info(
-                `[ImprovedChannelManager] Creating ${validCategories.length} category messages (${categories.length - validCategories.length} categories skipped - no services)`
+                `[ImprovedChannelManager] Creating grouped category messages for ${validCategories.length} categories (${categories.length - validCategories.length} skipped - no services)`
             );
 
-            for (const category of validCategories) {
-                await this.createCategoryMessage(category);
+            // Group categories: 5 per message (Discord limit: max 5 select menus per message)
+            const CATEGORIES_PER_MESSAGE = 5;
+            const groupedCategories: ServiceCategory[][] = [];
+
+            for (let i = 0; i < validCategories.length; i += CATEGORIES_PER_MESSAGE) {
+                const group = validCategories.slice(i, i + CATEGORIES_PER_MESSAGE);
+                groupedCategories.push(group);
             }
 
             logger.info(
-                "[ImprovedChannelManager] All category messages created"
+                `[ImprovedChannelManager] Grouped into ${groupedCategories.length} messages (${CATEGORIES_PER_MESSAGE} categories per message)`
+            );
+
+            // Create one message per group
+            for (let i = 0; i < groupedCategories.length; i++) {
+                await this.createGroupedCategoryMessage(groupedCategories[i], i);
+            }
+
+            logger.info(
+                "[ImprovedChannelManager] All grouped category messages created"
             );
         } catch (error) {
             logger.error(
@@ -408,7 +394,58 @@ export class ImprovedChannelManager {
     }
 
     /**
-     * Create single category message
+     * Create grouped category message (5 categories in one message)
+     */
+    private async createGroupedCategoryMessage(
+        categories: ServiceCategory[],
+        groupIndex: number
+    ): Promise<void> {
+        if (!this.pricingChannel) return;
+
+        try {
+            const components: any[] = [];
+
+            // Build select menu for each category
+            for (const category of categories) {
+                const { components: categoryComponents } =
+                    EnhancedPricingBuilder.buildCategorySelectMenu(category);
+
+                // Add each select menu component
+                components.push(...categoryComponents);
+            }
+
+            // Send grouped message (no content, just components)
+            const message = await this.pricingChannel.send({
+                components: components as any,
+            });
+
+            // Register with reset manager for auto-reset functionality
+            const resetManager = getSelectMenuResetManager();
+            const categoryIds = categories.map((c) => c.id);
+            resetManager.registerGroupedMessage(message.id, categoryIds);
+
+            // Store reference for each category
+            for (const category of categories) {
+                this.categoryMessages.set(category.id, message);
+            }
+
+            // Save to database
+            await this.saveMessageToDatabase(
+                message,
+                "GROUPED_CATEGORIES",
+                `group_${groupIndex}`
+            );
+
+        } catch (error) {
+            logger.error(
+                `[ImprovedChannelManager] Error creating grouped message ${groupIndex}:`,
+                error
+            );
+        }
+    }
+
+    /**
+     * Create single category message (DEPRECATED - now using grouped messages)
      */
     private async createCategoryMessage(
         category: ServiceCategory
@@ -430,10 +467,6 @@ export class ImprovedChannelManager {
                 message,
                 "CATEGORY_SELECT",
                 category.id
-            );
-
-            logger.debug(
-                `[ImprovedChannelManager] Category message created: ${category.name}`
             );
         } catch (error) {
             logger.error(

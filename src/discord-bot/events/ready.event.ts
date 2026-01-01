@@ -10,23 +10,10 @@ export default {
     async execute(client: Client) {
         logger.info(`Discord bot ready! Logged in as ${client.user?.tag}`);
 
-        // Set bot activity
         client.user?.setActivity("🎮 Morita Gaming | /help", { type: 1 });
 
-        // Log bot information
-        logger.info(`Bot ID: ${client.user?.id}`);
-        logger.info(`Bot Username: ${client.user?.username}`);
-        logger.info(`Bot Discriminator: ${client.user?.discriminator}`);
-        logger.info(`Bot Avatar: ${client.user?.avatarURL()}`);
-
-        // Log guild information
         const guilds = client.guilds.cache;
-        logger.info(`Connected to ${guilds.size} guild(s):`);
-        guilds.forEach(guild => {
-            logger.info(
-                `  - ${guild.name} (${guild.id}) - ${guild.memberCount} members`
-            );
-        });
+        logger.info(`Connected to ${guilds.size} guild(s)`);
 
         // Health check
         try {

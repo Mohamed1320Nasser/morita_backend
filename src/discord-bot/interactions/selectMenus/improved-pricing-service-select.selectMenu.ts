@@ -5,6 +5,7 @@ import { discordConfig } from "../../config/discord.config";
 import logger from "../../../common/loggers";
 import { pricingMessageTracker } from "../../services/pricingMessageTracker.service";
 import { DISCORD_LIMITS } from "../../constants/discord-limits";
+import { getSelectMenuResetManager } from "../../services/selectMenuResetManager";
 
 const apiService = new ApiService(discordConfig.apiBaseUrl);
 
@@ -213,6 +214,10 @@ export async function handleImprovedPricingServiceSelect(
                     );
                 }
             });
+
+            // Schedule select menu reset to remove checkmark (smart debouncing)
+            const resetManager = getSelectMenuResetManager();
+            await resetManager.scheduleReset(interaction.message, categoryId);
 
             logger.info(
                 `[PricingServiceSelect] Service details shown: ${service.name} by ${interaction.user.tag} (auto-delete in 10 minutes)`

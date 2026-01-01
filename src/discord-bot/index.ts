@@ -89,8 +89,6 @@ const loadEvents = async () => {
 };
 
 client.once(Events.ClientReady, async readyClient => {
-    logger.info(`Discord bot ready! Logged in as ${readyClient.user.tag}`);
-
     readyClient.user.setActivity("🎮 Morita Gaming | /help", { type: 1 });
 
     try {
