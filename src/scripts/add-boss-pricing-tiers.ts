@@ -108,7 +108,7 @@ async function addBossPricingTiers() {
                 where: {
                     OR: [
                         { slug: bossConfig.serviceSlug },
-                        { name: { contains: bossConfig.serviceName, mode: 'insensitive' } }
+                        { name: { contains: bossConfig.serviceName } }
                     ]
                 },
                 include: {
@@ -118,23 +118,9 @@ async function addBossPricingTiers() {
 
             if (!service) {
                 logger.warn(`⚠️ Service not found: ${bossConfig.serviceName} (${bossConfig.serviceSlug})`);
-                logger.info(`   Creating service...`);
-
-                // Create the service if it doesn't exist
-                const newService = await prisma.service.create({
-                    data: {
-                        name: bossConfig.serviceName,
-                        slug: bossConfig.serviceSlug,
-                        description: `${bossConfig.serviceName} bossing service`,
-                        active: true,
-                        emoji: '⚔️',
-                    }
-                });
-
-                logger.info(`✅ Created service: ${newService.name} (ID: ${newService.id})`);
-
-                // Now add pricing methods
-                await addPricingMethodsToService(newService.id, bossConfig.tiers);
+                logger.info(`   Skipping creation - service must exist in database first.`);
+                logger.info(`   Please create the service manually or use the admin panel.`);
+                continue; // Skip to next boss
             } else {
                 logger.info(`✅ Found service: ${service.name} (ID: ${service.id})`);
 
