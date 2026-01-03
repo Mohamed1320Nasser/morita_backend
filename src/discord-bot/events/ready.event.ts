@@ -2,6 +2,7 @@ import { Events, Client } from "discord.js";
 import { ChannelManagerService } from "../services/channelManager.service";
 import { startPricingSyncJob } from "../jobs/pricingSync.job";
 import { startCleanupJob } from "../jobs/cleanup.job";
+import { ResetManagerMonitor } from "../utils/resetManagerMonitor";
 import logger from "../../common/loggers";
 
 export default {
@@ -25,6 +26,14 @@ export default {
             }
         } catch (error) {
             logger.error("❌ Backend API health check error:", error);
+        }
+
+        // Start SelectMenuResetManager monitoring
+        try {
+            ResetManagerMonitor.startMonitoring();
+            logger.info("✅ SelectMenuResetManager monitoring started");
+        } catch (error) {
+            logger.error("❌ Error starting ResetManager monitoring:", error);
         }
 
         // Initialize pricing channel - OLD SYSTEM DISABLED

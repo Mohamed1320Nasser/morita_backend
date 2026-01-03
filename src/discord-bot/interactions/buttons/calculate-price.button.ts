@@ -102,49 +102,83 @@ export async function handleCalculatePrice(
                 commandExample = `!s ${service.name.toLowerCase()} 70-99`;
         }
 
-        // Build calculator redirect embed
+        // Build beautiful calculator redirect embed with clean design
         const embed = new EmbedBuilder()
+            .setColor(0x5865F2) // Discord Blurple - professional look
             .setTitle(`💰 ${service.emoji || '⭐'} ${service.name} Price Calculator`)
             .setDescription(
-                `To calculate the price for **${service.name}**, please use our calculator channel!`
+                `> **Get instant pricing** for **${service.name}**!\n` +
+                `> Use our calculator channel for accurate quotes.\n\n` +
+                `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
             )
-            .setColor(0xfca311) // Orange color
             .addFields(
                 {
-                    name: '📍 Calculator Channel',
+                    name: '📍 **Calculator Channel**',
                     value: discordConfig.calculatorChannelId
-                        ? `Head over to <#${discordConfig.calculatorChannelId}> to get instant pricing!`
-                        : 'Please use the calculator commands in the designated channel.',
+                        ? `**▸** Head to <#${discordConfig.calculatorChannelId}>\n**▸** Type your command below\n**▸** Get instant price quote!`
+                        : '**▸** Use the calculator commands below\n**▸** Get instant price quotes!',
                     inline: false,
                 },
                 {
-                    name: `🧮 ${commandType}`,
-                    value: `\`\`\`\n${commandExample}\n\`\`\``,
+                    name: '\u200B', // Spacer
+                    value: '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
                     inline: false,
                 },
                 {
-                    name: '📋 All Calculator Commands',
+                    name: `🎯 **Your Command** • ${commandType}`,
                     value:
-                        '**Skills (PER_LEVEL):** `!s <skill> <start>-<end>`\n' +
-                        '**PvM/Bossing (PER_KILL):** `!p <boss> <kills>`\n' +
-                        '**Minigames (PER_ITEM):** `!m <game> <count>`\n' +
-                        '**Ironman (PER_ITEM):** `!i <item> <quantity>`\n' +
-                        '**Quests (FIXED):** `!q <quest name>`',
+                        `\`\`\`ansi\n` +
+                        `\u001b[1;36m${commandExample}\u001b[0m\n` +
+                        `\`\`\`\n` +
+                        `**Copy this command** and paste it in the calculator channel!`,
                     inline: false,
                 },
                 {
-                    name: '✨ Examples',
+                    name: '\u200B', // Spacer
+                    value: '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+                    inline: false,
+                },
+                {
+                    name: '📋 **All Calculator Commands**',
                     value:
-                        '• `!s agility 70-99` - Calculate Agility 70-99\n' +
-                        '• `!p cox 120` - Calculate 120 CoX kills\n' +
-                        '• `!m barrows 100` - Calculate 100 Barrows runs\n' +
-                        '• `!i amethyst 1000` - Calculate 1000 Amethyst\n' +
-                        '• `!q cook\'s assistant` - Get quest price',
+                        '```ansi\n' +
+                        '\u001b[1;33m!s\u001b[0m <skill> <start>-<end>  │ Skills (per level)\n' +
+                        '\u001b[1;33m!p\u001b[0m <boss> <kills>         │ PvM/Bossing (per kill)\n' +
+                        '\u001b[1;33m!m\u001b[0m <game> <count>         │ Minigames (per item)\n' +
+                        '\u001b[1;33m!i\u001b[0m <item> <quantity>      │ Ironman (per item)\n' +
+                        '\u001b[1;33m!q\u001b[0m <quest name>           │ Quests (fixed price)\n' +
+                        '```',
+                    inline: false,
+                },
+                {
+                    name: '✨ **Quick Examples**',
+                    value:
+                        '```diff\n' +
+                        '+ !s agility 70-99        → Agility training 70-99\n' +
+                        '+ !p cox 120              → 120 CoX raid kills\n' +
+                        '+ !m barrows 100          → 100 Barrows runs\n' +
+                        '+ !i amethyst 1000        → 1000 Amethyst ore\n' +
+                        '+ !q cook\'s assistant     → Quest completion\n' +
+                        '```',
+                    inline: false,
+                },
+                {
+                    name: '\u200B', // Spacer
+                    value: '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+                    inline: false,
+                },
+                {
+                    name: '💡 **Pro Tips**',
+                    value:
+                        '**›** Commands are **case-insensitive**\n' +
+                        '**›** Results appear **instantly**\n' +
+                        '**›** Prices include all **modifiers & upcharges**\n' +
+                        '**›** Need help? Ask in the calculator channel!',
                     inline: false,
                 }
             )
             .setFooter({
-                text: 'Morita Gaming Services • Instant Price Calculations',
+                text: 'Morita Gaming Services • Instant Price Calculations • Today at ' + new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
                 iconURL: 'https://cdn.discordapp.com/avatars/1431962373719326781/542747abb0a2222bc5d5b66346d01665.webp',
             })
             .setTimestamp();

@@ -1025,7 +1025,6 @@ export default class OrderService {
             throw new BadRequestError(`Order cannot be cancelled in ${order.status} status`);
         }
 
-        // Calculate refund amount
         let refundAmount = 0;
         if (data.refundType === "full") {
             refundAmount = order.depositAmount.toNumber();
@@ -1033,7 +1032,6 @@ export default class OrderService {
             refundAmount = data.refundAmount;
         }
 
-        // Update order
         await prisma.order.update({
             where: { id: data.orderId },
             data: {
@@ -1043,7 +1041,6 @@ export default class OrderService {
             },
         });
 
-        // Create status history
         await prisma.orderStatusHistory.create({
             data: {
                 orderId: data.orderId,
@@ -1054,7 +1051,6 @@ export default class OrderService {
             },
         });
 
-        // Process refund if applicable
         if (refundAmount > 0) {
             const customerWallet = await this.walletService.getWalletByUserId(order.customerId);
             if (customerWallet) {
@@ -1063,7 +1059,6 @@ export default class OrderService {
                     order.depositAmount.toString()
                 );
 
-                // Add back to balance
                 const newBalance = new Decimal(customerWallet.balance.toString()).plus(refundAmount);
 
                 await prisma.wallet.update({
@@ -1074,7 +1069,6 @@ export default class OrderService {
                     },
                 });
 
-                // Create refund transaction
                 await prisma.walletTransaction.create({
                     data: {
                         walletId: customerWallet.id,

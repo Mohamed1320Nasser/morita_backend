@@ -215,9 +215,17 @@ export async function handleImprovedPricingServiceSelect(
                 }
             });
 
-            // Schedule select menu reset to remove checkmark (smart debouncing)
+            // Schedule select menu reset to remove checkmark (smart debouncing with retry logic)
             const resetManager = getSelectMenuResetManager();
-            await resetManager.scheduleReset(interaction.message, categoryId);
+
+            // Use non-blocking reset scheduling (don't await to prevent blocking user interaction)
+            resetManager.scheduleReset(interaction.message, categoryId).catch((error) => {
+                logger.warn(
+                    `[PricingServiceSelect] Failed to schedule reset for message ${interaction.message.id}:`,
+                    error
+                );
+                // Non-critical error - user already got their response
+            });
 
             logger.info(
                 `[PricingServiceSelect] Service details shown: ${service.name} by ${interaction.user.tag} (auto-delete in 10 minutes)`

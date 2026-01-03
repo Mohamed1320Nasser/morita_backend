@@ -353,7 +353,14 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
 }
 
 // Handler for !p command (PvM/Bossing - PER_KILL pricing)
+// Enhanced to match old OSRS Machines system with multi-tier pricing table
 async function handleBossingCommand(message: Message, apiService: ApiService) {
+    // Prevent duplicate responses from bot messages
+    if (message.author.bot) {
+        logger.debug('[PvM] Ignoring bot message to prevent duplicates');
+        return;
+    }
+
     const prefix = discordConfig.prefix;
     const args = message.content.slice(prefix.length + 2).trim().split(/\s+/);
 
@@ -361,7 +368,7 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
         await message.reply({
             content: "❌ **Invalid Command Format**\n\n" +
                 "**Usage:** `!p <boss-name> <kill-count>`\n" +
-                "**Example:** `!p cox 120` or `!p zulrah 100`",
+                "**Example:** `!p cox 120` or `!p cgp 50`",
         });
         return;
     }
@@ -390,6 +397,9 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
         'theatre of blood': 'theatre',
         'toa': 'tombs',
         'tombs of amascut': 'tombs',
+        'cg': 'gauntlet',
+        'cgp': 'corrupted gauntlet',
+        'corrupted': 'corrupted gauntlet',
     };
 
     // Check if serviceName matches an alias
@@ -408,24 +418,11 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
 
     logger.info(`[PvM] 📊 Total services fetched: ${services.length}`);
 
-    // Log all services with PER_KILL pricing for debugging
-    const perKillServices = services.filter((s: any) =>
-        s.pricingMethods?.some((m: any) => m.pricingUnit === 'PER_KILL')
-    );
-    logger.info(`[PvM] 🎯 Services with PER_KILL pricing: ${perKillServices.length}`);
-    perKillServices.forEach((s: any) => {
-        logger.info(`[PvM]   - "${s.name}" (slug: ${s.slug})`);
-    });
-
-    logger.info(`[PvM] 🔍 Searching for service matching: "${serviceName}"`);
-
     // Find service by name or slug (filter for PER_KILL services)
     const service = services.find((s: any) => {
         const matchesName = s.name.toLowerCase().includes(serviceName) ||
             s.slug.toLowerCase().includes(serviceName);
         const hasPerKillPricing = s.pricingMethods?.some((m: any) => m.pricingUnit === 'PER_KILL');
-
-        logger.debug(`[PvM]   Checking: "${s.name}" | Name match: ${s.name.toLowerCase().includes(serviceName)} | Slug match: ${s.slug.toLowerCase().includes(serviceName)} | Has PER_KILL: ${hasPerKillPricing}`);
 
         return matchesName && hasPerKillPricing;
     });
@@ -436,7 +433,7 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
             content: `❌ **Service Not Found**\n\n` +
                 `Could not find a PvM service matching "${serviceName}".\n\n` +
                 `Make sure the service supports kill-count pricing.\n` +
-                `**Tip:** Try \`!p cox 120\` or \`!p zulrah 100\``,
+                `**Tip:** Try \`!p cox 120\`, \`!p cgp 50\`, or \`!p zulrah 100\``,
         });
         return;
     }
@@ -448,65 +445,124 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
 
         const pricingService = new PricingCalculatorService();
 
-        // Get the first PER_KILL pricing method
+        // Get ALL PER_KILL pricing methods (multiple tiers like old system)
         if (!service.pricingMethods || service.pricingMethods.length === 0) {
             throw new Error('No pricing methods found for this service');
         }
 
-        const method = service.pricingMethods.find((m: any) => m.pricingUnit === 'PER_KILL');
+        const allMethods = service.pricingMethods.filter((m: any) => m.pricingUnit === 'PER_KILL');
 
-        if (!method) {
+        if (allMethods.length === 0) {
             throw new Error('No PER_KILL pricing method found for this service');
         }
 
-        // Get payment methods to get the default one
+        // Get ALL payment methods (to show multiple price options like old system)
         const paymentMethods = await apiService.getPaymentMethods();
         if (!paymentMethods || paymentMethods.length === 0) {
             throw new Error('No payment methods available');
         }
-        const defaultPaymentMethod = paymentMethods[0];
 
-        // Calculate price using the generic calculatePrice method
-        const result = await pricingService.calculatePrice({
-            methodId: method.id,
-            paymentMethodId: defaultPaymentMethod.id,
-            quantity: killCount,
-        });
+        logger.info(`[PvM] Found ${allMethods.length} pricing tiers and ${paymentMethods.length} payment methods`);
 
+        // Build OLD SYSTEM style embed with table and colors
         const embed = new EmbedBuilder()
-            .setTitle(`${service.emoji || '⚔️'} ${service.name}`)
-            .setColor(0xfca311)
-            .setTimestamp();
+            .setTitle(`🔥 Bossing Calculator`) // Red fire emoji like old system
+            .setColor(0x36393F) // Discord dark theme color
+            .setTimestamp()
+            .setThumbnail('https://oldschool.runescape.wiki/images/thumb/Crystalline_Hunllef.png/250px-Crystalline_Hunllef.png'); // Monster image like old system
 
-        embed.addFields({
-            name: "🎯 Kill Count",
-            value: `\`\`\`ansi\n\u001b[36m${killCount} Kills\u001b[0m\n\`\`\``,
-            inline: false,
-        });
+        // Create beautiful table header with ANSI colors (like old system)
+        // Adjusted spacing to prevent "Discount" from wrapping
+        let tableText = "```ansi\n";
+        tableText += `\u001b[0;37mMonster:                   Amount  Discount\u001b[0m\n`; // Reduced spacing
+        tableText += `\u001b[0;37m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m\n`;
 
-        // Add modifiers info
-        const appliedModifiers = result.modifiers.filter((m: any) => m.applied);
-        if (appliedModifiers.length > 0) {
-            const modLines = appliedModifiers.map((m: any) =>
-                `${m.displayType === 'UPCHARGE' ? '⚠️' : '→'} ${m.name}`
-            );
+        // Show service name and kill count in cyan (reduced monster name length)
+        const monsterName = service.name.substring(0, 25).padEnd(25); // Reduced from 28 to 25
+        tableText += `\u001b[0;36m${monsterName}\u001b[0m  \u001b[0;36m${killCount.toString().padStart(6)}\u001b[0m  \u001b[0;37mNone\u001b[0m\n\n`;
+        tableText += "```";
+
+        embed.setDescription(tableText);
+
+        // Calculate prices for each tier with each payment method
+        const tierResults: Array<{
+            tier: string;
+            notes: string;
+            pricePerKill: number;
+            prices: Array<{ method: string; total: number; isCheaper: boolean }>;
+        }> = [];
+
+        for (const method of allMethods) {
+            const tierPrices: Array<{ method: string; total: number; isCheaper: boolean }> = [];
+
+            // Calculate for EACH payment method
+            for (let i = 0; i < Math.min(2, paymentMethods.length); i++) {
+                const paymentMethod = paymentMethods[i];
+
+                try {
+                    const result = await pricingService.calculatePrice({
+                        methodId: method.id,
+                        paymentMethodId: paymentMethod.id,
+                        quantity: killCount,
+                    });
+
+                    tierPrices.push({
+                        method: paymentMethod.name,
+                        total: result.finalPrice,
+                        isCheaper: i === 0, // First payment method is usually cheaper
+                    });
+                } catch (err) {
+                    logger.warn(`[PvM] Failed to calculate for ${paymentMethod.name}:`, err);
+                }
+            }
+
+            // Extract notes from method name (e.g., "75+ w/ Rigour + Augury" → "Per Kc")
+            const notes = method.description || "Per Kc";
+
+            tierResults.push({
+                tier: method.name,
+                notes: notes,
+                pricePerKill: method.basePrice,
+                prices: tierPrices,
+            });
+        }
+
+        // Build pricing tiers section (like old system with colored $ symbols)
+        for (const tier of tierResults) {
+            // Build tier section with colors
+            let tierSection = "";
+
+            // Tier header (white text like old system)
+            tierSection += `\`\`\`fix\n${tier.tier}\n\`\`\``;
+
+            // Notes + Price per kill on one line
+            tierSection += `**Notes:** ${tier.notes}\n`;
+            tierSection += `**Price Per Kill:** \`$${tier.pricePerKill.toFixed(2)}\`\n`;
+
+            // Show prices with colored emojis (green for cheaper, white for expensive)
+            const priceDisplay = tier.prices.map((p, idx) => {
+                if (p.isCheaper) {
+                    // Green circle + price (cheaper payment method like crypto/OSRS gold)
+                    return `🟢 **$${p.total.toFixed(2)}**`;
+                } else {
+                    // White circle + price (more expensive like PayPal)
+                    return `⚪ **$${p.total.toFixed(2)}**`;
+                }
+            }).join(' ');
+
+            tierSection += `${priceDisplay}`;
+
+            // Add as separate field for each tier (cleaner layout)
             embed.addFields({
-                name: "📝 Modifiers Applied",
-                value: modLines.join('\n').substring(0, 1024),
+                name: "\u200B", // Invisible spacer
+                value: tierSection,
                 inline: false,
             });
         }
 
-        // Add total price
-        const totalSection =
-            `**Base Price:** $${result.basePrice.toFixed(2)}\n` +
-            (result.breakdown.totalModifiers > 0 ? `**Modifiers:** +$${result.breakdown.totalModifiers.toFixed(2)}\n` : '') +
-            `\`\`\`ansi\n\u001b[1;32mTotal: $${result.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
-
-        embed.addFields({
-            name: "💰 Total Price",
-            value: totalSection,
-            inline: false,
+        // Add footer with timestamp (like old system)
+        embed.setFooter({
+            text: `Morita Gaming Services • Today at ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`,
         });
 
         await thinkingMsg.edit({
@@ -514,7 +570,7 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
             embeds: [embed.toJSON() as any],
         });
 
-        logger.info(`[PriceCalculator] Result sent for ${service.name} (${killCount} kills) to ${message.author.tag}`);
+        logger.info(`[PriceCalculator] Multi-tier result sent for ${service.name} (${killCount} kills) to ${message.author.tag}`);
     } catch (apiError) {
         logger.error('[PriceCalculator] API error:', apiError);
         await thinkingMsg.edit({
