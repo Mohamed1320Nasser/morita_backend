@@ -1,124 +1,26 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
-  IsArray,
   ValidateNested,
   IsString,
   IsOptional,
   IsBoolean,
   IsNumber,
-  IsEnum,
   MinLength,
   ArrayMinSize,
   ArrayMaxSize,
   MaxLength,
-  IsDecimal,
-  Min,
 } from 'class-validator';
+import { BasePricingMethodDto, BatchModifierItemDto } from './common.dto';
 
-// Enums matching Prisma schema
-export enum PricingUnit {
-  FIXED = 'FIXED',
-  PER_LEVEL = 'PER_LEVEL',
-  PER_KILL = 'PER_KILL',
-  PER_ITEM = 'PER_ITEM',
-  PER_HOUR = 'PER_HOUR',
-}
-
-export enum ModifierType {
-  PERCENTAGE = 'PERCENTAGE',
-  FIXED = 'FIXED',
-}
-
-export enum ModifierDisplayType {
-  NORMAL = 'NORMAL',
-  UPCHARGE = 'UPCHARGE',
-  NOTE = 'NOTE',
-  WARNING = 'WARNING',
-}
-
-/**
- * DTO for a single pricing modifier within a pricing method
- */
-export class BatchModifierItemDto {
-  @IsString()
-  @MinLength(1, { message: 'Modifier name is required' })
-  @MaxLength(100, { message: 'Modifier name must not exceed 100 characters' })
-  name: string;
-
-  @IsEnum(ModifierType)
-  modifierType: ModifierType;
-
-  @IsNumber()
-  value: number;
-
+export class BatchPricingMethodItemDto extends BasePricingMethodDto {
   @IsOptional()
-  @IsString()
-  @MaxLength(1000, { message: 'Condition must not exceed 1000 characters' })
-  condition?: string;
-
-  @IsOptional()
-  @IsEnum(ModifierDisplayType)
-  displayType?: ModifierDisplayType;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  priority?: number;
-
-  @IsOptional()
-  @IsBoolean()
-  active?: boolean;
-}
-
-/**
- * DTO for a single pricing method within a service
- */
-export class BatchPricingMethodItemDto {
-  @IsString()
-  @MinLength(1, { message: 'Pricing method name is required' })
-  @MaxLength(100, { message: 'Pricing method name must not exceed 100 characters' })
-  name: string;
-
-  @IsEnum(PricingUnit)
-  pricingUnit: PricingUnit;
-
-  @IsNumber()
-  basePrice: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(1)
-  startLevel?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(1)
-  endLevel?: number;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(500, { message: 'Description must not exceed 500 characters' })
-  description?: string;
-
-  @IsOptional()
-  @IsNumber()
-  displayOrder?: number;
-
-  @IsOptional()
-  @IsBoolean()
-  active?: boolean;
-
-  @IsOptional()
-  @IsArray()
+  @Transform(({ value }) => (typeof value == "string" ? JSON.parse(value) : value))
   @ArrayMaxSize(20, { message: 'Maximum 20 modifiers per pricing method' })
   @ValidateNested({ each: true })
   @Type(() => BatchModifierItemDto)
   modifiers?: BatchModifierItemDto[];
 }
 
-/**
- * DTO for a single service with its pricing methods
- */
 export class BatchServiceWithPricingItemDto {
   @IsString()
   @MinLength(1, { message: 'Service name is required' })
@@ -140,37 +42,36 @@ export class BatchServiceWithPricingItemDto {
   description?: string;
 
   @IsOptional()
+  @Transform(({ value }) => Number(value) || null)
   @IsNumber()
   displayOrder?: number;
 
   @IsOptional()
-  @IsBoolean()
+ @Transform(({ value }) => (value === undefined ? value : Boolean(JSON.parse(value))))
+  @IsBoolean({ message: "homeView must be boolean value" })
   active?: boolean;
 
   @IsOptional()
-  @IsArray()
+  @Transform(({ value }) => (typeof value == "string" ? JSON.parse(value) : value))
   @ArrayMaxSize(20, { message: 'Maximum 20 service modifiers per service' })
   @ValidateNested({ each: true })
   @Type(() => BatchModifierItemDto)
   serviceModifiers?: BatchModifierItemDto[];
 
   @IsOptional()
-  @IsArray()
+  @Transform(({ value }) => (typeof value == "string" ? JSON.parse(value) : value))
   @ArrayMaxSize(20, { message: 'Maximum 20 pricing methods per service' })
   @ValidateNested({ each: true })
   @Type(() => BatchPricingMethodItemDto)
   pricingMethods?: BatchPricingMethodItemDto[];
 }
 
-/**
- * Main DTO for batch creating services with pricing methods and modifiers
- */
 export class BatchCreateServicesWithPricingDto {
   @IsString()
   @MinLength(1, { message: 'Category ID is required' })
   categoryId: string;
 
-  @IsArray()
+  @Transform(({ value }) => (typeof value == "string" ? JSON.parse(value) : value))
   @ArrayMinSize(1, { message: 'At least one service is required' })
   @ArrayMaxSize(20, { message: 'Maximum 20 services per batch' })
   @ValidateNested({ each: true })

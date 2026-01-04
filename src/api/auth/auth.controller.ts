@@ -47,14 +47,14 @@ export default class AuthController {
     }
 
     @Post("/otp/request")
-    // @UseBefore(rateLimiter)
+    @UseBefore(rateLimiter)
     public async requestOtp(@Body() data: RequestOTPDto, @Req() req: Request) {
         const res = await this.authService.sendOTP(req.lang, data);
         return res;
     }
 
     @Post("/otp/verify")
-    // @UseBefore(rateLimiter)
+    @UseBefore(rateLimiter)
     public async verifyOtp(@Body() data: VerifyOTPDto, @Req() req: Request) {
         const res = await this.authService.verifyOTP(
             req.lang,
@@ -65,26 +65,11 @@ export default class AuthController {
     }
 
     @Post("/otp/resend")
-    // @UseBefore(rateLimiter)
+    @UseBefore(rateLimiter)
     public async resendOtp(@Body() data: ResendOTPDto, @Req() req: Request) {
         const res = await this.authService.resendOTP(data.requestId);
         return res;
     }
-
-    // @Post("/login")
-    // @UseBefore(rateLimiter)
-    // public async login(@Body() data: LoginDto, @Req() req: Request) {
-    //     const source = req.useragent?.source || "";
-    //     data.identifier = data.identifier || uuid() || "";
-    //     const res = await this.authService.login(
-    //         req.lang,
-    //         data.email,
-    //         data.password,
-    //         data.identifier,
-    //         source
-    //     );
-    //     return convertResponse(loginResultDto, res);
-    // }
 
     @Post("/logout")
     @UseBefore(rateLimiter)

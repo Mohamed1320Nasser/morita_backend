@@ -18,7 +18,7 @@ This document outlines additional Discord bot management endpoints for future im
 
 ## 1. Announcement Management
 
-### Endpoint: `POST /api/discord/send-announcement`
+### Endpoint: `POST /discord/announcements/send`
 
 **Purpose:** Send custom announcements to Discord channels
 
@@ -69,7 +69,7 @@ This document outlines additional Discord bot management endpoints for future im
 
 ## 2. Bot Statistics & Health
 
-### Endpoint: `GET /api/discord/bot-stats`
+### Endpoint: `GET /discord/bot/stats`
 
 **Purpose:** Get comprehensive Discord bot statistics
 
@@ -135,7 +135,7 @@ This document outlines additional Discord bot management endpoints for future im
 
 ## 3. Bot Lifecycle Management
 
-### Endpoint: `POST /api/discord/restart-bot`
+### Endpoint: `POST /discord/bot/restart`
 
 **Purpose:** Restart the Discord bot without server restart
 
@@ -185,7 +185,7 @@ This document outlines additional Discord bot management endpoints for future im
 
 ## 4. Guild Member Management
 
-### Endpoint: `GET /api/discord/guild-members`
+### Endpoint: `GET /discord/members`
 
 **Purpose:** List and manage Discord server members
 
@@ -219,9 +219,9 @@ This document outlines additional Discord bot management endpoints for future im
 
 **Additional Endpoints:**
 
-**`GET /api/discord/members/:userId`** - Get single member details
+**`GET /discord/members/:userId`** - Get single member details
 
-**`POST /api/discord/members/:userId/roles`** - Assign roles
+**`POST /discord/members/:userId/roles`** - Assign roles
 ```json
 {
   "roleIds": ["123", "456"],
@@ -229,7 +229,7 @@ This document outlines additional Discord bot management endpoints for future im
 }
 ```
 
-**`POST /api/discord/members/:userId/kick`** - Kick member
+**`POST /discord/members/:userId/kick`** - Kick member
 ```json
 {
   "reason": "Violation of rules"
@@ -253,7 +253,7 @@ This document outlines additional Discord bot management endpoints for future im
 
 ## 5. Category-Specific Updates
 
-### Endpoint: `PATCH /api/discord/pricing-channel/category/:categoryId`
+### Endpoint: `PATCH /discord/pricing/category/:categoryId`
 
 **Purpose:** Update a specific category without rebuilding entire channel
 
@@ -301,7 +301,7 @@ This document outlines additional Discord bot management endpoints for future im
 
 ## 6. Message Management
 
-### Endpoint: `GET /api/discord/messages/:channelId`
+### Endpoint: `GET /discord/messages/:channelId`
 
 **Purpose:** Retrieve messages from a specific channel
 
@@ -338,9 +338,9 @@ This document outlines additional Discord bot management endpoints for future im
 
 **Additional Endpoints:**
 
-**`DELETE /api/discord/messages/:messageId`** - Delete specific message
+**`DELETE /discord/messages/:messageId`** - Delete specific message
 
-**`POST /api/discord/messages/bulk-delete`** - Bulk delete messages
+**`POST /discord/messages/bulk-delete`** - Bulk delete messages
 ```json
 {
   "channelId": "123",
@@ -358,7 +358,7 @@ This document outlines additional Discord bot management endpoints for future im
 
 ## 7. Role & Permission Management
 
-### Endpoint: `GET /api/discord/roles`
+### Endpoint: `GET /discord/roles`
 
 **Purpose:** Manage Discord server roles
 
@@ -383,7 +383,7 @@ This document outlines additional Discord bot management endpoints for future im
 
 **Additional Endpoints:**
 
-**`POST /api/discord/roles`** - Create new role
+**`POST /discord/roles`** - Create new role
 ```json
 {
   "name": "Worker",
@@ -392,9 +392,9 @@ This document outlines additional Discord bot management endpoints for future im
 }
 ```
 
-**`PATCH /api/discord/roles/:roleId`** - Update role
+**`PATCH /discord/roles/:roleId`** - Update role
 
-**`DELETE /api/discord/roles/:roleId`** - Delete role
+**`DELETE /discord/roles/:roleId`** - Delete role
 
 **Implementation Steps:**
 1. Create role management service
@@ -471,33 +471,20 @@ For each endpoint implementation:
 // Example controller structure
 import { JsonController, Post, Get, Param, Body } from "routing-controllers";
 import { Service } from "typedi";
-import discordClient from "../../discord-bot/index";
+import DiscordFeatureService from "./discord.feature.service";
 import logger from "../../common/loggers";
 
-@JsonController("/api/discord/[feature-name]")
+@JsonController("/discord/feature")
 @Service()
 export default class DiscordFeatureController {
+    constructor(private discordFeatureService: DiscordFeatureService) {}
 
     @Post("/")
     async createFeature(@Body() data: CreateFeatureDto) {
         try {
-            logger.info("[API] Creating feature...");
-
-            if (!discordClient.isReady()) {
-                return {
-                    success: false,
-                    error: "Discord bot not connected"
-                };
-            }
-
-            // Implementation here
-
-            return {
-                success: true,
-                data: result
-            };
+            return await this.discordFeatureService.createFeature(data);
         } catch (error: any) {
-            logger.error("[API] Error:", error);
+            logger.error("[DiscordFeatureController] Error:", error);
             return {
                 success: false,
                 error: error.message

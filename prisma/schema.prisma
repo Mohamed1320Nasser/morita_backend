@@ -75,6 +75,10 @@ model User {
   tosAcceptances      TosAcceptance[]      @relation("userTosAcceptances")
   onboardingAnswers   OnboardingAnswer[]   @relation("userOnboardingAnswers")
 
+  // Issue relations
+  reportedIssues      OrderIssue[]         @relation("reportedIssues")
+  resolvedIssues      OrderIssue[]         @relation("resolvedIssues")
+
   @@index([email])
   @@index([role])
   @@index([discordId])
@@ -457,6 +461,7 @@ model Order {
   legacyTransactions Transaction[] @relation("orderTransactions")
   walletTransactions WalletTransaction[] @relation("orderWalletTransactions")
   statusHistory     OrderStatusHistory[]
+  issues            OrderIssue[]
 
   @@index([customerId])
   @@index([workerId])
@@ -480,6 +485,46 @@ model OrderStatusHistory {
   changedBy   User         @relation("statusChangeHistory", fields: [changedById], references: [id])
 
   @@index([orderId])
+}
+
+enum IssueStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+  CLOSED
+}
+
+enum IssuePriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model OrderIssue {
+  id                String         @id @default(uuid())
+  orderId           String
+  reportedById      Int            @db.UnsignedInt
+  issueDescription  String         @db.Text
+  status            IssueStatus    @default(OPEN)
+  priority          IssuePriority  @default(MEDIUM)
+  resolution        String?        @db.Text
+  resolvedById      Int?           @db.UnsignedInt
+  discordMessageId  String?
+  discordChannelId  String?
+  createdAt         DateTime       @default(now()) @db.DateTime(0)
+  updatedAt         DateTime       @default(now()) @updatedAt @db.DateTime(0)
+  resolvedAt        DateTime?      @db.DateTime(0)
+
+  order             Order          @relation(fields: [orderId], references: [id])
+  reportedBy        User           @relation("reportedIssues", fields: [reportedById], references: [id])
+  resolvedBy        User?          @relation("resolvedIssues", fields: [resolvedById], references: [id])
+
+  @@index([orderId])
+  @@index([reportedById])
+  @@index([status])
+  @@index([priority])
+  @@index([createdAt])
 }
 
 model Transaction {

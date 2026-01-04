@@ -22,6 +22,9 @@ export const discordConfig = {
     pricingChannelId: process.env.DISCORD_PRICING_CHANNEL_ID || "",
     calculatorChannelId: process.env.DISCORD_CALCULATOR_CHANNEL_ID || "", // Price calculator (!s command)
     jobClaimingChannelId: process.env.DISCORD_JOB_CLAIMING_CHANNEL_ID || "", // Channel where unclaimed jobs are posted
+    completedOrdersChannelId: process.env.DISCORD_COMPLETED_ORDERS_CHANNEL_ID || "", // Completed orders with proof (Admin/Support only)
+    reviewsChannelId: process.env.DISCORD_REVIEWS_CHANNEL_ID || "", // Customer reviews (Public)
+    issuesChannelId: process.env.DISCORD_ISSUES_CHANNEL_ID || "", // Order issues/disputes (Admin/Support only)
 
     // Bot settings
     prefix: process.env.BOT_PREFIX || "!",

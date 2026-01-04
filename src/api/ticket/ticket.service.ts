@@ -480,8 +480,8 @@ export default class TicketService {
         const validTransitions: Record<TicketStatus, TicketStatus[]> = {
             [TicketStatus.OPEN]: [TicketStatus.IN_PROGRESS, TicketStatus.CLOSED, TicketStatus.CANCELLED],
             [TicketStatus.IN_PROGRESS]: [TicketStatus.AWAITING_CONFIRMATION, TicketStatus.CANCELLED, TicketStatus.CLOSED],
-            [TicketStatus.AWAITING_CONFIRMATION]: [TicketStatus.COMPLETED, TicketStatus.IN_PROGRESS, TicketStatus.CANCELLED],
-            [TicketStatus.COMPLETED]: [], // Final state
+            [TicketStatus.AWAITING_CONFIRMATION]: [TicketStatus.COMPLETED, TicketStatus.IN_PROGRESS, TicketStatus.CANCELLED, TicketStatus.CLOSED], // Allow manual close
+            [TicketStatus.COMPLETED]: [TicketStatus.CLOSED], // Allow manual close after completion
             [TicketStatus.CANCELLED]: [], // Final state
             [TicketStatus.CLOSED]: [], // Final state
         };

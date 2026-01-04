@@ -1,13 +1,8 @@
-import {
-    ChatInputCommandInteraction,
-    SlashCommandBuilder,
-    EmbedBuilder,
-} from "discord.js";
+import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
 import logger from "../../common/loggers";
-import { discordApiClient } from "../clients/DiscordApiClient";
 import { findOrderByNumber } from "../utils/order-search.util";
 import { extractErrorMessage } from "../utils/error-message.util";
-import { notifySupportOrderUpdate } from "../utils/notification.util";
+import { startWorkOnOrder } from "../utils/order-actions.util";
 
 export const data = new SlashCommandBuilder()
     .setName("start-work")
@@ -33,16 +28,16 @@ async function execute(interaction: ChatInputCommandInteraction) {
         );
 
         // Find order by order number
-        const result = await findOrderByNumber(orderNumber);
+        const orderSearch = await findOrderByNumber(orderNumber);
 
-        if (!result) {
+        if (!orderSearch) {
             await interaction.editReply({
                 content: `❌ Order not found: **#${orderNumber}**\n\nPlease check the order number and try again.`,
             });
             return;
         }
 
-        const { orderId, orderData } = result;
+        const { orderId, orderData } = orderSearch;
 
         // Validate worker is assigned to this order
         if (!orderData.worker || orderData.worker.discordId !== workerDiscordId) {
@@ -60,58 +55,21 @@ async function execute(interaction: ChatInputCommandInteraction) {
             return;
         }
 
-        // Start work - change status to IN_PROGRESS
-        await discordApiClient.put(`/discord/orders/${orderId}/status`, {
-            status: "IN_PROGRESS",
-            workerDiscordId,
-            reason: `Worker ${interaction.user.tag} started work via /start-work command`,
-        });
-
-        // Create success embed
-        const successEmbed = new EmbedBuilder()
-            .setTitle("🚀 Work Started!")
-            .setDescription(
-                `You've started working on Order **#${orderNumber}**!`
-            )
-            .addFields([
-                {
-                    name: "Previous Status",
-                    value: "`Assigned`",
-                    inline: true,
-                },
-                {
-                    name: "New Status",
-                    value: "`In Progress`",
-                    inline: true,
-                },
-                {
-                    name: "Next Step",
-                    value: "Use `/complete-work` when finished",
-                    inline: false,
-                },
-            ])
-            .setColor(0xf1c40f) // Yellow for in progress
-            .setTimestamp();
-
-        await interaction.editReply({
-            embeds: [successEmbed.toJSON() as any],
-        });
-
-        logger.info(
-            `[StartWork] Order ${orderId} (#${orderNumber}) status changed to IN_PROGRESS by ${interaction.user.tag}`
+        // Use shared utility function
+        const startWorkResult = await startWorkOnOrder(
+            interaction.client,
+            orderId,
+            orderData,
+            workerDiscordId
         );
 
-        // Notify support/admin about work started
-        await notifySupportOrderUpdate(interaction.client, {
-            orderNumber: orderData.orderNumber,
-            orderId,
-            status: "IN_PROGRESS",
-            customer: orderData.customer,
-            worker: orderData.worker,
-            orderValue: orderData.orderValue,
-            action: "work_started",
-            actionBy: interaction.user.id,
+        // Send ephemeral response to worker
+        await interaction.editReply({
+            embeds: [startWorkResult.ephemeralEmbed.toJSON() as any],
+            components: [startWorkResult.completeButton.toJSON() as any],
         });
+
+        logger.info(`[StartWork] Order ${orderId} (#${orderNumber}) started successfully via command`);
     } catch (error: any) {
         logger.error("[StartWork] Error starting work:", error);
 

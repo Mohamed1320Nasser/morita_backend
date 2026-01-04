@@ -9,13 +9,6 @@ const prisma = new PrismaClient();
 
 @Service()
 export class BatchService {
-  /**
-   * Create multiple services in a single operation
-   * Uses partial success pattern: continues on errors, returns summary
-   *
-   * @param data - Batch creation payload with categoryId and services array
-   * @returns Summary with created services and any errors
-   */
   async batchCreateServices(data: BatchCreateServicesDto) {
     const results = {
       created: 0,

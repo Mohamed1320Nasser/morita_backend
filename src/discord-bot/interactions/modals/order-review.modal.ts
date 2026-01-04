@@ -1,6 +1,7 @@
 import { ModalSubmitInteraction, EmbedBuilder } from "discord.js";
 import logger from "../../../common/loggers";
 import { discordApiClient } from "../../clients/DiscordApiClient";
+import { getReviewsChannelService } from "../../services/reviews-channel.service";
 
 /**
  * Handle order review modal submission
@@ -47,6 +48,31 @@ export async function handleOrderReviewModal(interaction: ModalSubmitInteraction
         });
 
         logger.info(`[OrderReview] Review submitted for order ${orderId}`);
+
+        // Post to Reviews Channel
+        try {
+            const reviewsService = getReviewsChannelService(interaction.client);
+            const customerUser = interaction.user;
+            const workerUser = await interaction.client.users.fetch(orderData.worker.discordId);
+
+            const reviewData = {
+                rating,
+                comment: review,
+                createdAt: new Date(),
+            };
+
+            await reviewsService.postReview(
+                orderData,
+                reviewData,
+                customerUser,
+                workerUser
+            );
+
+            logger.info(`[OrderReview] Posted review for order ${orderId} to reviews channel`);
+        } catch (reviewChannelError) {
+            logger.error(`[OrderReview] Failed to post to reviews channel:`, reviewChannelError);
+            // Don't fail the whole operation if channel posting fails
+        }
 
         // Create star display
         const stars = '⭐'.repeat(rating) + '☆'.repeat(5 - rating);

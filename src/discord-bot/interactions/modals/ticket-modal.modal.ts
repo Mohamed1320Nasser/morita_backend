@@ -1,4 +1,4 @@
-import { ModalSubmitInteraction, TextChannel, Guild } from "discord.js";
+import { ModalSubmitInteraction, TextChannel, Guild, EmbedBuilder as DiscordEmbedBuilder } from "discord.js";
 import logger from "../../../common/loggers";
 import { getTicketService } from "../../services/ticket.service";
 import { TicketType, TicketMetadata } from "../../types/discord.types";
@@ -48,10 +48,22 @@ export async function handleTicketModal(
             metadata
         );
 
-        // Reply to user
+        // Reply to user with embed
         const ticketNumber = ticket.ticketNumber.toString().padStart(4, "0");
+        const successEmbed = new DiscordEmbedBuilder()
+            .setColor(0x57f287)
+            .setTitle("✅ Ticket Created Successfully!")
+            .setDescription(`Your ticket has been created and is ready for our team to assist you.`)
+            .addFields(
+                { name: "📋 Ticket Number", value: `#${ticketNumber}`, inline: true },
+                { name: "🎮 Service Type", value: getTicketTypeLabel(ticketType), inline: true },
+                { name: "📍 Ticket Channel", value: `Head to <#${channel.id}> to continue.`, inline: false }
+            )
+            .setTimestamp()
+            .setFooter({ text: "Our support team will respond shortly" });
+
         await interaction.editReply({
-            content: `✅ Your ticket has been created!\n\nHead to <#${channel.id}> to continue.\n\n**Ticket #${ticketNumber}** • ${getTicketTypeLabel(ticketType)}`,
+            embeds: [successEmbed as any],
         });
 
         logger.info(`[TicketModal] Ticket #${ticketNumber} (${ticketType}) created for ${interaction.user.tag}`);

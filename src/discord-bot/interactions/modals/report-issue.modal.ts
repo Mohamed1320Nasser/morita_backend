@@ -1,29 +1,21 @@
-import { ModalSubmitInteraction, EmbedBuilder, TextChannel } from "discord.js";
+import { ModalSubmitInteraction, EmbedBuilder, TextChannel, AnyThreadChannel } from "discord.js";
 import logger from "../../../common/loggers";
 import { discordConfig } from "../../config/discord.config";
 import { discordApiClient } from "../../clients/DiscordApiClient";
+import { getIssuesChannelService } from "../../services/issues-channel.service";
 
-/**
- * Handle issue report modal submission (customer reports problem)
- */
 export async function handleReportIssueModal(interaction: ModalSubmitInteraction): Promise<void> {
     try {
         await interaction.deferReply({ ephemeral: true });
 
-        // Extract orderId from customId: report_issue_{orderId}
         const orderId = interaction.customId.replace("report_issue_", "");
-
-        // Get form input
         const issueDescription = interaction.fields.getTextInputValue("issue_description").trim();
 
         logger.info(`[ReportIssue] Processing issue report for order ${orderId} by customer ${interaction.user.id}`);
 
-        // Get order details
         const orderResponse: any = await discordApiClient.get(`/discord/orders/${orderId}`);
-        // HttpClient interceptor already unwrapped one level
         const orderData = orderResponse.data || orderResponse;
 
-        // Validate customer
         if (!orderData.customer || orderData.customer.discordId !== interaction.user.id) {
             await interaction.editReply({
                 content: "❌ You are not the customer for this order.",
@@ -31,15 +23,14 @@ export async function handleReportIssueModal(interaction: ModalSubmitInteraction
             return;
         }
 
-        // Update order status to DISPUTED and add the issue description
-        const disputeResponse = await discordApiClient.put(`/discord/orders/${orderId}/status`, {
-            status: "DISPUTED",
-            changedByDiscordId: interaction.user.id,
-            reason: "Customer reported issue",
-            notes: issueDescription,
+        const issueResponse = await discordApiClient.post(`/discord/orders/${orderId}/report-issue`, {
+            reportedByDiscordId: interaction.user.id,
+            issueDescription,
+            priority: "MEDIUM",
         });
 
-        logger.info(`[ReportIssue] Order ${orderId} marked as DISPUTED`);
+        const issueData = issueResponse.data || issueResponse;
+        logger.info(`[ReportIssue] Issue created: ${issueData.id}, Order ${orderId} marked as DISPUTED`);
 
         // Send confirmation to customer
         const customerEmbed = new EmbedBuilder()
@@ -62,9 +53,48 @@ export async function handleReportIssueModal(interaction: ModalSubmitInteraction
             embeds: [customerEmbed.toJSON() as any],
         });
 
-        // Send notification to order channel
-        const channel = interaction.channel;
-        if (channel && channel instanceof TextChannel) {
+        try {
+            const issuesChannelService = getIssuesChannelService(interaction.client);
+            const customerUser = interaction.user;
+            const workerUser = orderData.worker?.discordId
+                ? await interaction.client.users.fetch(orderData.worker.discordId).catch(() => undefined)
+                : undefined;
+            const orderChannel = interaction.channel instanceof TextChannel ? interaction.channel : undefined;
+
+            // Post to issues channel and get Discord message ID
+            const discordMessageId = await issuesChannelService.postIssue(
+                issueData,
+                orderData,
+                customerUser,
+                workerUser,
+                orderChannel
+            );
+
+            logger.info(`[ReportIssue] Posted issue to issues channel with message ID: ${discordMessageId}`);
+
+            // Save Discord message ID to database
+            if (discordMessageId) {
+                await discordApiClient.put(`/discord/orders/issues/${issueData.id}`, {
+                    discordMessageId,
+                    discordChannelId: discordConfig.issuesChannelId,
+                });
+                logger.info(`[ReportIssue] Saved Discord message ID to issue ${issueData.id}`);
+            }
+        } catch (channelError) {
+            logger.error(`[ReportIssue] Failed to post to issues channel:`, channelError);
+        }
+
+        // Get the parent channel (order channel) to post dispute notification and disable buttons
+        let parentChannel: TextChannel | null = null;
+
+        if (interaction.channel instanceof TextChannel) {
+            parentChannel = interaction.channel;
+        } else if (interaction.channel?.isThread()) {
+            // If clicked from thread, get parent channel
+            parentChannel = interaction.channel.parent as TextChannel;
+        }
+
+        if (parentChannel) {
             const disputeEmbed = new EmbedBuilder()
                 .setTitle("⚠️ ORDER DISPUTE")
                 .setDescription(
@@ -89,64 +119,61 @@ export async function handleReportIssueModal(interaction: ModalSubmitInteraction
                 .setColor(0xed4245)
                 .setTimestamp();
 
-            // Disable the buttons by editing the original message
+            // Disable the buttons by editing messages with buttons in channel AND threads
             try {
-                const messages = await channel.messages.fetch({ limit: 10 });
-                const confirmationMessage = messages.find(msg =>
-                    msg.content.includes(`<@${orderData.customer.discordId}>`) &&
-                    msg.embeds.length > 0 &&
-                    msg.embeds[0].title === "📦 ORDER COMPLETION NOTIFICATION"
-                );
+                // Helper function to disable buttons in a specific channel/thread
+                const disableButtonsInChannel = async (targetChannel: TextChannel | AnyThreadChannel) => {
+                    const messages = await targetChannel.messages.fetch({ limit: 50 });
 
-                if (confirmationMessage) {
-                    await confirmationMessage.edit({
-                        components: [], // Remove all buttons
-                    });
+                    const messagesWithButtons = messages.filter(msg =>
+                        msg.components.length > 0 &&
+                        msg.components.some(row =>
+                            row.components.some(comp =>
+                                comp.customId?.startsWith(`report_issue_${orderId}`) ||
+                                comp.customId?.startsWith(`confirm_complete_${orderId}`)
+                            )
+                        )
+                    );
+
+                    logger.info(`[ReportIssue] Found ${messagesWithButtons.size} messages with buttons in ${targetChannel.name}`);
+
+                    for (const msg of messagesWithButtons.values()) {
+                        await msg.edit({
+                            components: [], // Remove all buttons
+                        });
+                        logger.info(`[ReportIssue] Disabled buttons on message ${msg.id} in ${targetChannel.name}`);
+                    }
+                };
+
+                // Disable buttons in main channel
+                await disableButtonsInChannel(parentChannel);
+
+                // Also check all threads (both active and archived)
+                const [activeThreads, archivedThreads] = await Promise.all([
+                    parentChannel.threads.fetchActive(),
+                    parentChannel.threads.fetchArchived({ limit: 10 })
+                ]);
+
+                const allThreads = [
+                    ...activeThreads.threads.values(),
+                    ...archivedThreads.threads.values()
+                ];
+
+                for (const thread of allThreads) {
+                    if (thread.name.includes(`Order #${orderData.orderNumber}`) ||
+                        thread.name.includes(`Completion Review`)) {
+                        await disableButtonsInChannel(thread);
+                    }
                 }
             } catch (err) {
-                logger.warn(`[ReportIssue] Could not disable buttons on confirmation message:`, err);
+                logger.warn(`[ReportIssue] Could not disable buttons:`, err);
             }
 
-            await channel.send({
+            await parentChannel.send({
                 embeds: [disputeEmbed.toJSON() as any],
             });
 
-            logger.info(`[ReportIssue] Sent dispute notification to channel ${channel.id}`);
-        }
-
-        // Notify support (if logs channel configured)
-        if (discordConfig.logsChannelId) {
-            try {
-                const logsChannel = await interaction.client.channels.fetch(discordConfig.logsChannelId) as TextChannel;
-                if (logsChannel) {
-                    const supportNotificationEmbed = new EmbedBuilder()
-                        .setTitle("🚨 NEW ORDER DISPUTE")
-                        .setDescription(
-                            `Order #${orderData.orderNumber} has been disputed by the customer.\n\n` +
-                            `**Immediate attention required!**`
-                        )
-                        .addFields([
-                            { name: "Order ID", value: orderId, inline: true },
-                            { name: "Order Number", value: `#${orderData.orderNumber}`, inline: true },
-                            { name: "Order Value", value: `$${parseFloat(orderData.orderValue).toFixed(2)} USD`, inline: true },
-                            { name: "Customer", value: `<@${orderData.customer.discordId}>`, inline: true },
-                            { name: "Worker", value: `<@${orderData.worker.discordId}>`, inline: true },
-                            { name: "Support", value: orderData.support ? `<@${orderData.support.discordId}>` : "None", inline: true },
-                            { name: "Issue Description", value: issueDescription.substring(0, 1024), inline: false },
-                        ])
-                        .setColor(0xed4245)
-                        .setTimestamp();
-
-                    await logsChannel.send({
-                        content: `<@&${discordConfig.supportRoleId}> <@&${discordConfig.adminRoleId}>`,
-                        embeds: [supportNotificationEmbed.toJSON() as any],
-                    });
-
-                    logger.info(`[ReportIssue] Notified support team in logs channel`);
-                }
-            } catch (err) {
-                logger.error(`[ReportIssue] Failed to notify support in logs channel:`, err);
-            }
+            logger.info(`[ReportIssue] Sent dispute notification to channel ${parentChannel.id}`);
         }
 
         logger.info(`[ReportIssue] Order ${orderId} dispute flow completed`);

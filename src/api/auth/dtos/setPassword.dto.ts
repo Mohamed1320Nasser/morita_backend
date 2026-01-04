@@ -1,8 +1,10 @@
+import { Transform } from "class-transformer";
 import { IsNotEmpty, IsString, MinLength, Matches } from "class-validator";
 
 export class SetPasswordDto {
     @IsNotEmpty({ message: "Token is required" })
     @IsString({ message: "Token must be a string" })
+    @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
     token: string;
 
     @IsNotEmpty({ message: "Password is required" })

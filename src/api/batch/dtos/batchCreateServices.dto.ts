@@ -1,6 +1,5 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
-  IsArray,
   ValidateNested,
   IsString,
   IsOptional,
@@ -25,11 +24,13 @@ export class BatchServiceItemDto {
   description?: string;
 
   @IsOptional()
-  @IsNumber()
+  @Transform(({ value }) => parseInt(value) || null)
+  @IsNumber({}, { message: 'displayOrder must be a number' })
   displayOrder?: number;
 
   @IsOptional()
-  @IsBoolean()
+  @Transform(({ value }) => (value === undefined ? value : Boolean(JSON.parse(value))))
+  @IsBoolean({ message: "homeView must be boolean value" })
   active?: boolean;
 }
 
@@ -38,7 +39,7 @@ export class BatchCreateServicesDto {
   @MinLength(1, { message: 'Category ID is required' })
   categoryId: string;
 
-  @IsArray()
+  @Transform(({ value }) => (typeof value == "string" ? JSON.parse(value) : value))
   @ArrayMinSize(1, { message: 'At least one service is required' })
   @ArrayMaxSize(50, { message: 'Maximum 50 services per batch' })
   @ValidateNested({ each: true })

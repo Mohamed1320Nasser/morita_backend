@@ -205,28 +205,69 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
 
         // Add each method option as a separate choice
         if (data.methodOptions && data.methodOptions.length > 0) {
-            // Build beautiful pricing options display
-            const priceLines: string[] = [];
+            // Separate combined methods from individual segments
+            const combinedMethods: any[] = [];
+            const individualSegments: any[] = [];
 
             for (const method of data.methodOptions) {
-                const indicator = method.isCheapest ? "✅" : "◻️";
-                const price = method.finalPrice.toFixed(2);
-                const rate = method.basePrice.toFixed(8);
+                // Check if this is a segment (has range in name like "(23-27)")
+                if (method.methodName.includes('(') && method.methodName.includes('-') && method.methodName.includes(')')) {
+                    individualSegments.push(method);
+                } else {
+                    combinedMethods.push(method);
+                }
+            }
 
-                // Calculate OSRS gold
-                const osrsGoldRate = 5.5; // 5.5M per $1 USD
-                const osrsGold = method.finalPrice * osrsGoldRate;
-                const osrsGoldFormatted = osrsGold >= 1000
-                    ? `${(osrsGold / 1000).toFixed(2)}B`
-                    : `${osrsGold.toFixed(1)}M`;
+            // Build pricing display with sections
+            const priceLines: string[] = [];
 
-                logger.info(`[PriceCalculator] 💰 ${method.methodName}: $${price} = ${osrsGoldFormatted} OSRS Gold`);
+            // Section 1: Combined/Full Methods
+            if (combinedMethods.length > 0) {
+                priceLines.push(`**🎯 Complete Methods** (Full ${data.levels.start}-${data.levels.end})`);
+                priceLines.push(''); // Spacing
 
-                // Create visually appealing line with proper spacing
-                priceLines.push(`${indicator} **${method.methodName}**`);
-                priceLines.push(`   💰 Price: \`$${price}\` • Rate: \`${rate} $/XP\``);
-                priceLines.push(`   🔥 \`${osrsGoldFormatted}\` OSRS Gold`);
-                priceLines.push(''); // Empty line for spacing
+                for (const method of combinedMethods) {
+                    const indicator = method.isCheapest ? "✅" : "◻️";
+                    const price = method.finalPrice.toFixed(2);
+
+                    // Calculate OSRS gold
+                    const osrsGoldRate = 5.5; // 5.5M per $1 USD
+                    const osrsGold = method.finalPrice * osrsGoldRate;
+                    const osrsGoldFormatted = osrsGold >= 1000
+                        ? `${(osrsGold / 1000).toFixed(2)}B`
+                        : `${osrsGold.toFixed(1)}M`;
+
+                    logger.info(`[PriceCalculator] 💰 ${method.methodName}: $${price} = ${osrsGoldFormatted} OSRS Gold`);
+
+                    // Compact display
+                    priceLines.push(`${indicator} **${method.methodName}**`);
+                    priceLines.push(`   💰 \`$${price}\` • 🔥 \`${osrsGoldFormatted}\` OSRS`);
+                    priceLines.push(''); // Spacing
+                }
+            }
+
+            // Section 2: Individual Segments
+            if (individualSegments.length > 0) {
+                priceLines.push('**📊 Individual Segments** (Partial Training)');
+                priceLines.push(''); // Spacing
+
+                for (const method of individualSegments) {
+                    const price = method.finalPrice.toFixed(2);
+
+                    // Calculate OSRS gold
+                    const osrsGoldRate = 5.5; // 5.5M per $1 USD
+                    const osrsGold = method.finalPrice * osrsGoldRate;
+                    const osrsGoldFormatted = osrsGold >= 1000
+                        ? `${(osrsGold / 1000).toFixed(2)}B`
+                        : `${osrsGold.toFixed(1)}M`;
+
+                    logger.info(`[PriceCalculator] 💰 ${method.methodName}: $${price} = ${osrsGoldFormatted} OSRS Gold`);
+
+                    // Compact display for segments
+                    priceLines.push(`◻️ **${method.methodName}**`);
+                    priceLines.push(`   💰 \`$${price}\` • 🔥 \`${osrsGoldFormatted}\` OSRS`);
+                    priceLines.push(''); // Spacing
+                }
             }
 
             // Remove last empty line
@@ -419,13 +460,19 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
     logger.info(`[PvM] 📊 Total services fetched: ${services.length}`);
 
     // Find service by name or slug (filter for PER_KILL services)
-    const service = services.find((s: any) => {
+    let service = services.find((s: any) => {
         const matchesName = s.name.toLowerCase().includes(serviceName) ||
             s.slug.toLowerCase().includes(serviceName);
         const hasPerKillPricing = s.pricingMethods?.some((m: any) => m.pricingUnit === 'PER_KILL');
 
         return matchesName && hasPerKillPricing;
     });
+
+    // Fetch full service with modifiers (both service-level and method-level)
+    if (service) {
+        const fullService = await apiService.getServiceWithPricing(service.id);
+        service = fullService;
+    }
 
     if (!service) {
         logger.warn(`[PvM] ❌ No service found matching "${serviceName}" with PER_KILL pricing`);
@@ -471,90 +518,108 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
             .setTimestamp()
             .setThumbnail('https://oldschool.runescape.wiki/images/thumb/Crystalline_Hunllef.png/250px-Crystalline_Hunllef.png'); // Monster image like old system
 
-        // Create beautiful table header with ANSI colors (like old system)
-        // Adjusted spacing to prevent "Discount" from wrapping
+        // Calculate total discount from service-level modifiers
+        const serviceModifiers = service.serviceModifiers || [];
+        const discountModifiers = serviceModifiers.filter((m: any) =>
+            m.active && m.modifierType === 'PERCENTAGE' && Number(m.value) < 0
+        );
+        const totalDiscountPercent = discountModifiers.reduce((sum: number, mod: any) =>
+            sum + Math.abs(Number(mod.value)), 0
+        );
+
+        // Compact table header
         let tableText = "```ansi\n";
-        tableText += `\u001b[0;37mMonster:                   Amount  Discount\u001b[0m\n`; // Reduced spacing
+        tableText += `\u001b[0;37mMonster:                   Amount  Discount\u001b[0m\n`;
         tableText += `\u001b[0;37m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m\n`;
 
-        // Show service name and kill count in cyan (reduced monster name length)
-        const monsterName = service.name.substring(0, 25).padEnd(25); // Reduced from 28 to 25
-        tableText += `\u001b[0;36m${monsterName}\u001b[0m  \u001b[0;36m${killCount.toString().padStart(6)}\u001b[0m  \u001b[0;37mNone\u001b[0m\n\n`;
+        // Show service name, kill count, and discount (compact)
+        const monsterName = service.name.substring(0, 25).padEnd(25);
+        const discountDisplay = totalDiscountPercent > 0
+            ? `\u001b[0;32m${totalDiscountPercent.toFixed(0)}%\u001b[0m`
+            : `\u001b[0;37mNone\u001b[0m`;
+
+        tableText += `\u001b[0;36m${monsterName}\u001b[0m  \u001b[0;36m${killCount.toString().padStart(6)}\u001b[0m  ${discountDisplay}\n`;
         tableText += "```";
 
         embed.setDescription(tableText);
 
-        // Calculate prices for each tier with each payment method
+        // Calculate prices for each tier (using first/default payment method)
         const tierResults: Array<{
             tier: string;
             notes: string;
             pricePerKill: number;
-            prices: Array<{ method: string; total: number; isCheaper: boolean }>;
+            basePrice: number;
+            modifiers: Array<{ name: string; value: number; type: string }>;
+            finalPrice: number;
         }> = [];
 
+        const defaultPaymentMethod = paymentMethods[0];
+
         for (const method of allMethods) {
-            const tierPrices: Array<{ method: string; total: number; isCheaper: boolean }> = [];
+            try {
+                const result = await pricingService.calculatePrice({
+                    methodId: method.id,
+                    paymentMethodId: defaultPaymentMethod.id,
+                    quantity: killCount,
+                });
 
-            // Calculate for EACH payment method
-            for (let i = 0; i < Math.min(2, paymentMethods.length); i++) {
-                const paymentMethod = paymentMethods[i];
+                logger.info(`[PvM] Method: ${method.name} | Base: $${result.basePrice} | Modifiers: $${result.breakdown?.totalModifiers || 0} | Final: $${result.finalPrice}`);
 
-                try {
-                    const result = await pricingService.calculatePrice({
-                        methodId: method.id,
-                        paymentMethodId: paymentMethod.id,
-                        quantity: killCount,
-                    });
+                // Extract applied modifiers
+                const appliedModifiers = result.modifiers
+                    ?.filter((m: any) => m.applied)
+                    .map((m: any) => ({
+                        name: m.name,
+                        value: m.type === 'PERCENTAGE' ? Number(m.value) : Number(m.value),
+                        type: m.type,
+                    })) || [];
 
-                    tierPrices.push({
-                        method: paymentMethod.name,
-                        total: result.finalPrice,
-                        isCheaper: i === 0, // First payment method is usually cheaper
-                    });
-                } catch (err) {
-                    logger.warn(`[PvM] Failed to calculate for ${paymentMethod.name}:`, err);
-                }
+                tierResults.push({
+                    tier: method.name,
+                    notes: method.description || "Per Kc",
+                    pricePerKill: method.basePrice,
+                    basePrice: result.basePrice,
+                    modifiers: appliedModifiers,
+                    finalPrice: result.finalPrice,
+                });
+            } catch (err) {
+                logger.warn(`[PvM] Failed to calculate for ${method.name}:`, err);
             }
-
-            // Extract notes from method name (e.g., "75+ w/ Rigour + Augury" → "Per Kc")
-            const notes = method.description || "Per Kc";
-
-            tierResults.push({
-                tier: method.name,
-                notes: notes,
-                pricePerKill: method.basePrice,
-                prices: tierPrices,
-            });
         }
 
-        // Build pricing tiers section (like old system with colored $ symbols)
+        // Build pricing tiers section - COMPACT with modifier breakdown
         for (const tier of tierResults) {
-            // Build tier section with colors
             let tierSection = "";
 
-            // Tier header (white text like old system)
+            // Tier header
             tierSection += `\`\`\`fix\n${tier.tier}\n\`\`\``;
 
-            // Notes + Price per kill on one line
-            tierSection += `**Notes:** ${tier.notes}\n`;
-            tierSection += `**Price Per Kill:** \`$${tier.pricePerKill.toFixed(2)}\`\n`;
+            // Notes and Price Per Kill
+            tierSection += `**${tier.notes}** • \`$${tier.pricePerKill.toFixed(2)}/kc\`\n`;
 
-            // Show prices with colored emojis (green for cheaper, white for expensive)
-            const priceDisplay = tier.prices.map((p, idx) => {
-                if (p.isCheaper) {
-                    // Green circle + price (cheaper payment method like crypto/OSRS gold)
-                    return `🟢 **$${p.total.toFixed(2)}**`;
-                } else {
-                    // White circle + price (more expensive like PayPal)
-                    return `⚪ **$${p.total.toFixed(2)}**`;
+            // Price breakdown
+            if (tier.modifiers.length > 0) {
+                // Has modifiers - show breakdown
+                tierSection += `\`\`\`diff\n`;
+                tierSection += `  Base Price           $${tier.basePrice.toFixed(2)}\n`;
+
+                for (const mod of tier.modifiers) {
+                    const symbol = mod.value < 0 ? '-' : '+';
+                    const absValue = Math.abs(mod.value);
+                    const displayValue = mod.type === 'PERCENTAGE' ? `${absValue.toFixed(0)}%` : `$${absValue.toFixed(2)}`;
+                    tierSection += `${symbol} ${mod.name.substring(0, 18).padEnd(18)} ${displayValue}\n`;
                 }
-            }).join(' ');
 
-            tierSection += `${priceDisplay}`;
+                tierSection += `\n= Total              $${tier.finalPrice.toFixed(2)}\n`;
+                tierSection += `\`\`\``;
+            } else {
+                // No modifiers - show direct price
+                tierSection += `\`\`\`ansi\n\u001b[1;32m💰 Price: $${tier.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
+            }
 
-            // Add as separate field for each tier (cleaner layout)
+            // Add field
             embed.addFields({
-                name: "\u200B", // Invisible spacer
+                name: "\u200B",
                 value: tierSection,
                 inline: false,
             });

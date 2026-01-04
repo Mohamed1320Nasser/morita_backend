@@ -17,7 +17,7 @@ import { NotFoundError, BadRequestError } from "routing-controllers";
 import { Decimal } from "@prisma/client/runtime/library";
 import logger from "../../common/loggers";
 import WalletService from "../wallet/wallet.service";
-import { withTransactionRetry, checkWalletBalanceWithLock, updateWalletBalance } from "../../common/utils/transaction.util";
+import { withTransactionRetry, checkWalletBalanceWithLock, updateWalletBalance, deductFromWorkerWallet } from "../../common/utils/transaction.util";
 import { PAYOUT_STRUCTURE, FINANCIAL_LIMITS, isValidAmount } from "../../common/constants/security.constants";
 import { InsufficientBalanceError } from "../../common/utils/errorHandler.util";
 import { OrderStatus as PrismaOrderStatus } from "@prisma/client";
@@ -37,7 +37,6 @@ export default class OrderService {
     async createOrder(data: CreateOrderDto) {
         logger.info(`[OrderService] Creating order for customer ${data.customerId}`);
 
-        // Validate input amounts
         if (!isValidAmount(data.orderValue, FINANCIAL_LIMITS.MIN_ORDER_VALUE, FINANCIAL_LIMITS.MAX_ORDER_VALUE)) {
             throw new BadRequestError(
                 `Order value must be between $${FINANCIAL_LIMITS.MIN_ORDER_VALUE} and $${FINANCIAL_LIMITS.MAX_ORDER_VALUE}`
@@ -50,18 +49,12 @@ export default class OrderService {
             );
         }
 
-        // NO validation between deposit and order value
-        // Deposit is worker security - can be higher/lower than order value
-        // Support decides deposit based on risk assessment
-
-        // Calculate payouts (based on ORDER VALUE, not deposit)
         const orderValue = new Decimal(data.orderValue);
         const workerPayout = orderValue.mul(PAYOUT_STRUCTURE.WORKER_PERCENTAGE);
         const supportPayout = orderValue.mul(PAYOUT_STRUCTURE.SUPPORT_PERCENTAGE);
         const systemPayout = orderValue.mul(PAYOUT_STRUCTURE.SYSTEM_PERCENTAGE);
         const requiredDeposit = new Decimal(data.depositAmount);
 
-        // Pre-validate users exist
         const customer = await prisma.user.findUnique({
             where: { id: data.customerId },
         });
@@ -80,13 +73,11 @@ export default class OrderService {
             }
         }
 
-        // Get customer wallet
         const customerWallet = await this.walletService.getWalletByUserId(data.customerId);
         if (!customerWallet) {
             throw new BadRequestError("Customer does not have a wallet");
         }
 
-        // If worker assigned, validate worker
         if (data.workerId) {
             const worker = await prisma.user.findUnique({
                 where: { id: data.workerId },
@@ -102,13 +93,12 @@ export default class OrderService {
             }
         }
 
-        // Execute in atomic transaction
         const order = await withTransactionRetry(async (tx) => {
-            // 1. LOCK CUSTOMER'S ORDER VALUE
             const customerBalanceCheck = await checkWalletBalanceWithLock(
                 tx,
                 customerWallet.id,
-                orderValue.toNumber()
+                orderValue.toNumber(),
+                'customer'
             );
 
             if (!customerBalanceCheck.sufficient) {
@@ -140,7 +130,6 @@ export default class OrderService {
                 },
             });
 
-            // 2. IF WORKER ASSIGNED: LOCK WORKER'S DEPOSIT
             if (data.workerId) {
                 const workerWallet = await tx.wallet.findUnique({
                     where: { userId: data.workerId },
@@ -150,7 +139,8 @@ export default class OrderService {
                     const workerBalanceCheck = await checkWalletBalanceWithLock(
                         tx,
                         workerWallet.id,
-                        requiredDeposit.toNumber()
+                        requiredDeposit.toNumber(),
+                        'worker'
                     );
 
                     if (!workerBalanceCheck.sufficient) {
@@ -175,30 +165,34 @@ export default class OrderService {
                         );
                     }
 
-                    await updateWalletBalance(
+                    const deduction = await deductFromWorkerWallet(
                         tx,
                         workerWallet.id,
-                        -requiredDeposit.toNumber(),
+                        requiredDeposit.toNumber(),
                         requiredDeposit.toNumber()
                     );
+
+                    const balanceBefore = workerBalanceCheck.wallet.balance;
+                    const balanceAfter = balanceBefore - deduction.fromBalance;
 
                     await tx.walletTransaction.create({
                         data: {
                             walletId: workerWallet.id,
                             type: "PAYMENT",
                             amount: requiredDeposit.neg(),
-                            balanceBefore: workerBalanceCheck.wallet.balance,
-                            balanceAfter: new Decimal(workerBalanceCheck.wallet.balance).sub(requiredDeposit).toNumber(),
+                            balanceBefore,
+                            balanceAfter,
                             currency: workerWallet.currency,
                             status: "PENDING",
-                            notes: `Worker security deposit`,
-                            createdById: data.workerId!, // Safe: validated at line 142
+                            notes: deduction.fromDeposit > 0
+                                ? `Worker security deposit (${deduction.fromBalance.toFixed(2)} from balance, ${deduction.fromDeposit.toFixed(2)} from deposit)`
+                                : `Worker security deposit`,
+                            createdById: data.workerId!,
                         },
                     });
                 }
             }
 
-            // 3. CREATE ORDER
             const lastOrder = await tx.order.findFirst({
                 orderBy: { orderNumber: "desc" },
                 select: { orderNumber: true },
@@ -259,7 +253,6 @@ export default class OrderService {
                 },
             });
 
-            // Update transactions with order ID
             await tx.walletTransaction.updateMany({
                 where: {
                     walletId: customerWallet.id,
@@ -293,7 +286,6 @@ export default class OrderService {
                 }
             }
 
-            // 4. CREATE STATUS HISTORY
             await tx.orderStatusHistory.create({
                 data: {
                     orderId: createdOrder.id,
@@ -304,7 +296,6 @@ export default class OrderService {
                 },
             });
 
-            // 5. UPDATE TICKET
             if (data.ticketId) {
                 await tx.ticket.update({
                     where: { id: data.ticketId },
@@ -332,7 +323,6 @@ export default class OrderService {
             `[OrderService] Creating order via Discord for customer ${data.customerDiscordId}`
         );
 
-        // Find customer by Discord ID
         const customer = await prisma.user.findUnique({
             where: { discordId: data.customerDiscordId },
         });
@@ -343,7 +333,6 @@ export default class OrderService {
             );
         }
 
-        // Find support by Discord ID
         const support = await prisma.user.findUnique({
             where: { discordId: data.supportDiscordId },
         });
@@ -354,7 +343,6 @@ export default class OrderService {
             );
         }
 
-        // Find worker by Discord ID if provided
         let worker = null;
         if (data.workerDiscordId) {
             worker = await prisma.user.findUnique({
@@ -368,7 +356,6 @@ export default class OrderService {
             }
         }
 
-        // Create order with user IDs
         return this.createOrder({
             customerId: customer.id,
             workerId: worker?.id,
@@ -456,14 +443,11 @@ export default class OrderService {
         const where: any = {};
 
         if (search) {
-            // Check if search is a number (order number) or text (name search)
             const isNumber = /^\d+$/.test(search);
 
             if (isNumber) {
-                // Search by exact order number
                 where.orderNumber = parseInt(search);
             } else {
-                // Search by customer/worker names
                 where.OR = [
                     { customer: { fullname: { contains: search } } },
                     { worker: { fullname: { contains: search } } },
@@ -536,7 +520,6 @@ export default class OrderService {
             throw new BadRequestError("Order cannot be assigned in current status");
         }
 
-        // Validate worker
         const worker = await prisma.user.findUnique({
             where: { id: data.workerId },
         });
@@ -545,7 +528,6 @@ export default class OrderService {
             throw new NotFoundError("Worker not found");
         }
 
-        // Check worker balance (deposit + available balance)
         const workerWallet = await this.walletService.getWalletByUserId(data.workerId);
         if (!workerWallet) {
             throw new BadRequestError("Worker does not have a wallet");
@@ -563,7 +545,6 @@ export default class OrderService {
             );
         }
 
-        // Update order
         const updatedOrder = await prisma.order.update({
             where: { id: orderId },
             data: {
@@ -579,7 +560,6 @@ export default class OrderService {
             },
         });
 
-        // Create status history
         await prisma.orderStatusHistory.create({
             data: {
                 orderId,
@@ -601,7 +581,6 @@ export default class OrderService {
     async claimOrder(orderId: string, data: ClaimOrderDto) {
         const order = await this.getOrderById(orderId);
 
-        // Check if order is available for claiming
         if (order.status !== OrderStatus.PENDING) {
             throw new BadRequestError("Order is not available for claiming");
         }
@@ -610,7 +589,6 @@ export default class OrderService {
             throw new BadRequestError("Order already has a worker assigned");
         }
 
-        // Get worker by Discord ID
         const worker = await prisma.user.findUnique({
             where: { discordId: data.workerDiscordId },
         });
@@ -619,7 +597,6 @@ export default class OrderService {
             throw new NotFoundError("Worker not found. Please ensure you have a registered account.");
         }
 
-        // Get worker wallet
         const workerWallet = await this.walletService.getWalletByUserId(worker.id);
         if (!workerWallet) {
             throw new BadRequestError("You do not have a wallet. Please contact support.");
@@ -631,7 +608,8 @@ export default class OrderService {
             const balanceCheck = await checkWalletBalanceWithLock(
                 tx,
                 workerWallet.id,
-                requiredDeposit.toNumber()
+                requiredDeposit.toNumber(),
+                'worker'
             );
 
             if (!balanceCheck.sufficient) {
@@ -656,12 +634,15 @@ export default class OrderService {
                 );
             }
 
-            await updateWalletBalance(
+            const deduction = await deductFromWorkerWallet(
                 tx,
                 workerWallet.id,
-                -requiredDeposit.toNumber(), // Deduct from balance
-                requiredDeposit.toNumber()   // Add to pending
+                requiredDeposit.toNumber(),
+                requiredDeposit.toNumber()
             );
+
+            const balanceBefore = balanceCheck.wallet.balance;
+            const balanceAfter = balanceBefore - deduction.fromBalance;
 
             await tx.walletTransaction.create({
                 data: {
@@ -669,12 +650,14 @@ export default class OrderService {
                     orderId: order.id,
                     type: "PAYMENT",
                     amount: requiredDeposit.neg(),
-                    balanceBefore: balanceCheck.wallet.balance,
-                    balanceAfter: new Decimal(balanceCheck.wallet.balance).sub(requiredDeposit).toNumber(),
+                    balanceBefore,
+                    balanceAfter,
                     currency: workerWallet.currency,
                     status: "PENDING",
                     reference: `Order #${order.orderNumber} - Worker deposit locked`,
-                    notes: `Security deposit for claiming job`,
+                    notes: deduction.fromDeposit > 0
+                        ? `Security deposit for claiming job (${deduction.fromBalance.toFixed(2)} from balance, ${deduction.fromDeposit.toFixed(2)} from deposit)`
+                        : `Security deposit for claiming job`,
                     createdById: worker.id,
                 },
             });
@@ -730,7 +713,6 @@ export default class OrderService {
     async updateOrderStatus(orderId: string, data: UpdateOrderStatusDto) {
         const order = await this.getOrderById(orderId);
 
-        // Validate status transition (unless it's the same status)
         if (order.status !== data.status) {
             this.validateStatusTransition(order.status, data.status);
         }
@@ -747,7 +729,6 @@ export default class OrderService {
             },
         });
 
-        // Create status history
         await prisma.orderStatusHistory.create({
             data: {
                 orderId,
@@ -758,7 +739,6 @@ export default class OrderService {
             },
         });
 
-        // Update ticket status if linked
         if (order.ticketId) {
             type TicketStatus = "OPEN" | "IN_PROGRESS" | "AWAITING_CONFIRMATION" | "COMPLETED" | "CANCELLED" | "CLOSED";
             let ticketStatus: TicketStatus | undefined;
@@ -821,7 +801,6 @@ export default class OrderService {
             throw new BadRequestError("Order must be AWAITING_CONFIRM to confirm");
         }
 
-        // Update order status
         await this.updateOrderStatus(data.orderId, {
             status: OrderStatus.COMPLETED,
             changedById: data.customerId,
@@ -829,7 +808,6 @@ export default class OrderService {
             notes: data.feedback,
         });
 
-        // Trigger payouts (80/5/15 split)
         await this.processOrderPayouts(data.orderId);
 
         return this.getOrderById(data.orderId);
@@ -840,17 +818,16 @@ export default class OrderService {
      * Enforces proper order flow and prevents invalid status changes
      */
     private validateStatusTransition(currentStatus: PrismaOrderStatus, newStatus: OrderStatus): void {
-        // Define valid transitions for each status
         const validTransitions: Record<PrismaOrderStatus, PrismaOrderStatus[]> = {
             [PrismaOrderStatus.PENDING]: [PrismaOrderStatus.CLAIMING, PrismaOrderStatus.ASSIGNED, PrismaOrderStatus.CANCELLED],
             [PrismaOrderStatus.CLAIMING]: [PrismaOrderStatus.ASSIGNED, PrismaOrderStatus.CANCELLED],
             [PrismaOrderStatus.ASSIGNED]: [PrismaOrderStatus.IN_PROGRESS, PrismaOrderStatus.CANCELLED],
             [PrismaOrderStatus.IN_PROGRESS]: [PrismaOrderStatus.AWAITING_CONFIRM, PrismaOrderStatus.CANCELLED, PrismaOrderStatus.DISPUTED],
             [PrismaOrderStatus.AWAITING_CONFIRM]: [PrismaOrderStatus.COMPLETED, PrismaOrderStatus.DISPUTED, PrismaOrderStatus.CANCELLED],
-            [PrismaOrderStatus.COMPLETED]: [PrismaOrderStatus.DISPUTED], // Can only dispute after completion
+            [PrismaOrderStatus.COMPLETED]: [PrismaOrderStatus.DISPUTED],
             [PrismaOrderStatus.CANCELLED]: [PrismaOrderStatus.REFUNDED],
-            [PrismaOrderStatus.DISPUTED]: [PrismaOrderStatus.COMPLETED, PrismaOrderStatus.REFUNDED, PrismaOrderStatus.CANCELLED],
-            [PrismaOrderStatus.REFUNDED]: [], // Final status - no transitions allowed
+            [PrismaOrderStatus.DISPUTED]: [PrismaOrderStatus.COMPLETED, PrismaOrderStatus.REFUNDED, PrismaOrderStatus.CANCELLED, PrismaOrderStatus.IN_PROGRESS, PrismaOrderStatus.AWAITING_CONFIRM],
+            [PrismaOrderStatus.REFUNDED]: [],
         };
 
         const allowedStatuses = validTransitions[currentStatus] || [];
@@ -878,7 +855,6 @@ export default class OrderService {
     private async processOrderPayouts(orderId: string) {
         const order = await this.getOrderById(orderId);
 
-        // Idempotency check - prevent duplicate payout processing
         if (order.payoutProcessed) {
             logger.warn(`[OrderService] Payouts already processed for order ${orderId}, skipping`);
             return;
@@ -891,7 +867,6 @@ export default class OrderService {
 
         logger.info(`[OrderService] Processing payouts for order ${orderId}`);
 
-        // Get wallets
         const customerWallet = await this.walletService.getWalletByUserId(order.customerId);
         const workerWallet = await this.walletService.getWalletByUserId(order.workerId);
         const supportWallet = await this.walletService.getWalletByUserId(order.supportId);
@@ -905,14 +880,12 @@ export default class OrderService {
         const workerPayout = new Decimal(order.workerPayout!.toString());
         const supportPayout = new Decimal(order.supportPayout!.toString());
 
-        // Process all payouts atomically
         await withTransactionRetry(async (tx) => {
-            // 1. RELEASE CUSTOMER'S PENDING ORDER VALUE
             await updateWalletBalance(
                 tx,
                 customerWallet.id,
-                0, // Balance stays same (already deducted)
-                -orderValue.toNumber() // Remove from pending
+                0,
+                -orderValue.toNumber()
             );
 
             await tx.walletTransaction.create({
@@ -929,12 +902,11 @@ export default class OrderService {
                 },
             });
 
-            // 2. RELEASE WORKER'S PENDING DEPOSIT
             await updateWalletBalance(
                 tx,
                 workerWallet.id,
-                depositAmount.toNumber(), // Add back to balance
-                -depositAmount.toNumber() // Remove from pending
+                depositAmount.toNumber(),
+                -depositAmount.toNumber()
             );
 
             await tx.walletTransaction.create({
@@ -948,11 +920,10 @@ export default class OrderService {
                     status: "COMPLETED",
                     reference: `Order #${order.orderNumber} - Security deposit returned`,
                     notes: `Job completed successfully`,
-                    createdById: order.workerId!, // Safe: validated at line 802
+                    createdById: order.workerId!,
                 },
             });
 
-            // 3. PAY WORKER (80% of order value)
             await updateWalletBalance(
                 tx,
                 workerWallet.id,
@@ -975,7 +946,6 @@ export default class OrderService {
                 },
             });
 
-            // 4. PAY SUPPORT (5% of order value)
             await updateWalletBalance(
                 tx,
                 supportWallet.id,
@@ -998,9 +968,6 @@ export default class OrderService {
                 },
             });
 
-            // 5. System revenue (15%) tracked in order.systemPayout
-
-            // 6. Mark order as payout processed (idempotency)
             await tx.order.update({
                 where: { id: orderId },
                 data: { payoutProcessed: true }
@@ -1054,7 +1021,6 @@ export default class OrderService {
         if (refundAmount > 0) {
             const customerWallet = await this.walletService.getWalletByUserId(order.customerId);
             if (customerWallet) {
-                // Release from pending balance
                 const newPendingBalance = new Decimal(customerWallet.pendingBalance.toString()).minus(
                     order.depositAmount.toString()
                 );
@@ -1349,5 +1315,430 @@ export default class OrderService {
         }
 
         return filters;
+    }
+
+    async getOrderByNumber(orderNumber: string) {
+        const orderNum = parseInt(orderNumber);
+        if (isNaN(orderNum) || orderNum <= 0) {
+            throw new BadRequestError("Order number must be a positive integer");
+        }
+
+        const order = await prisma.order.findUnique({
+            where: { orderNumber: orderNum },
+            include: {
+                customer: {
+                    select: {
+                        id: true,
+                        fullname: true,
+                        username: true,
+                        email: true,
+                        discordId: true,
+                    },
+                },
+                worker: {
+                    select: {
+                        id: true,
+                        fullname: true,
+                        username: true,
+                        email: true,
+                        discordId: true,
+                    },
+                },
+                support: {
+                    select: {
+                        id: true,
+                        fullname: true,
+                        username: true,
+                        email: true,
+                        discordId: true,
+                    },
+                },
+                service: true,
+                method: true,
+                paymentMethod: true,
+                ticket: true,
+            },
+        });
+
+        if (!order) {
+            throw new NotFoundError(`Order #${orderNumber} not found`);
+        }
+
+        return order;
+    }
+
+    async getOrdersByDiscordId(discordId: string, query: GetOrderListDto) {
+        const user = await prisma.user.findUnique({
+            where: { discordId },
+        });
+
+        if (!user) {
+            throw new NotFoundError("User not found");
+        }
+
+        const { page, limit, sortBy, sortOrder } = query;
+        const skip = (page! - 1) * limit!;
+
+        const where: any = {
+            OR: [
+                { customerId: user.id },
+                { workerId: user.id },
+            ],
+        };
+
+        if (query.status) {
+            where.status = query.status;
+        }
+
+        const [orders, total] = await Promise.all([
+            prisma.order.findMany({
+                where,
+                include: {
+                    customer: {
+                        select: {
+                            id: true,
+                            fullname: true,
+                            username: true,
+                            discordId: true,
+                        },
+                    },
+                    worker: {
+                        select: {
+                            id: true,
+                            fullname: true,
+                            username: true,
+                            discordId: true,
+                        },
+                    },
+                    service: true,
+                    method: true,
+                },
+                skip,
+                take: limit,
+                orderBy: { [sortBy!]: sortOrder },
+            }),
+            prisma.order.count({ where }),
+        ]);
+
+        return {
+            list: orders,
+            total,
+            page: page!,
+            limit: limit!,
+            totalPages: Math.ceil(total / limit!),
+        };
+    }
+
+    async assignWorkerByDiscordId(orderId: string, data: { workerDiscordId: string; assignedByDiscordId: string; notes?: string }) {
+        const worker = await prisma.user.findUnique({
+            where: { discordId: data.workerDiscordId },
+        });
+
+        if (!worker) {
+            throw new NotFoundError("Worker not found");
+        }
+
+        const assignedBy = await prisma.user.findUnique({
+            where: { discordId: data.assignedByDiscordId },
+        });
+
+        if (!assignedBy) {
+            throw new NotFoundError("Assigner not found");
+        }
+
+        return this.assignWorker(orderId, {
+            workerId: worker.id,
+            assignedById: assignedBy.id,
+            notes: data.notes,
+        });
+    }
+
+    async startOrderByDiscordId(orderId: string, workerDiscordId: string) {
+        const order = await this.getOrderById(orderId);
+
+        const worker = await prisma.user.findUnique({
+            where: { discordId: workerDiscordId },
+        });
+
+        if (!worker) {
+            throw new NotFoundError("Worker not found");
+        }
+
+        if (order.workerId !== worker.id) {
+            throw new BadRequestError("Only assigned worker can start this order");
+        }
+
+        if (order.status !== OrderStatus.ASSIGNED) {
+            throw new BadRequestError("Order must be ASSIGNED to start");
+        }
+
+        return this.updateOrderStatus(orderId, {
+            status: OrderStatus.IN_PROGRESS,
+            changedById: worker.id,
+            reason: "Worker started order",
+        });
+    }
+
+    async completeOrderByDiscordId(orderId: string, data: { workerDiscordId: string; completionNotes?: string }) {
+        const worker = await prisma.user.findUnique({
+            where: { discordId: data.workerDiscordId },
+        });
+
+        if (!worker) {
+            throw new NotFoundError("Worker not found");
+        }
+
+        return this.completeOrder({
+            orderId,
+            workerId: worker.id,
+            completionNotes: data.completionNotes,
+        });
+    }
+
+    async confirmOrderByDiscordId(orderId: string, data: { customerDiscordId: string; feedback?: string }) {
+        const customer = await prisma.user.findUnique({
+            where: { discordId: data.customerDiscordId },
+        });
+
+        if (!customer) {
+            throw new NotFoundError("Customer not found");
+        }
+
+        return this.confirmOrderCompletion({
+            orderId,
+            customerId: customer.id,
+            feedback: data.feedback,
+        });
+    }
+
+    async cancelOrderByDiscordId(orderId: string, data: {
+        cancelledByDiscordId: string;
+        cancellationReason: string;
+        refundType?: "full" | "partial" | "none";
+        refundAmount?: number;
+    }) {
+        const cancelledBy = await prisma.user.findUnique({
+            where: { discordId: data.cancelledByDiscordId },
+        });
+
+        if (!cancelledBy) {
+            throw new NotFoundError("User not found");
+        }
+
+        return this.cancelOrder({
+            orderId,
+            cancelledById: cancelledBy.id,
+            cancellationReason: data.cancellationReason,
+            refundType: data.refundType,
+            refundAmount: data.refundAmount,
+        });
+    }
+
+    async updateOrderChannel(orderId: string, data: { orderChannelId: string; claimMessageId?: string }) {
+        return await prisma.order.update({
+            where: { id: orderId },
+            data: {
+                orderChannelId: data.orderChannelId,
+                claimMessageId: data.claimMessageId,
+            },
+        });
+    }
+
+    async updateOrderMessage(orderId: string, data: {
+        ticketChannelId?: string;
+        pinnedMessageId?: string;
+    }) {
+        return await prisma.order.update({
+            where: { id: orderId },
+            data: {
+                ticketChannelId: data.ticketChannelId,
+                pinnedMessageId: data.pinnedMessageId,
+            },
+        });
+    }
+
+    async submitOrderReview(orderId: string, data: {
+        customerDiscordId: string;
+        rating: number;
+        review?: string;
+    }) {
+        const customer = await prisma.user.findUnique({
+            where: { discordId: data.customerDiscordId }
+        });
+        if (!customer) throw new NotFoundError("Customer not found");
+
+        if (data.rating < 1 || data.rating > 5) {
+            throw new BadRequestError("Rating must be between 1 and 5");
+        }
+
+        const order = await prisma.order.findUnique({
+            where: { id: orderId },
+            include: { customer: true }
+        });
+
+        if (!order) throw new NotFoundError("Order not found");
+        if (order.customerId !== customer.id) {
+            throw new BadRequestError("You are not the customer for this order");
+        }
+
+        if (order.rating || order.review) {
+            throw new BadRequestError("Order has already been reviewed");
+        }
+
+        return await prisma.order.update({
+            where: { id: orderId },
+            data: {
+                rating: data.rating,
+                review: data.review,
+                reviewedAt: new Date(),
+            },
+        });
+    }
+
+    async reportIssue(orderId: string, data: {
+        reportedByDiscordId: string;
+        issueDescription: string;
+        priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+    }) {
+        const reporter = await prisma.user.findUnique({
+            where: { discordId: data.reportedByDiscordId }
+        });
+        if (!reporter) throw new NotFoundError("Reporter not found");
+
+        const order = await prisma.order.findUnique({
+            where: { id: orderId },
+            include: { customer: true, worker: true, support: true }
+        });
+
+        if (!order) throw new NotFoundError("Order not found");
+
+        if (order.customerId !== reporter.id) {
+            throw new BadRequestError("Only the customer can report an issue for this order");
+        }
+
+        const issue = await prisma.orderIssue.create({
+            data: {
+                orderId,
+                reportedById: reporter.id,
+                issueDescription: data.issueDescription,
+                priority: data.priority || "MEDIUM",
+                status: "OPEN",
+            },
+            include: {
+                order: {
+                    include: {
+                        customer: true,
+                        worker: true,
+                        support: true,
+                    }
+                },
+                reportedBy: true,
+            }
+        });
+
+        await this.updateOrderStatus(orderId, {
+            status: "DISPUTED" as any,
+            changedById: reporter.id,
+            reason: "Customer reported issue",
+            notes: data.issueDescription,
+        });
+
+        return issue;
+    }
+
+    async getIssue(issueId: string) {
+        const issue = await prisma.orderIssue.findUnique({
+            where: { id: issueId },
+            include: {
+                order: {
+                    include: {
+                        customer: true,
+                        worker: true,
+                        support: true,
+                    }
+                },
+                reportedBy: true,
+                resolvedBy: true,
+            }
+        });
+
+        if (!issue) {
+            throw new NotFoundError("Issue not found");
+        }
+
+        return issue;
+    }
+
+    async updateIssue(issueId: string, data: {
+        discordMessageId?: string;
+        discordChannelId?: string;
+        status?: string;
+        resolution?: string;
+        resolvedByDiscordId?: string;
+    }) {
+        const updateData: any = {};
+
+        if (data.discordMessageId) updateData.discordMessageId = data.discordMessageId;
+        if (data.discordChannelId) updateData.discordChannelId = data.discordChannelId;
+        if (data.status) updateData.status = data.status;
+        if (data.resolution) updateData.resolution = data.resolution;
+
+        if (data.resolvedByDiscordId) {
+            const resolver = await prisma.user.findUnique({
+                where: { discordId: data.resolvedByDiscordId }
+            });
+            if (resolver) {
+                updateData.resolvedById = resolver.id;
+            }
+        }
+
+        if (data.status === 'RESOLVED' && !updateData.resolvedAt) {
+            updateData.resolvedAt = new Date();
+        }
+
+        return await prisma.orderIssue.update({
+            where: { id: issueId },
+            data: updateData,
+        });
+    }
+
+    async updateOrderStatusByDiscordId(orderId: string, data: {
+        status: string;
+        changedByDiscordId?: string;
+        workerDiscordId?: string;
+        reason?: string;
+        notes?: string;
+        isAdminOverride?: boolean;
+    }) {
+        const discordId = data.changedByDiscordId || data.workerDiscordId;
+
+        if (!discordId) {
+            throw new BadRequestError("Either changedByDiscordId or workerDiscordId is required");
+        }
+
+        const changedBy = await prisma.user.findUnique({
+            where: { discordId },
+            select: { id: true, role: true, fullname: true }
+        });
+        if (!changedBy) throw new NotFoundError("User not found");
+
+        const isAdmin = changedBy.role === 'admin' || changedBy.role === 'system' || data.isAdminOverride === true;
+
+        const order = await this.getOrderById(orderId);
+
+        if (order.workerId && !isAdmin) {
+            if (order.worker?.discordId !== discordId) {
+                throw new BadRequestError(
+                    `Only the assigned worker can change this order's status. This order is assigned to ${order.worker?.fullname || 'another worker'}.`
+                );
+            }
+        }
+
+        return await this.updateOrderStatus(orderId, {
+            status: data.status as any,
+            changedById: changedBy.id,
+            reason: data.reason || `Status changed to ${data.status}`,
+            notes: data.notes,
+        });
     }
 }

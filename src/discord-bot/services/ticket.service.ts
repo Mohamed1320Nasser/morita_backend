@@ -17,6 +17,7 @@ import { discordConfig } from "../config/discord.config";
 import { ApiService } from "./api.service";
 import logger from "../../common/loggers";
 import axios, { AxiosInstance } from "axios";
+import { getTicketChannelMover } from "./ticket-channel-mover.service";
 
 // Import ticket type
 import { TicketType, TicketMetadata } from "../types/discord.types";
@@ -853,161 +854,77 @@ export class TicketService {
         }
     }
 
-    /**
-     * Close a ticket
-     */
     async closeTicket(
         ticketId: string,
         closedByUser: User,
         reason?: string
     ): Promise<void> {
         try {
-            logger.info(`[CloseTicket] Starting close for ticket ${ticketId}`);
-
-            // Run API call and ticket fetch in parallel for faster response
-            const [_, ticketResponse] = await Promise.all([
-                this.apiClient.post(`/api/discord/tickets/${ticketId}/close`, {
-                    reason,
-                }).catch(err => {
-                    logger.warn(`[CloseTicket] API close call failed (will continue):`, err.message);
-                    return null;
-                }),
+            const [_, ticket] = await Promise.all([
+                this.apiClient.post(`/api/discord/tickets/${ticketId}/close`, { reason })
+                    .catch(() => null),
                 this.getTicketById(ticketId),
             ]);
 
-            logger.info(`[CloseTicket] API call completed, ticket data: ${ticketResponse ? 'found' : 'not found'}`);
+            if (!ticket?.channelId) return;
 
-            if (ticketResponse && ticketResponse.channelId) {
-                const channel = this.client.channels.cache.get(
-                    ticketResponse.channelId
-                );
+            const channel = this.client.channels.cache.get(ticket.channelId);
+            if (!channel || !(channel instanceof TextChannel)) return;
 
-                if (channel && channel instanceof TextChannel) {
-                    // Send closing message first (most important)
-                    const embed = new EmbedBuilder()
-                        .setTitle("🔒 Ticket Closed")
-                        .setDescription(
-                            `This ticket has been closed by <@${closedByUser.id}>.`
-                        )
-                        .setColor(0xed4245)
-                        .setTimestamp();
+            const closeEmbed = new EmbedBuilder()
+                .setTitle("🔒 Ticket Closed")
+                .setDescription(`This ticket has been closed by <@${closedByUser.id}>.`)
+                .setColor(0xed4245)
+                .setTimestamp();
 
-                    if (reason) {
-                        embed.addFields({
-                            name: "Reason",
-                            value: reason,
-                        });
-                    }
-
-                    await channel.send({ embeds: [embed.toJSON() as any] });
-                    logger.info(`[CloseTicket] Sent close message`);
-
-                    // Disable the Close Ticket button in welcome message
-                    try {
-                        const messages = await channel.messages.fetch({ limit: 100 });
-                        const welcomeMessage = messages.find(msg =>
-                            msg.author.id === this.client.user?.id &&
-                            msg.components.length > 0 &&
-                            msg.components[0].components.some((c: any) => c.customId?.startsWith('ticket_close_'))
-                        );
-
-                        if (welcomeMessage) {
-                            // Disable all buttons
-                            const disabledComponents = welcomeMessage.components.map(row => {
-                                const actionRow = new ActionRowBuilder<ButtonBuilder>();
-                                row.components.forEach((component: any) => {
-                                    if (component.type === 2) { // Button type
-                                        const button = ButtonBuilder.from(component);
-                                        button.setDisabled(true);
-                                        actionRow.addComponents(button);
-                                    }
-                                });
-                                return actionRow;
-                            });
-
-                            await welcomeMessage.edit({ components: disabledComponents as any });
-                            logger.info(`[CloseTicket] Disabled close ticket button`);
-                        }
-                    } catch (err: any) {
-                        logger.warn(`[CloseTicket] Failed to disable button:`, err.message);
-                    }
-
-                    // Get or create the Closed Tickets category
-                    logger.info(`[CloseTicket] Getting closed tickets category...`);
-                    const closedCategory = await this.getOrCreateClosedTicketsCategory(channel.guild);
-                    logger.info(`[CloseTicket] Closed category: ${closedCategory ? closedCategory.id : 'not found'}`);
-
-                    // Run channel updates SEQUENTIALLY with timeouts
-                    // 1. Rename channel (OPTIONAL - with 3 second timeout)
-                    try {
-                        logger.info(`[CloseTicket] Renaming channel from: ${channel.name}`);
-                        const newChannelName = channel.name.startsWith('closed-')
-                            ? channel.name
-                            : `closed-${channel.name}`;
-
-                        const renamePromise = channel.setName(newChannelName);
-                        const renameTimeout = new Promise((_, reject) =>
-                            setTimeout(() => reject(new Error('Rename timeout')), 3000)
-                        );
-
-                        await Promise.race([renamePromise, renameTimeout]);
-                        logger.info(`[CloseTicket] ✅ Channel renamed to: ${newChannelName}`);
-                    } catch (err: any) {
-                        logger.warn(`[CloseTicket] ⚠️ Skipping rename (${err.message}), continuing with move...`);
-                    }
-
-                    // 2. Move to Closed Tickets category (CRITICAL - with timeout)
-                    if (closedCategory) {
-                        try {
-                            logger.info(`[CloseTicket] Waiting 1s before moving...`);
-                            await new Promise(resolve => setTimeout(resolve, 1000));
-
-                            logger.info(`[CloseTicket] Moving to closed category: ${closedCategory.id}`);
-
-                            const movePromise = channel.setParent(closedCategory.id, { lockPermissions: false });
-                            const moveTimeout = new Promise((_, reject) =>
-                                setTimeout(() => reject(new Error('Move timeout')), 5000)
-                            );
-
-                            await Promise.race([movePromise, moveTimeout]);
-                            logger.info(`[CloseTicket] ✅ Successfully moved to closed category`);
-                        } catch (err: any) {
-                            logger.error(`[CloseTicket] ❌ Failed to move to closed category: ${err.message}`);
-                        }
-                    }
-
-                    // 3. Remove customer permissions
-                    if (ticketResponse.customerDiscordId) {
-                        try {
-                            await new Promise(resolve => setTimeout(resolve, 500));
-
-                            logger.info(`[CloseTicket] Removing customer permissions...`);
-
-                            const permissionPromise = channel.permissionOverwrites.edit(
-                                ticketResponse.customerDiscordId,
-                                { ViewChannel: false }
-                            );
-                            const permissionTimeout = new Promise((_, reject) =>
-                                setTimeout(() => reject(new Error('Permission timeout')), 3000)
-                            );
-
-                            await Promise.race([permissionPromise, permissionTimeout]);
-                            logger.info(`[CloseTicket] ✅ Successfully removed customer permissions`);
-                        } catch (err: any) {
-                            logger.warn(`[CloseTicket] ❌ Failed to update permissions: ${err.message}`);
-                        }
-                    }
-
-                    logger.info(`[CloseTicket] All channel updates completed`);
-                }
+            if (reason) {
+                closeEmbed.addFields({ name: "Reason", value: reason });
             }
 
-            logger.info(
-                `[CloseTicket] Ticket ${ticketId} closed by ${closedByUser.tag}${reason ? `: ${reason}` : ""}`
-            );
+            await channel.send({ embeds: [closeEmbed.toJSON() as any] });
+
+            await this.disableTicketButtons(channel);
+
+            if (ticket.customerDiscordId) {
+                await channel.permissionOverwrites.edit(ticket.customerDiscordId, {
+                    ViewChannel: false
+                }).catch(err => logger.warn(`[CloseTicket] Permission update failed: ${err.message}`));
+            }
+
+            const mover = getTicketChannelMover(this.client);
+            mover.queueMove(channel.id, ticketId);
+
+            logger.info(`[CloseTicket] Ticket ${ticketId} closed by ${closedByUser.tag}${reason ? `: ${reason}` : ""}`);
         } catch (error) {
-            logger.error("[CloseTicket] Error closing ticket:", error);
+            logger.error("[CloseTicket] Error:", error);
             throw error;
+        }
+    }
+
+    private async disableTicketButtons(channel: TextChannel): Promise<void> {
+        try {
+            const messages = await channel.messages.fetch({ limit: 100 });
+            const welcomeMessage = messages.find(msg =>
+                msg.author.id === this.client.user?.id &&
+                msg.components.length > 0 &&
+                msg.components[0].components.some((c: any) => c.customId?.startsWith('ticket_close_'))
+            );
+
+            if (!welcomeMessage) return;
+
+            const disabledComponents = welcomeMessage.components.map(row => {
+                const actionRow = new ActionRowBuilder<ButtonBuilder>();
+                row.components.forEach((component: any) => {
+                    if (component.type === 2) {
+                        actionRow.addComponents(ButtonBuilder.from(component).setDisabled(true));
+                    }
+                });
+                return actionRow;
+            });
+
+            await welcomeMessage.edit({ components: disabledComponents as any });
+        } catch (err: any) {
+            logger.warn(`[CloseTicket] Button disable failed: ${err.message}`);
         }
     }
 

@@ -162,11 +162,14 @@ export async function updateWalletBalance(
 
 /**
  * Check wallet balance with lock (for atomic balance checks)
+ *
+ * @param walletType - 'customer' checks only available balance, 'worker' checks deposit + balance (eligibility)
  */
 export async function checkWalletBalanceWithLock(
     tx: TransactionClient,
     walletId: string,
-    requiredAmount: number
+    requiredAmount: number,
+    walletType: 'customer' | 'worker' = 'customer'
 ): Promise<{ sufficient: boolean; available: number; wallet: any }> {
     const wallet = await lockWalletForUpdate(tx, walletId);
 
@@ -180,14 +183,97 @@ export async function checkWalletBalanceWithLock(
         ? parseFloat(wallet.deposit.toString())
         : wallet.deposit;
 
-    const totalEligibility = deposit + balance;
-    const sufficient = totalEligibility >= requiredAmount;
+    let availableAmount: number;
+
+    if (walletType === 'worker') {
+        // Worker: Check deposit + available balance (total eligibility for job claiming)
+        const availableBalance = balance - pendingBalance;
+        availableAmount = deposit + availableBalance;
+    } else {
+        // Customer: Check only available balance
+        availableAmount = balance - pendingBalance;
+    }
+
+    const sufficient = availableAmount >= requiredAmount;
 
     return {
         sufficient,
-        available: totalEligibility,
+        available: availableAmount,
         wallet
     };
+}
+
+/**
+ * Smart deduction for workers: deducts from balance first, then from deposit if needed
+ * This prevents negative balance by using worker deposit as available funds
+ *
+ * @returns Object with deduction details: { fromBalance, fromDeposit, newBalance, newDeposit }
+ */
+export async function deductFromWorkerWallet(
+    tx: TransactionClient,
+    walletId: string,
+    requiredAmount: number,
+    addToPending: number = 0
+): Promise<{ fromBalance: number; fromDeposit: number }> {
+    const wallet = await lockWalletForUpdate(tx, walletId);
+
+    const balance = typeof wallet.balance === 'object'
+        ? parseFloat(wallet.balance.toString())
+        : wallet.balance;
+    const deposit = typeof wallet.deposit === 'object'
+        ? parseFloat(wallet.deposit.toString())
+        : wallet.deposit;
+    const pendingBalance = typeof wallet.pendingBalance === 'object'
+        ? parseFloat(wallet.pendingBalance.toString())
+        : wallet.pendingBalance;
+
+    const availableBalance = balance - pendingBalance;
+
+    let fromBalance = 0;
+    let fromDeposit = 0;
+
+    if (availableBalance >= requiredAmount) {
+        // Can deduct fully from balance
+        fromBalance = requiredAmount;
+    } else {
+        // Need to use deposit
+        fromBalance = availableBalance;
+        fromDeposit = requiredAmount - availableBalance;
+
+        if (deposit < fromDeposit) {
+            throw new Error(
+                `Insufficient funds. Need $${requiredAmount}, have $${availableBalance} in balance and $${deposit} in deposit.`
+            );
+        }
+    }
+
+    // Apply the deductions
+    const updateData: any = {};
+
+    if (fromBalance > 0) {
+        updateData.balance = {
+            decrement: fromBalance
+        };
+    }
+
+    if (fromDeposit > 0) {
+        updateData.deposit = {
+            decrement: fromDeposit
+        };
+    }
+
+    if (addToPending > 0) {
+        updateData.pendingBalance = {
+            increment: addToPending
+        };
+    }
+
+    await tx.wallet.update({
+        where: { id: walletId },
+        data: updateData
+    });
+
+    return { fromBalance, fromDeposit };
 }
 
 /**

@@ -2,15 +2,19 @@ import {
     SlashCommandBuilder,
     CommandInteraction,
     EmbedBuilder,
+    TextChannel,
+    User,
 } from "discord.js";
 import { Command } from "../types/discord.types";
 import logger from "../../common/loggers";
 import { discordApiClient } from "../clients/DiscordApiClient";
+import { discordConfig } from "../config/discord.config";
+import { getTicketService } from "../services/ticket.service";
 
 export default {
     data: new SlashCommandBuilder()
         .setName("wallet")
-        .setDescription("View your wallet balance and recent transactions")
+        .setDescription("View wallet balance and recent transactions")
         .addStringOption((option) =>
             option
                 .setName("action")
@@ -20,6 +24,12 @@ export default {
                     { name: "Balance", value: "balance" },
                     { name: "Transactions", value: "transactions" }
                 )
+        )
+        .addUserOption((option) =>
+            option
+                .setName("user")
+                .setDescription("Target user (Support/Admin only - auto-detected in tickets)")
+                .setRequired(false)
         ),
 
     async execute(interaction: CommandInteraction) {
@@ -27,7 +37,21 @@ export default {
             await interaction.deferReply({ ephemeral: true });
 
             const action = (interaction.options.get("action")?.value as string) || "balance";
-            const discordId = interaction.user.id;
+
+            // Get target user (admin feature)
+            const specifiedUser = interaction.options.get("user")?.user as User | undefined;
+            const targetUserInfo = await getTargetUser(interaction, specifiedUser);
+
+            // Permission check: If checking someone else's wallet, must be Support/Admin
+            const isCheckingOtherUser = targetUserInfo.discordId !== interaction.user.id;
+            if (isCheckingOtherUser && !hasAdminPermission(interaction)) {
+                await interaction.editReply({
+                    content: "❌ **Permission Denied**\n\nOnly Support and Admin can view other users' wallets.\n\nUse `/wallet` without the user parameter to view your own balance.",
+                });
+                return;
+            }
+
+            const discordId = targetUserInfo.discordId;
 
             if (action === "balance") {
                 // Get wallet balance
@@ -46,14 +70,27 @@ export default {
                 logger.info(`[Wallet Command] hasWallet value: ${data.hasWallet} (type: ${typeof data.hasWallet})`);
 
                 if (!data.hasWallet) {
+                    const walletOwnerText = isCheckingOtherUser
+                        ? `<@${targetUserInfo.discordId}> doesn't have a wallet yet.`
+                        : "You don't have a wallet yet.";
+
                     const embed = new EmbedBuilder()
-                        .setTitle("💰 Your Wallet")
+                        .setTitle(isCheckingOtherUser ? "💰 User Wallet" : "💰 Your Wallet")
                         .setDescription(
-                            "You don't have a wallet yet.\n\n" +
-                            "Your wallet will be created automatically when you receive your first deposit."
+                            walletOwnerText + "\n\n" +
+                            "Wallet will be created automatically when they receive their first deposit."
                         )
                         .setColor(0x5865f2)
                         .setTimestamp();
+
+                    if (isCheckingOtherUser && targetUserInfo.user) {
+                        embed.setThumbnail(targetUserInfo.user.displayAvatarURL());
+                        embed.addFields({
+                            name: "👤 User",
+                            value: `${targetUserInfo.user.tag}\nDiscord ID: \`${targetUserInfo.discordId}\``,
+                            inline: false,
+                        });
+                    }
 
                     await interaction.editReply({
                         embeds: [embed.toJSON() as any],
@@ -68,11 +105,23 @@ export default {
 
                 const isWorker = data.walletType === "WORKER";
 
+                const embedTitle = isCheckingOtherUser ? "💰 User Wallet" : "💰 Your Wallet";
                 const embed = new EmbedBuilder()
-                    .setTitle("💰 Your Wallet")
+                    .setTitle(embedTitle)
                     .setColor(0x57f287)
                     .setTimestamp()
                     .setFooter({ text: `Wallet ID: ${data.walletId} • Type: ${data.walletType || 'CUSTOMER'}` });
+
+                // Add user info if admin is checking someone else's wallet
+                if (isCheckingOtherUser && targetUserInfo.user) {
+                    embed.setThumbnail(targetUserInfo.user.displayAvatarURL());
+                    embed.setDescription(`Viewing wallet for <@${targetUserInfo.discordId}>`);
+                    embed.addFields({
+                        name: "👤 User Information",
+                        value: `**Username:** ${targetUserInfo.user.tag}\n**Discord ID:** \`${targetUserInfo.discordId}\``,
+                        inline: false,
+                    });
+                }
 
                 // Balance breakdown
                 let balanceText = `\`\`\`yml\n`;
@@ -136,11 +185,19 @@ export default {
                 const transactions = data.list || [];
 
                 if (transactions.length === 0) {
+                    const noTxDescription = isCheckingOtherUser
+                        ? `No transactions found for <@${targetUserInfo.discordId}>.`
+                        : "No transactions found.";
+
                     const embed = new EmbedBuilder()
                         .setTitle("📜 Transaction History")
-                        .setDescription("No transactions found.")
+                        .setDescription(noTxDescription)
                         .setColor(0x5865f2)
                         .setTimestamp();
+
+                    if (isCheckingOtherUser && targetUserInfo.user) {
+                        embed.setThumbnail(targetUserInfo.user.displayAvatarURL());
+                    }
 
                     await interaction.editReply({
                         embeds: [embed.toJSON() as any],
@@ -148,11 +205,25 @@ export default {
                     return;
                 }
 
+                const txDescription = isCheckingOtherUser
+                    ? `Showing ${transactions.length} recent transaction(s) for <@${targetUserInfo.discordId}>`
+                    : `Showing ${transactions.length} recent transaction(s)`;
+
                 const embed = new EmbedBuilder()
                     .setTitle("📜 Transaction History")
-                    .setDescription(`Showing ${transactions.length} recent transaction(s)`)
+                    .setDescription(txDescription)
                     .setColor(0x5865f2)
                     .setTimestamp();
+
+                // Add user info if admin is checking someone else's transactions
+                if (isCheckingOtherUser && targetUserInfo.user) {
+                    embed.setThumbnail(targetUserInfo.user.displayAvatarURL());
+                    embed.addFields({
+                        name: "👤 User",
+                        value: `${targetUserInfo.user.tag} • \`${targetUserInfo.discordId}\``,
+                        inline: false,
+                    });
+                }
 
                 // Build transaction list with clean formatting
                 for (let i = 0; i < Math.min(transactions.length, 10); i++) {
@@ -208,7 +279,7 @@ export default {
                 });
             }
 
-            logger.info(`Wallet ${action} viewed by ${interaction.user.tag}`);
+            logger.info(`Wallet ${action} viewed by ${interaction.user.tag}${isCheckingOtherUser ? ` for user ${discordId}` : ''}`);
         } catch (error) {
             logger.error("Error executing wallet command:", error);
 
@@ -231,3 +302,64 @@ export default {
         }
     },
 } as Command;
+
+/**
+ * Check if user has Support or Admin role
+ */
+function hasAdminPermission(interaction: CommandInteraction): boolean {
+    const member = interaction.member;
+    if (!member || !("roles" in member)) return false;
+
+    const roles = (member.roles as any).cache;
+    const isSupport = roles?.has(discordConfig.supportRoleId);
+    const isAdmin = roles?.has(discordConfig.adminRoleId);
+
+    return isSupport || isAdmin;
+}
+
+/**
+ * Get target user for wallet check
+ * Priority: 1) Specified user, 2) Ticket customer, 3) Command user
+ */
+async function getTargetUser(
+    interaction: CommandInteraction,
+    specifiedUser: User | undefined
+): Promise<{ user: User | null; discordId: string }> {
+    // If user was specified, use that
+    if (specifiedUser) {
+        return {
+            user: specifiedUser,
+            discordId: specifiedUser.id,
+        };
+    }
+
+    // Check if in ticket channel and user has admin permissions
+    const channel = interaction.channel;
+    const isTicketChannel = channel instanceof TextChannel &&
+        (channel.name.startsWith(discordConfig.ticketChannelPrefix) || channel.name.startsWith("closed-"));
+
+    if (isTicketChannel && hasAdminPermission(interaction)) {
+        try {
+            const ticketService = getTicketService(interaction.client);
+            const ticket = await ticketService.getTicketByChannelId(channel.id);
+
+            if (ticket) {
+                try {
+                    const user = await interaction.client.users.fetch(ticket.customerDiscordId);
+                    logger.info(`[Wallet] Auto-detected ticket customer: ${user.tag}`);
+                    return { user, discordId: ticket.customerDiscordId };
+                } catch {
+                    return { user: null, discordId: ticket.customerDiscordId };
+                }
+            }
+        } catch (error) {
+            logger.warn(`[Wallet] Failed to fetch ticket info:`, error);
+        }
+    }
+
+    // Default: return the command user
+    return {
+        user: interaction.user,
+        discordId: interaction.user.id,
+    };
+}

@@ -530,28 +530,29 @@ export default class PricingCalculatorService {
 
         logger.info(`[PricingCalculator] 🎯 Requested level range: ${startLevel}-${endLevel} (${formatXp(totalXp)} XP)`);
 
-        // NEW APPROACH: Find optimal combination of methods to cover the full range
-        const optimalCombination = this.findOptimalMethodCombination(
+        // NEW APPROACH: Generate ALL method options (optimal + alternatives)
+        const methodOptions = this.generateAllMethodOptions(
             pricingMethods,
             startLevel,
             endLevel,
             service.serviceModifiers || []
         );
 
-        if (!optimalCombination) {
+        if (!methodOptions || methodOptions.length === 0) {
             logger.error(`[PricingCalculator] ❌ No pricing methods found for the specified level range ${startLevel}-${endLevel}`);
             throw new BadRequestError(
                 "No pricing methods found for the specified level range"
             );
         }
 
-        logger.info(`[PricingCalculator] 🎯 Optimal combination found with ${optimalCombination.segments?.length || 0} method(s)`);
+        // Find cheapest option and mark it
+        const cheapestOption = methodOptions.reduce((min, curr) =>
+            curr.finalPrice < min.finalPrice ? curr : min
+        );
+        cheapestOption.isCheapest = true;
 
-        // Return the single optimal option
-        const methodOptions: MethodOption[] = [optimalCombination];
-
-        // Mark it as the cheapest (and only) option
-        optimalCombination.isCheapest = true;
+        logger.info(`[PricingCalculator] 🎯 Generated ${methodOptions.length} method option(s)`);
+        logger.info(`[PricingCalculator] 💰 Cheapest: "${cheapestOption.methodName}" at $${cheapestOption.finalPrice.toFixed(2)}`);
 
         return {
             service: {
@@ -566,6 +567,468 @@ export default class PricingCalculatorService {
                 formattedXp: formatXp(totalXp),
             },
             methodOptions,
+        };
+    }
+
+    /**
+     * Generate ALL method options for comparison:
+     * 1. Optimal combination (cheapest mix of methods)
+     * 2. Each individual method that can cover the full range
+     * 3. Named method combinations (e.g., "GOTR Only", "Lava Runes Only")
+     * 4. Individual method segments (e.g., "GOTR 27-77", "Blood Runes 77-99")
+     */
+    private generateAllMethodOptions(
+        pricingMethods: any[],
+        startLevel: number,
+        endLevel: number,
+        serviceModifiers: any[]
+    ): MethodOption[] {
+        const options: MethodOption[] = [];
+
+        logger.info(`[PricingCalculator] 🔍 Generating method options for ${startLevel}-${endLevel}`);
+
+        // Option 1: Optimal combination (cheapest mix)
+        const optimalCombo = this.findOptimalMethodCombination(
+            pricingMethods,
+            startLevel,
+            endLevel,
+            serviceModifiers
+        );
+
+        if (optimalCombo) {
+            options.push(optimalCombo);
+            logger.info(`[PricingCalculator]   ✅ Optimal Combination: $${optimalCombo.finalPrice.toFixed(2)}`);
+        }
+
+        // Option 2: Each individual method that can cover the FULL range
+        for (const method of pricingMethods) {
+            const methodStart = method.startLevel || 1;
+            const methodEnd = method.endLevel || 99;
+
+            // Check if this method can cover the entire requested range
+            if (methodStart <= startLevel && methodEnd >= endLevel) {
+                const option = this.calculateSingleMethodOption(
+                    method,
+                    startLevel,
+                    endLevel,
+                    serviceModifiers
+                );
+
+                if (option) {
+                    options.push(option);
+                    logger.info(`[PricingCalculator]   ✅ Single Method "${method.name}": $${option.finalPrice.toFixed(2)}`);
+                }
+            }
+        }
+
+        // Option 3: Named method groups (e.g., "GOTR Only", "Lava Runes Only")
+        // Group methods by base name (before level range)
+        const methodGroups = this.groupMethodsByName(pricingMethods);
+
+        for (const [groupName, methods] of Object.entries(methodGroups)) {
+            // Skip if this is a single method already added
+            if (methods.length === 1) {
+                const method = methods[0];
+                const methodStart = method.startLevel || 1;
+                const methodEnd = method.endLevel || 99;
+                if (methodStart <= startLevel && methodEnd >= endLevel) {
+                    continue; // Already added as single method
+                }
+            }
+
+            // Try to build a combination using only this method group
+            const groupCombo = this.findMethodGroupCombination(
+                methods,
+                startLevel,
+                endLevel,
+                serviceModifiers,
+                groupName
+            );
+
+            if (groupCombo) {
+                options.push(groupCombo);
+                logger.info(`[PricingCalculator]   ✅ "${groupName} Only": $${groupCombo.finalPrice.toFixed(2)}`);
+            }
+        }
+
+        // Option 4: Individual method segments (show each segment separately)
+        // This allows customers to see each method's individual price
+        for (const method of pricingMethods) {
+            const methodStart = method.startLevel || 1;
+            const methodEnd = method.endLevel || 99;
+
+            // Check if this method overlaps with the requested range
+            const overlapStart = Math.max(startLevel, methodStart);
+            const overlapEnd = Math.min(endLevel, methodEnd);
+
+            if (overlapStart < overlapEnd) {
+                // Calculate price for just this segment
+                const segmentOption = this.calculateSingleMethodSegment(
+                    method,
+                    overlapStart,
+                    overlapEnd,
+                    serviceModifiers
+                );
+
+                if (segmentOption) {
+                    options.push(segmentOption);
+                    logger.info(`[PricingCalculator]   ✅ Segment "${method.name}" (${overlapStart}-${overlapEnd}): $${segmentOption.finalPrice.toFixed(2)}`);
+                }
+            }
+        }
+
+        // Sort by price (cheapest first)
+        options.sort((a, b) => a.finalPrice - b.finalPrice);
+
+        logger.info(`[PricingCalculator] 📊 Total options generated: ${options.length}`);
+
+        return options;
+    }
+
+    /**
+     * Group pricing methods by base name (e.g., "GOTR", "Lava Runes", "Blood Runes")
+     * Extracts common name patterns before level ranges
+     */
+    private groupMethodsByName(pricingMethods: any[]): Record<string, any[]> {
+        const groups: Record<string, any[]> = {};
+
+        for (const method of pricingMethods) {
+            // Extract base name (remove level range patterns like "1-27", "(1-27)", etc.)
+            let baseName = method.name
+                .replace(/\s*\(\d+-\d+\)\s*/g, '') // Remove (1-27)
+                .replace(/\s*\d+-\d+\s*/g, '') // Remove 1-27
+                .replace(/\s+$/g, '') // Trim trailing spaces
+                .trim();
+
+            // If empty after cleaning, use original name
+            if (!baseName) {
+                baseName = method.name;
+            }
+
+            if (!groups[baseName]) {
+                groups[baseName] = [];
+            }
+            groups[baseName].push(method);
+        }
+
+        return groups;
+    }
+
+    /**
+     * Build a combination using only methods from a specific group
+     */
+    private findMethodGroupCombination(
+        methods: any[],
+        startLevel: number,
+        endLevel: number,
+        serviceModifiers: any[],
+        groupName: string
+    ): MethodOption | null {
+        // Try to cover the range using only these methods
+        const segments: Array<{
+            startLevel: number;
+            endLevel: number;
+            xpRequired: number;
+            method: any;
+            basePrice: number;
+            totalPrice: number;
+        }> = [];
+
+        let currentLevel = startLevel;
+
+        while (currentLevel < endLevel) {
+            // Find method from this group that can cover currentLevel
+            const availableMethods = methods.filter(m => {
+                const methodStart = m.startLevel || 1;
+                const methodEnd = m.endLevel || 99;
+                return currentLevel >= methodStart && currentLevel < methodEnd;
+            });
+
+            if (availableMethods.length === 0) {
+                // Can't cover this level with this group
+                return null;
+            }
+
+            // Use the cheapest method for this segment
+            let bestMethod = availableMethods[0];
+            let bestPrice = bestMethod.basePrice;
+
+            for (const method of availableMethods) {
+                if (method.basePrice < bestPrice) {
+                    bestMethod = method;
+                    bestPrice = method.basePrice;
+                }
+            }
+
+            // Calculate segment
+            const methodStart = bestMethod.startLevel || 1;
+            const methodEnd = bestMethod.endLevel || 99;
+            const segmentStart = currentLevel;
+            const segmentEnd = Math.min(endLevel, methodEnd);
+
+            const xpForSegment = getXpBetweenLevels(segmentStart, segmentEnd);
+            const priceForSegment = bestMethod.basePrice * xpForSegment;
+
+            segments.push({
+                startLevel: segmentStart,
+                endLevel: segmentEnd,
+                xpRequired: xpForSegment,
+                method: bestMethod,
+                basePrice: bestMethod.basePrice,
+                totalPrice: priceForSegment,
+            });
+
+            currentLevel = segmentEnd;
+        }
+
+        // Calculate total
+        let totalBasePrice = segments.reduce((sum, seg) => sum + seg.totalPrice, 0);
+        let totalModifiers = 0;
+        const allModifiers: MethodOption["modifiers"] = [];
+
+        // Apply service-level modifiers
+        for (const modifier of serviceModifiers) {
+            const modifierValue = Number(modifier.value);
+
+            if (modifier.modifierType === "PERCENTAGE") {
+                const addedValue = totalBasePrice * (modifierValue / 100);
+                totalModifiers += addedValue;
+
+                allModifiers.push({
+                    name: modifier.name,
+                    type: modifier.modifierType,
+                    displayType: modifier.displayType,
+                    value: modifierValue,
+                    applied: true,
+                });
+            } else if (modifier.modifierType === "FIXED") {
+                totalModifiers += modifierValue;
+
+                allModifiers.push({
+                    name: modifier.name,
+                    type: modifier.modifierType,
+                    displayType: modifier.displayType,
+                    value: modifierValue,
+                    applied: true,
+                });
+            }
+        }
+
+        const finalPrice = totalBasePrice + totalModifiers;
+
+        return {
+            methodId: `group_${groupName.toLowerCase().replace(/\s+/g, '_')}`,
+            methodName: `${groupName} Only`,
+            basePrice: 0,
+            pricingUnit: "PER_LEVEL",
+            levelRanges: segments.map(seg => ({
+                startLevel: seg.startLevel,
+                endLevel: seg.endLevel,
+                xpRequired: seg.xpRequired,
+                totalPrice: seg.totalPrice,
+                methodName: seg.method.name,
+                ratePerXp: seg.basePrice,
+            })),
+            modifiers: allModifiers,
+            subtotal: Math.round(totalBasePrice * 100) / 100,
+            modifiersTotal: Math.round(totalModifiers * 100) / 100,
+            finalPrice: Math.round(finalPrice * 100) / 100,
+            isCheapest: false,
+            segments,
+        };
+    }
+
+    /**
+     * Calculate pricing for a single method covering the full range
+     */
+    private calculateSingleMethodOption(
+        method: any,
+        startLevel: number,
+        endLevel: number,
+        serviceModifiers: any[]
+    ): MethodOption | null {
+        const xpRequired = getXpBetweenLevels(startLevel, endLevel);
+        const basePrice = method.basePrice * xpRequired;
+
+        // Apply modifiers
+        let totalModifiers = 0;
+        const modifiersList: MethodOption["modifiers"] = [];
+
+        // Apply service-level modifiers
+        for (const modifier of serviceModifiers) {
+            const modifierValue = Number(modifier.value);
+
+            if (modifier.modifierType === "PERCENTAGE") {
+                const addedValue = basePrice * (modifierValue / 100);
+                totalModifiers += addedValue;
+
+                modifiersList.push({
+                    name: modifier.name,
+                    type: modifier.modifierType,
+                    displayType: modifier.displayType,
+                    value: modifierValue,
+                    applied: true,
+                });
+            } else if (modifier.modifierType === "FIXED") {
+                totalModifiers += modifierValue;
+
+                modifiersList.push({
+                    name: modifier.name,
+                    type: modifier.modifierType,
+                    displayType: modifier.displayType,
+                    value: modifierValue,
+                    applied: true,
+                });
+            }
+        }
+
+        // Apply method-level modifiers
+        for (const modifier of method.modifiers || []) {
+            const modifierValue = Number(modifier.value);
+
+            if (modifier.modifierType === "PERCENTAGE") {
+                const addedValue = basePrice * (modifierValue / 100);
+                totalModifiers += addedValue;
+
+                modifiersList.push({
+                    name: modifier.name,
+                    type: modifier.modifierType,
+                    displayType: modifier.displayType,
+                    value: modifierValue,
+                    applied: true,
+                });
+            } else if (modifier.modifierType === "FIXED") {
+                totalModifiers += modifierValue;
+
+                modifiersList.push({
+                    name: modifier.name,
+                    type: modifier.modifierType,
+                    displayType: modifier.displayType,
+                    value: modifierValue,
+                    applied: true,
+                });
+            }
+        }
+
+        const finalPrice = basePrice + totalModifiers;
+
+        return {
+            methodId: method.id,
+            methodName: method.name,
+            basePrice: method.basePrice,
+            pricingUnit: "PER_LEVEL",
+            levelRanges: [{
+                startLevel,
+                endLevel,
+                xpRequired,
+                totalPrice: finalPrice,
+                methodName: method.name,
+                ratePerXp: method.basePrice,
+            }],
+            modifiers: modifiersList,
+            subtotal: Math.round(basePrice * 100) / 100,
+            modifiersTotal: Math.round(totalModifiers * 100) / 100,
+            finalPrice: Math.round(finalPrice * 100) / 100,
+            isCheapest: false,
+        };
+    }
+
+    /**
+     * Calculate pricing for a single method segment (partial range)
+     * Used to show individual segment prices like "GOTR 27-77" or "Blood Runes 77-90"
+     */
+    private calculateSingleMethodSegment(
+        method: any,
+        startLevel: number,
+        endLevel: number,
+        serviceModifiers: any[]
+    ): MethodOption | null {
+        const xpRequired = getXpBetweenLevels(startLevel, endLevel);
+        const basePrice = method.basePrice * xpRequired;
+
+        // Apply modifiers
+        let totalModifiers = 0;
+        const modifiersList: MethodOption["modifiers"] = [];
+
+        // Apply service-level modifiers
+        for (const modifier of serviceModifiers) {
+            const modifierValue = Number(modifier.value);
+
+            if (modifier.modifierType === "PERCENTAGE") {
+                const addedValue = basePrice * (modifierValue / 100);
+                totalModifiers += addedValue;
+
+                modifiersList.push({
+                    name: modifier.name,
+                    type: modifier.modifierType,
+                    displayType: modifier.displayType,
+                    value: modifierValue,
+                    applied: true,
+                });
+            } else if (modifier.modifierType === "FIXED") {
+                totalModifiers += modifierValue;
+
+                modifiersList.push({
+                    name: modifier.name,
+                    type: modifier.modifierType,
+                    displayType: modifier.displayType,
+                    value: modifierValue,
+                    applied: true,
+                });
+            }
+        }
+
+        // Apply method-level modifiers
+        for (const modifier of method.modifiers || []) {
+            const modifierValue = Number(modifier.value);
+
+            if (modifier.modifierType === "PERCENTAGE") {
+                const addedValue = basePrice * (modifierValue / 100);
+                totalModifiers += addedValue;
+
+                modifiersList.push({
+                    name: modifier.name,
+                    type: modifier.modifierType,
+                    displayType: modifier.displayType,
+                    value: modifierValue,
+                    applied: true,
+                });
+            } else if (modifier.modifierType === "FIXED") {
+                totalModifiers += modifierValue;
+
+                modifiersList.push({
+                    name: modifier.name,
+                    type: modifier.modifierType,
+                    displayType: modifier.displayType,
+                    value: modifierValue,
+                    applied: true,
+                });
+            }
+        }
+
+        const finalPrice = basePrice + totalModifiers;
+
+        // Create a descriptive name with the segment range
+        const segmentName = `${method.name} (${startLevel}-${endLevel})`;
+
+        return {
+            methodId: `${method.id}_segment_${startLevel}_${endLevel}`,
+            methodName: segmentName,
+            basePrice: method.basePrice,
+            pricingUnit: "PER_LEVEL",
+            levelRanges: [{
+                startLevel,
+                endLevel,
+                xpRequired,
+                totalPrice: finalPrice,
+                methodName: segmentName,
+                ratePerXp: method.basePrice,
+            }],
+            modifiers: modifiersList,
+            subtotal: Math.round(basePrice * 100) / 100,
+            modifiersTotal: Math.round(totalModifiers * 100) / 100,
+            finalPrice: Math.round(finalPrice * 100) / 100,
+            isCheapest: false,
         };
     }
 

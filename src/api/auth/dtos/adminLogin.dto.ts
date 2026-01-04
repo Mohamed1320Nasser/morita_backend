@@ -1,16 +1,7 @@
-import { IsNotEmpty, IsObject, IsOptional, IsPositive } from "class-validator";
 import { Expose } from "class-transformer";
+import { LoginDto } from "./login.dto";
 
-export class adminLoginDto {
-    @IsNotEmpty({ message: "Email Can Not Be Empty" })
-    email: string;
-
-    @IsNotEmpty({ message: "Password Can Not Be Empty" })
-    password: string;
-
-    @IsOptional()
-    identifier: string;
-}
+export class adminLoginDto extends LoginDto {}
 
 export class adminloginResultDto {
     @Expose()

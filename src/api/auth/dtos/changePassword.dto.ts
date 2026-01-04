@@ -1,14 +1,14 @@
-import { IsNotEmpty, IsString, IsUUID, Matches } from "class-validator";
+import { IsNotEmpty, IsString, Matches } from "class-validator";
 
 export class ChangePasswordDto {
-    @IsNotEmpty({ message: "Old Passwoed can not be empty" })
-    @IsString({ message: "Old Passwoed Can Not Be Empty" })
+    @IsNotEmpty({ message: "Old password cannot be empty" })
+    @IsString({ message: "Old password must be a string" })
     old: string;
 
-    @IsNotEmpty({ message: "New Passwoed not be empty" })
-    @IsString({ message: "New Passwoed Can Not Be Empty" })
+    @IsNotEmpty({ message: "New password cannot be empty" })
+    @IsString({ message: "New password must be a string" })
     @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/, {
-        message: "New Password must be strong",
+        message: "New password must be strong",
     })
     new: string;
 }

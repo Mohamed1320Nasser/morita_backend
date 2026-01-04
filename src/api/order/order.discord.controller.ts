@@ -9,12 +9,12 @@ import {
 } from "routing-controllers";
 import { Service } from "typedi";
 import OrderService from "./order.service";
-import prisma from "../../common/prisma/client";
 import {
     DiscordCreateOrderDto,
     GetOrderListDto,
     ClaimOrderDto,
 } from "./dtos";
+import logger from "../../common/loggers";
 
 @JsonController("/discord/orders")
 @Service()
@@ -33,30 +33,7 @@ export default class DiscordOrderController {
 
     @Get("/number/:orderNumber")
     async getOrderByNumber(@Param("orderNumber") orderNumber: string) {
-        const orderNum = parseInt(orderNumber);
-
-        if (isNaN(orderNum) || orderNum <= 0) {
-            throw new Error("Order number must be a positive integer");
-        }
-
-        const order = await prisma.order.findUnique({
-            where: { orderNumber: orderNum },
-            include: {
-                customer: true,
-                worker: true,
-                support: true,
-                service: true,
-                method: true,
-                paymentMethod: true,
-                account: true,
-            },
-        });
-
-        if (!order) {
-            throw new Error(`Order #${orderNumber} not found`);
-        }
-
-        return order;
+        return await this.orderService.getOrderByNumber(orderNumber);
     }
 
     @Post("/:orderId/claim")
@@ -77,22 +54,7 @@ export default class DiscordOrderController {
         @Param("discordId") discordId: string,
         @QueryParams() query: GetOrderListDto
     ) {
-        const user = await prisma.user.findUnique({ where: { discordId } });
-
-        if (!user) {
-            return {
-                list: [],
-                total: 0,
-                page: 1,
-                limit: query.limit || 20,
-                totalPages: 0,
-            };
-        }
-
-        return await this.orderService.getOrders({
-            ...query,
-            customerId: user.id,
-        });
+        return await this.orderService.getOrdersByDiscordId(discordId, query);
     }
 
     @Put("/:orderId/assign")
@@ -100,19 +62,7 @@ export default class DiscordOrderController {
         @Param("orderId") orderId: string,
         @Body() data: { workerDiscordId: string; assignedByDiscordId: string; notes?: string }
     ) {
-        const [worker, assigner] = await Promise.all([
-            prisma.user.findUnique({ where: { discordId: data.workerDiscordId } }),
-            prisma.user.findUnique({ where: { discordId: data.assignedByDiscordId } }),
-        ]);
-
-        if (!worker) throw new Error("Worker not found");
-        if (!assigner) throw new Error("Assigner not found");
-
-        return await this.orderService.assignWorker(orderId, {
-            workerId: worker.id,
-            assignedById: assigner.id,
-            notes: data.notes,
-        });
+        return await this.orderService.assignWorkerByDiscordId(orderId, data);
     }
 
     @Put("/:orderId/start")
@@ -120,14 +70,7 @@ export default class DiscordOrderController {
         @Param("orderId") orderId: string,
         @Body() data: { workerDiscordId: string }
     ) {
-        const worker = await prisma.user.findUnique({ where: { discordId: data.workerDiscordId } });
-        if (!worker) throw new Error("Worker not found");
-
-        return await this.orderService.updateOrderStatus(orderId, {
-            status: "IN_PROGRESS" as any,
-            changedById: worker.id,
-            reason: "Worker started working on order",
-        });
+        return await this.orderService.startOrderByDiscordId(orderId, data.workerDiscordId);
     }
 
     @Put("/:orderId/complete")
@@ -135,14 +78,7 @@ export default class DiscordOrderController {
         @Param("orderId") orderId: string,
         @Body() data: { workerDiscordId: string; completionNotes?: string }
     ) {
-        const worker = await prisma.user.findUnique({ where: { discordId: data.workerDiscordId } });
-        if (!worker) throw new Error("Worker not found");
-
-        return await this.orderService.completeOrder({
-            orderId,
-            workerId: worker.id,
-            completionNotes: data.completionNotes,
-        });
+        return await this.orderService.completeOrderByDiscordId(orderId, data);
     }
 
     @Put("/:orderId/confirm")
@@ -150,14 +86,7 @@ export default class DiscordOrderController {
         @Param("orderId") orderId: string,
         @Body() data: { customerDiscordId: string; feedback?: string }
     ) {
-        const customer = await prisma.user.findUnique({ where: { discordId: data.customerDiscordId } });
-        if (!customer) throw new Error("Customer not found");
-
-        return await this.orderService.confirmOrderCompletion({
-            orderId,
-            customerId: customer.id,
-            feedback: data.feedback,
-        });
+        return await this.orderService.confirmOrderByDiscordId(orderId, data);
     }
 
     @Put("/:orderId/cancel")
@@ -170,16 +99,7 @@ export default class DiscordOrderController {
             refundAmount?: number;
         }
     ) {
-        const cancelledBy = await prisma.user.findUnique({ where: { discordId: data.cancelledByDiscordId } });
-        if (!cancelledBy) throw new Error("User not found");
-
-        return await this.orderService.cancelOrder({
-            orderId,
-            cancelledById: cancelledBy.id,
-            cancellationReason: data.cancellationReason,
-            refundType: data.refundType,
-            refundAmount: data.refundAmount,
-        });
+        return await this.orderService.cancelOrderByDiscordId(orderId, data);
     }
 
     @Put("/:orderId/channel")
@@ -187,13 +107,7 @@ export default class DiscordOrderController {
         @Param("orderId") orderId: string,
         @Body() data: { orderChannelId: string; claimMessageId?: string }
     ) {
-        return await prisma.order.update({
-            where: { id: orderId },
-            data: {
-                orderChannelId: data.orderChannelId,
-                claimMessageId: data.claimMessageId,
-            },
-        });
+        return await this.orderService.updateOrderChannel(orderId, data);
     }
 
     @Put("/:orderId/message")
@@ -204,13 +118,7 @@ export default class DiscordOrderController {
             pinnedMessageId?: string;
         }
     ) {
-        return await prisma.order.update({
-            where: { id: orderId },
-            data: {
-                ticketChannelId: data.ticketChannelId,
-                pinnedMessageId: data.pinnedMessageId,
-            },
-        });
+        return await this.orderService.updateOrderMessage(orderId, data);
     }
 
     @Put("/:orderId/review")
@@ -222,42 +130,38 @@ export default class DiscordOrderController {
             review?: string;
         }
     ) {
-        // Validate customer
-        const customer = await prisma.user.findUnique({
-            where: { discordId: data.customerDiscordId }
-        });
-        if (!customer) throw new Error("Customer not found");
+        return await this.orderService.submitOrderReview(orderId, data);
+    }
 
-        // Validate rating
-        if (data.rating < 1 || data.rating > 5) {
-            throw new Error("Rating must be between 1 and 5");
+    @Post("/:orderId/report-issue")
+    async reportIssue(
+        @Param("orderId") orderId: string,
+        @Body() data: {
+            reportedByDiscordId: string;
+            issueDescription: string;
+            priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
         }
+    ) {
+        return await this.orderService.reportIssue(orderId, data);
+    }
 
-        // Get order and validate it belongs to customer
-        const order = await prisma.order.findUnique({
-            where: { id: orderId },
-            include: { customer: true }
-        });
+    @Get("/issues/:issueId")
+    async getIssue(@Param("issueId") issueId: string) {
+        return await this.orderService.getIssue(issueId);
+    }
 
-        if (!order) throw new Error("Order not found");
-        if (order.customerId !== customer.id) {
-            throw new Error("You are not the customer for this order");
+    @Put("/issues/:issueId")
+    async updateIssue(
+        @Param("issueId") issueId: string,
+        @Body() data: {
+            discordMessageId?: string;
+            discordChannelId?: string;
+            status?: string;
+            resolution?: string;
+            resolvedByDiscordId?: string;
         }
-
-        // Check if already reviewed
-        if (order.rating || order.review) {
-            throw new Error("Order has already been reviewed");
-        }
-
-        // Update order with review
-        return await prisma.order.update({
-            where: { id: orderId },
-            data: {
-                rating: data.rating,
-                review: data.review,
-                reviewedAt: new Date(),
-            },
-        });
+    ) {
+        return await this.orderService.updateIssue(issueId, data);
     }
 
     @Put("/:orderId/status")
@@ -269,42 +173,9 @@ export default class DiscordOrderController {
             workerDiscordId?: string;
             reason?: string;
             notes?: string;
+            isAdminOverride?: boolean;
         }
     ) {
-        // Support both changedByDiscordId and workerDiscordId for backwards compatibility
-        const discordId = data.changedByDiscordId || data.workerDiscordId;
-
-        if (!discordId) {
-            throw new Error("Either changedByDiscordId or workerDiscordId is required");
-        }
-
-        // Get user with role to check admin status server-side
-        const changedBy = await prisma.user.findUnique({
-            where: { discordId },
-            select: { id: true, role: true, fullname: true }
-        });
-        if (!changedBy) throw new Error("User not found");
-
-        // Check if user is admin/system based on their role in database (server-side validation)
-        const isAdmin = changedBy.role === 'admin' || changedBy.role === 'system';
-
-        // Get order details to validate assignment
-        const order = await this.orderService.getOrderById(orderId);
-
-        // If order has a worker assigned and caller is not admin, validate they are the assigned worker
-        if (order.workerId && !isAdmin) {
-            if (order.worker?.discordId !== discordId) {
-                throw new Error(
-                    `Only the assigned worker can change this order's status. This order is assigned to ${order.worker?.fullname || 'another worker'}.`
-                );
-            }
-        }
-
-        return await this.orderService.updateOrderStatus(orderId, {
-            status: data.status as any,
-            changedById: changedBy.id,
-            reason: data.reason || `Status changed to ${data.status}`,
-            notes: data.notes,
-        });
+        return await this.orderService.updateOrderStatusByDiscordId(orderId, data);
     }
 }

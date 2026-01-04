@@ -14,6 +14,9 @@ import { handleCreateOrderJobModal } from "./create-order-job.modal";
 import { handleCompleteOrderModal } from "./complete-order.modal";
 import { handleReportIssueModal } from "./report-issue.modal";
 import { handleOrderReviewModal } from "./order-review.modal";
+import { handleResolveApproveWorkCompleteModal } from "./resolve-approve-work-complete.modal";
+import { handleResolveRequestCorrectionsModal } from "./resolve-request-corrections.modal";
+import { handleResolveApproveCustomerRefundModal } from "./resolve-approve-customer-refund.modal";
 
 // Modal handler mapping (exact matches)
 const modalHandlers: {
@@ -59,6 +62,18 @@ const patternModalHandlers: Array<{
     {
         pattern: /^order_review_/,
         handler: handleOrderReviewModal,
+    },
+    {
+        pattern: /^resolve_approve_work_modal_/,
+        handler: handleResolveApproveWorkCompleteModal,
+    },
+    {
+        pattern: /^resolve_corrections_modal_/,
+        handler: handleResolveRequestCorrectionsModal,
+    },
+    {
+        pattern: /^resolve_refund_modal_/,
+        handler: handleResolveApproveCustomerRefundModal,
     },
 ];
 

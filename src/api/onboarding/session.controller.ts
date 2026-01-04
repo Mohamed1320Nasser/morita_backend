@@ -18,21 +18,18 @@ import API from "../../common/config/api.types";
 export default class SessionController {
     constructor(private onboardingService: OnboardingService) {}
 
-    // Create session when user joins Discord
     @Post("/")
     @HttpCode(201)
     async createSession(@Body() dto: CreateSessionDto) {
         return await this.onboardingService.createSession(dto);
     }
 
-    // Get session by Discord ID
     @Get("/:discordId")
     @HttpCode(200)
     async getSession(@Param("discordId") discordId: string) {
         return await this.onboardingService.getSession(discordId);
     }
 
-    // Update session progress
     @Patch("/:discordId")
     @HttpCode(200)
     async updateSession(
@@ -42,14 +39,12 @@ export default class SessionController {
         return await this.onboardingService.updateSession(discordId, dto);
     }
 
-    // Complete onboarding (assign role, create user)
     @Post("/:discordId/complete")
     @HttpCode(200)
     async completeOnboarding(@Param("discordId") discordId: string) {
         return await this.onboardingService.completeOnboarding(discordId);
     }
 
-    // Get incomplete sessions (Admin analytics)
     @Get("/")
     @Authorized(API.Role.admin)
     @HttpCode(200)
@@ -63,7 +58,6 @@ export default class SessionController {
 export class RegistrationController {
     constructor(private onboardingService: OnboardingService) {}
 
-    // Create user account after onboarding completion
     @Post("/")
     @HttpCode(201)
     async registerUser(@Body() dto: RegisterUserDto) {

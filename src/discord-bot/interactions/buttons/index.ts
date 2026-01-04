@@ -21,7 +21,8 @@ import { handleResetCalculator } from "./reset-calculator.button";
 import { handleOrderFromPrice } from "./order-from-price.button";
 import { handleRecalculate } from "./recalculate.button";
 import { handleConfirmOrder } from "./confirm-order.button";
-import { handleCancelOrder } from "./cancel-order.button";
+// REMOVED: Cancel order is now a command only (/cancel-order)
+// import { handleCancelOrder } from "./cancel-order.button";
 import { handleAcceptOrder } from "./accept-order.button";
 import { handleUpdateStatus } from "./update-status.button";
 import { handleCompleteOrder } from "./complete-order.button";
@@ -39,6 +40,8 @@ import { handleReportIssueButton } from "./report-issue.button";
 import { handleOrderInfoButton } from "./order-info.button";
 import { handleStartWork } from "./start-work.button";
 import { handleLeaveReviewButton } from "./leave-review.button";
+import { handleConfirmCloseTicket, handleCancelCloseTicket } from "./confirm-close-ticket.button";
+import { handleResolveIssueButton } from "./resolve-issue.button";
 
 // Button handler mapping
 const buttonHandlers: {
@@ -56,7 +59,7 @@ const buttonHandlers: {
     order_from_price: handleOrderFromPrice,
     recalculate: handleRecalculate,
     confirm_order: handleConfirmOrder,
-    cancel_order: handleCancelOrder,
+    // REMOVED: cancel_order button - now command only (/cancel-order)
     accept_order: handleAcceptOrder,
     update_status: handleUpdateStatus,
     complete_order: handleCompleteOrder,
@@ -197,6 +200,26 @@ export async function handleButtonInteraction(
         // Create ticket buttons (for all ticket types)
         if (customId.startsWith("create_ticket_")) {
             await handleCreateTicket(interaction);
+            return;
+        }
+
+        // Confirm close ticket button (Support/Admin confirmation)
+        if (customId.startsWith("confirm_close_ticket_")) {
+            await handleConfirmCloseTicket(interaction);
+            return;
+        }
+
+        // Cancel close ticket button (Support/Admin cancellation)
+        if (customId.startsWith("cancel_close_ticket_")) {
+            await handleCancelCloseTicket(interaction);
+            return;
+        }
+
+        // Resolve issue buttons (Admin/Support issue resolution)
+        if (customId.startsWith("resolve_approve_work_") ||
+            customId.startsWith("resolve_corrections_") ||
+            customId.startsWith("resolve_refund_")) {
+            await handleResolveIssueButton(interaction);
             return;
         }
 

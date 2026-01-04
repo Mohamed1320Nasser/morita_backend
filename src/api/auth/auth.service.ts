@@ -308,7 +308,6 @@ export default class AuthService {
             password: password,
         });
 
-        // await this.sessionService.expireAllUserSessions(userId);
         return res;
     }
 

@@ -1,9 +1,9 @@
-import { IsNotEmpty, IsUUID } from "class-validator";
+import { Transform } from "class-transformer";
+import { IsNotEmpty } from "class-validator";
+import { BaseOTPRequestDto } from "./resendOTP.dto";
 
-export class VerifyOTPDto {
-    @IsUUID(undefined, { message: "request Id is not valid" })
-    requestId: string;
-
-    @IsNotEmpty({ message: "otp Can Not Be Empty" })
+export class VerifyOTPDto extends BaseOTPRequestDto {
+    @IsNotEmpty({ message: "OTP cannot be empty" })
+    @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
     otp: string;
 }

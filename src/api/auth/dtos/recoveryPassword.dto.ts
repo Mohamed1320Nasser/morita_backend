@@ -1,7 +1,8 @@
+import { Transform } from "class-transformer";
 import { IsEmail, IsNotEmpty, IsStrongPassword, IsUUID } from "class-validator";
 
 export class recoverPasswordDto {
-    @IsNotEmpty({ message: "New Password Can Not Be Empty" })
+    @IsNotEmpty({ message: "New password cannot be empty" })
     @IsStrongPassword(
         {
             minLength: 8,
@@ -17,10 +18,12 @@ export class recoverPasswordDto {
     )
     new: string;
 
-    @IsUUID(undefined, { message: "request Id is not valid" })
+    @IsUUID(undefined, { message: "Request ID is not valid" })
+    @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
     requestId: string;
 
-    @IsNotEmpty({ message: "email can not be empty" })
-    @IsEmail({}, { message: "email must be a valid email address" })
+    @IsNotEmpty({ message: "Email cannot be empty" })
+    @IsEmail({}, { message: "Email must be a valid email address" })
+    @Transform(({ value }) => (typeof value === "string" ? value.trim().toLowerCase() : value))
     email: string;
 }
