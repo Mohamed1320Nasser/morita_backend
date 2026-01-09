@@ -193,6 +193,9 @@ const startBot = async (retries = 3, delay = 5000) => {
     }
 };
 
-startBot();
+// Don't auto-start the bot when this module is imported
+// The bot should only be started explicitly from start.ts
+// startBot();
 
 export default client;
+export { startBot };

@@ -5,7 +5,7 @@ import PricingCalculatorService from "../../../api/pricingCalculator/pricingCalc
 import Container from "typedi";
 
 // Add version check to verify new code is running
-const CALCULATOR_VERSION = "v2.0-with-discounts-and-gold";
+const CALCULATOR_VERSION = "v3.0-improved-segments-display";
 
 export async function handleCalculatorModal(
     interaction: ModalSubmitInteraction
@@ -139,19 +139,11 @@ export async function handleCalculatorModal(
                     const price = method.finalPrice.toFixed(2);
                     const rate = method.basePrice.toFixed(8);
 
-                    // Calculate OSRS gold
-                    const osrsGoldRate = 5.5; // 5.5M per $1 USD
-                    const osrsGold = method.finalPrice * osrsGoldRate;
-                    const osrsGoldFormatted = osrsGold >= 1000
-                        ? `${(osrsGold / 1000).toFixed(2)}B`
-                        : `${osrsGold.toFixed(1)}M`;
-
-                    logger.info(`[Calculator] 💰 ${method.methodName}: $${price} = ${osrsGoldFormatted} OSRS Gold`);
+                    logger.info(`[Calculator] 💰 ${method.methodName}: $${price}`);
 
                     // Create visually appealing line with proper spacing
                     priceLines.push(`${indicator} **${method.methodName}**`);
-                    priceLines.push(`   💰 Price: \`$${price}\` • Rate: \`${rate} $/XP\``);
-                    priceLines.push(`   🔥 \`${osrsGoldFormatted}\` OSRS Gold`);
+                    priceLines.push(`   💰 \`$${price}\``);
                     priceLines.push(''); // Empty line for spacing
                 }
 
@@ -172,25 +164,34 @@ export async function handleCalculatorModal(
                     // Separate modifiers by type
                     const discounts = cheapest.modifiers.filter(m => m.applied && Number(m.value) < 0);
                     const upcharges = cheapest.modifiers.filter(m => m.applied && Number(m.value) > 0);
-                    const notes = cheapest.modifiers.filter(m => !m.applied);
 
                     // Build beautiful breakdown
                     let breakdown = `\`\`\`yml\n`;
                     breakdown += `Service:        ${data.service.name}\n`;
-                    breakdown += `Method:         ${cheapest.methodName}\n`;
+                    breakdown += `─────────────────────────────────────────\n`;
+                    breakdown += `Levels:         ${data.levels.start} → ${data.levels.end}\n`;
+                    breakdown += `XP Required:    ${data.levels.formattedXp}\n`;
                     breakdown += `─────────────────────────────────────────\n`;
 
-                    // Show actual level range for the method (not user input)
-                    const actualLevels = cheapest.levelRanges && cheapest.levelRanges.length > 0
-                        ? `${cheapest.levelRanges[0].startLevel} → ${cheapest.levelRanges[0].endLevel}`
-                        : `${data.levels.start} → ${data.levels.end}`;
+                    // Sort level ranges by start level
+                    const sortedRanges = cheapest.levelRanges
+                        ? [...cheapest.levelRanges].sort((a, b) => a.startLevel - b.startLevel)
+                        : [];
 
-                    logger.info('[Calculator] 📊 Level ranges: ' + JSON.stringify(cheapest.levelRanges));
-                    logger.info('[Calculator] 📊 Showing levels: ' + actualLevels);
+                    logger.info('[Calculator] 📊 Displaying ' + sortedRanges.length + ' segment(s)');
 
-                    breakdown += `Levels:         ${actualLevels}\n`;
-                    breakdown += `XP Required:    ${data.levels.formattedXp}\n`;
-                    breakdown += `Rate:           ${cheapest.basePrice.toFixed(8)} $/XP\n`;
+                    // Display ALL segments
+                    if (sortedRanges.length > 0) {
+                        for (const segment of sortedRanges) {
+                            breakdown += `\n📊 ${segment.startLevel}-${segment.endLevel}\n`;
+                            breakdown += `Method:         ${segment.methodName || 'N/A'}\n`;
+                            breakdown += `Rate:           ${(segment.ratePerXp || 0).toFixed(8)} $/XP\n`;
+                            breakdown += `XP:             ${segment.xpRequired.toLocaleString()}\n`;
+                            breakdown += `Cost:           $${segment.totalPrice.toFixed(2)}\n`;
+                        }
+                        breakdown += `\n`;
+                    }
+
                     breakdown += `─────────────────────────────────────────\n`;
                     breakdown += `Base Cost:      $${cheapest.subtotal.toFixed(2)}\n`;
 
@@ -220,20 +221,12 @@ export async function handleCalculatorModal(
 
                     breakdown += `\`\`\``;
 
-                    // Calculate OSRS gold conversion (1 USD = 5.5M OSRS gold average)
-                    const osrsGoldRate = 5.5; // 5.5M per $1 USD
-                    const osrsGold = cheapest.finalPrice * osrsGoldRate;
-                    const osrsGoldFormatted = osrsGold >= 1000
-                        ? `${(osrsGold / 1000).toFixed(3)}B`
-                        : `${osrsGold.toFixed(1)}M`;
+                    logger.info('[Calculator] 💰 Final price: $' + cheapest.finalPrice.toFixed(2));
 
-                    logger.info('[Calculator] 🔥 Final breakdown OSRS gold: ' + osrsGoldFormatted + ' for $' + cheapest.finalPrice.toFixed(2));
-
-                    // Add final price in ANSI color with OSRS gold
+                    // Add final price in ANSI color
                     breakdown += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${cheapest.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
-                    breakdown += `\`\`\`ansi\n\u001b[1;33m🔥 ${osrsGoldFormatted} OSRS Gold\u001b[0m\n\`\`\``;
 
-                    logger.info('[Calculator] ✅ Sending embed with all features');
+                    logger.info('[Calculator] ✅ Sending embed with all segments');
 
                     embed.addFields({
                         name: "✅ Recommended Option — Full Breakdown",

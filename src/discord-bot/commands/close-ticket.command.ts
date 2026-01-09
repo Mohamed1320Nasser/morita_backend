@@ -30,7 +30,6 @@ export default {
         try {
             await interaction.deferReply({ ephemeral: true });
 
-            // Check if this is a ticket channel
             const channel = interaction.channel;
             if (!channel || !(channel instanceof TextChannel)) {
                 await interaction.editReply({
@@ -39,7 +38,6 @@ export default {
                 return;
             }
 
-            // Get the ticket service
             const ticketService = getTicketService(interaction.client);
 
             // Get ticket by channel ID

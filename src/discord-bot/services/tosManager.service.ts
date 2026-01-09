@@ -3,6 +3,7 @@ import { onboardingConfig } from "../config/onboarding.config";
 import { discordConfig } from "../config/discord.config";
 import axios from "axios";
 import logger from "../../common/loggers";
+import { getMessagePersistence } from "./messagePersistence.service";
 
 export class TosManagerService {
     private client: Client;
@@ -48,15 +49,7 @@ export class TosManagerService {
                 throw new Error("TOS content is required and must be a string");
             }
 
-            try {
-                const messages = await channel.messages.fetch({ limit: 100 });
-                if (messages.size > 0) {
-                    await channel.bulkDelete(messages);
-                }
-            } catch (bulkDeleteError: any) {
-                logger.warn("Could not bulk delete old messages:", bulkDeleteError.message);
-            }
-
+            // Build embed
             const embed = new EmbedBuilder()
                 .setTitle(activeTos.title.substring(0, 256))
                 .setDescription(activeTos.content.substring(0, 4096))
@@ -74,6 +67,7 @@ export class TosManagerService {
                 embed.setFooter({ text: activeTos.footerText });
             }
 
+            // Build button
             const acceptButton = new ButtonBuilder()
                 .setCustomId(onboardingConfig.acceptTosButtonId)
                 .setLabel(activeTos.buttonLabel || "Accept Terms")
@@ -83,10 +77,19 @@ export class TosManagerService {
             const row = new ActionRowBuilder<ButtonBuilder>()
                 .addComponents(acceptButton);
 
-            await channel.send({
-                embeds: [embed as any],
-                components: [row as any]
-            });
+            // Use message persistence to create or edit existing message
+            const messagePersistence = getMessagePersistence(this.client);
+            await messagePersistence.ensureMessage(
+                onboardingConfig.tosChannelId,
+                "TOS",
+                {
+                    embeds: [embed as any],
+                    components: [row as any]
+                },
+                {
+                    pin: true  // Pin TOS message
+                }
+            );
 
             logger.info("TOS channel initialized successfully");
         } catch (error: any) {

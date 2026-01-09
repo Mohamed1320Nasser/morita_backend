@@ -43,6 +43,8 @@ if (!discordConfig.validate()) {
 }
 logger.info("Discord configuration validated");
 
-import "./index";
+// Import the client and startBot function
+import { startBot } from "./index";
 
-logger.info("Discord bot startup script loaded");
+logger.info("Discord bot startup script loaded - starting bot explicitly...");
+startBot();

@@ -5,6 +5,7 @@ import { buildPurchaseServicesMessage } from "../messages/purchaseServicesMessag
 import { buildPurchaseGoldMessage } from "../messages/purchaseGoldMessage";
 import { buildSellGoldMessage } from "../messages/sellGoldMessage";
 import { buildSwapCryptoMessage } from "../messages/swapCryptoMessage";
+import { getMessagePersistence } from "./messagePersistence.service";
 
 export class TicketCategoryManager {
     private client: Client;
@@ -174,53 +175,55 @@ export class TicketCategoryManager {
             // Purchase Services
             const purchaseServicesChannel = this.channels.get("purchaseServicesChannelId");
             if (purchaseServicesChannel) {
-                await this.clearAndSendMessage(purchaseServicesChannel, await buildPurchaseServicesMessage());
+                await this.ensureAndSendMessage(purchaseServicesChannel, await buildPurchaseServicesMessage());
             }
 
             // Purchase Gold
             const purchaseGoldChannel = this.channels.get("purchaseGoldChannelId");
             if (purchaseGoldChannel) {
-                await this.clearAndSendMessage(purchaseGoldChannel, await buildPurchaseGoldMessage());
+                await this.ensureAndSendMessage(purchaseGoldChannel, await buildPurchaseGoldMessage());
             }
 
             // Sell Gold
             const sellGoldChannel = this.channels.get("sellGoldChannelId");
             if (sellGoldChannel) {
-                await this.clearAndSendMessage(sellGoldChannel, await buildSellGoldMessage());
+                await this.ensureAndSendMessage(sellGoldChannel, await buildSellGoldMessage());
             }
 
             // Swap Crypto
             const swapCryptoChannel = this.channels.get("swapCryptoChannelId");
             if (swapCryptoChannel) {
-                await this.clearAndSendMessage(swapCryptoChannel, await buildSwapCryptoMessage());
+                await this.ensureAndSendMessage(swapCryptoChannel, await buildSwapCryptoMessage());
             }
 
-            logger.info("[TicketCategoryManager] Messages sent to all channels");
+            logger.info("[TicketCategoryManager] Messages ensured in all channels");
         } catch (error) {
-            logger.error("[TicketCategoryManager] Error sending messages:", error);
+            logger.error("[TicketCategoryManager] Error ensuring messages:", error);
             throw error;
         }
     }
 
     /**
-     * Clear channel and send new message
+     * Ensure message exists in channel (create or edit)
      */
-    private async clearAndSendMessage(
+    private async ensureAndSendMessage(
         channel: TextChannel,
         messageData: { embeds: any[]; components: any[] }
     ): Promise<void> {
         try {
-            // Fetch recent messages
-            const messages = await channel.messages.fetch({ limit: 10 });
+            const messagePersistence = getMessagePersistence(this.client);
 
-            // Delete bot's old messages
-            const botMessages = messages.filter(m => m.author.id === this.client.user?.id);
-            for (const msg of botMessages.values()) {
-                await msg.delete().catch(() => {});
-            }
+            // Use message persistence to create or edit existing message
+            await messagePersistence.ensureMessage(
+                channel.id,
+                "TICKET_MENU",
+                messageData,
+                {
+                    pin: false  // Don't pin ticket menu messages
+                }
+            );
 
-            // Send new message
-            await channel.send(messageData);
+            logger.info(`[TicketCategoryManager] Ensured message in ${channel.name}`);
         } catch (error) {
             logger.error(`[TicketCategoryManager] Error in ${channel.name}:`, error);
         }

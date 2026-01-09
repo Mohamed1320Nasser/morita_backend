@@ -21,7 +21,6 @@ import { currentUserChecker } from "./currentUserChecker";
 import * as Sentry from "@sentry/node";
 import { nodeProfilingIntegration } from "@sentry/profiling-node";
 import getControllers from "./api";
-import { startDiscordBot } from "./discord-bot/botStarter";
 
 (async () => {
     useContainer(Container);
@@ -106,9 +105,5 @@ import { startDiscordBot } from "./discord-bot/botStarter";
         logger.info(
             `server running on http://${Environment.Server.host}:${Environment.Server.port}/`
         );
-
-        // logger.info("Starting Discord bot...");
-        // await startDiscordBot();
-        logger.info("Discord bot started successfully");
     });
 })();

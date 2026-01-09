@@ -3,8 +3,8 @@
  * Run this once to fix existing users
  */
 
-import prisma from "../src/common/prisma/client";
-import logger from "../src/common/loggers";
+import prisma from "../common/prisma/client";
+import logger from "../common/loggers";
 
 async function syncDiscordRolesFromWallets() {
     logger.info("Starting Discord role sync from wallet types...");
@@ -43,7 +43,6 @@ async function syncDiscordRolesFromWallets() {
                 continue;
             }
 
-            // Only update if current discordRole is null or "customer"
             if (!user.discordRole || user.discordRole === "customer") {
                 await prisma.user.update({
                     where: { id: user.id },
@@ -69,7 +68,6 @@ async function syncDiscordRolesFromWallets() {
     }
 }
 
-// Run the script
 syncDiscordRolesFromWallets()
     .then(() => {
         logger.info("Script finished successfully");

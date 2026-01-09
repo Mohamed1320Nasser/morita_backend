@@ -42,6 +42,10 @@ import { handleStartWork } from "./start-work.button";
 import { handleLeaveReviewButton } from "./leave-review.button";
 import { handleConfirmCloseTicket, handleCancelCloseTicket } from "./confirm-close-ticket.button";
 import { handleResolveIssueButton } from "./resolve-issue.button";
+// Onboarding button handlers
+import acceptTosButton from "./accept-tos.button";
+import continueOnboardingButton from "./continue-onboarding.button";
+import retryOnboardingButton from "./retry-onboarding.button";
 
 // Button handler mapping
 const buttonHandlers: {
@@ -220,6 +224,22 @@ export async function handleButtonInteraction(
             customId.startsWith("resolve_corrections_") ||
             customId.startsWith("resolve_refund_")) {
             await handleResolveIssueButton(interaction);
+            return;
+        }
+
+        // Onboarding buttons
+        if (customId === "accept_tos") {
+            await acceptTosButton.execute(interaction);
+            return;
+        }
+
+        if (customId.startsWith("continue_onboarding_")) {
+            await continueOnboardingButton.execute(interaction);
+            return;
+        }
+
+        if (customId === "retry_onboarding") {
+            await retryOnboardingButton.execute(interaction);
             return;
         }
 

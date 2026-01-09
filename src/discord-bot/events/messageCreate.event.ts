@@ -205,82 +205,55 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
 
         // Add each method option as a separate choice
         if (data.methodOptions && data.methodOptions.length > 0) {
-            // Separate combined methods from individual segments
-            const combinedMethods: any[] = [];
-            const individualSegments: any[] = [];
-
-            for (const method of data.methodOptions) {
-                // Check if this is a segment (has range in name like "(23-27)")
-                if (method.methodName.includes('(') && method.methodName.includes('-') && method.methodName.includes(')')) {
-                    individualSegments.push(method);
-                } else {
-                    combinedMethods.push(method);
-                }
-            }
-
-            // Build pricing display with sections
+            // Build pricing display - just show all individual segments
             const priceLines: string[] = [];
 
-            // Section 1: Combined/Full Methods
-            if (combinedMethods.length > 0) {
-                priceLines.push(`**🎯 Complete Methods** (Full ${data.levels.start}-${data.levels.end})`);
+            // Get only individual segments (not Optimal Combination)
+            const individualSegments = data.methodOptions.filter((m: any) => {
+                // Skip "Optimal Combination" and other combined methods
+                return m.methodName.includes('(') && m.methodName.includes('-') && m.methodName.includes(')');
+            });
+
+            // Display all individual segments
+            for (const method of individualSegments) {
+                const price = method.finalPrice.toFixed(2);
+                const rate = method.basePrice ? method.basePrice.toFixed(8) : '0.00000000';
+
+                logger.info(`[PriceCalculator] 💰 ${method.methodName}: $${price}`);
+
+                // Compact display with rate
+                priceLines.push(`◻️ **${method.methodName}**`);
+                priceLines.push(`   💰 \`$${price}\` • Rate: \`${rate} $/XP\``);
                 priceLines.push(''); // Spacing
-
-                for (const method of combinedMethods) {
-                    const indicator = method.isCheapest ? "✅" : "◻️";
-                    const price = method.finalPrice.toFixed(2);
-
-                    // Calculate OSRS gold
-                    const osrsGoldRate = 5.5; // 5.5M per $1 USD
-                    const osrsGold = method.finalPrice * osrsGoldRate;
-                    const osrsGoldFormatted = osrsGold >= 1000
-                        ? `${(osrsGold / 1000).toFixed(2)}B`
-                        : `${osrsGold.toFixed(1)}M`;
-
-                    logger.info(`[PriceCalculator] 💰 ${method.methodName}: $${price} = ${osrsGoldFormatted} OSRS Gold`);
-
-                    // Compact display
-                    priceLines.push(`${indicator} **${method.methodName}**`);
-                    priceLines.push(`   💰 \`$${price}\` • 🔥 \`${osrsGoldFormatted}\` OSRS`);
-                    priceLines.push(''); // Spacing
-                }
-            }
-
-            // Section 2: Individual Segments
-            if (individualSegments.length > 0) {
-                priceLines.push('**📊 Individual Segments** (Partial Training)');
-                priceLines.push(''); // Spacing
-
-                for (const method of individualSegments) {
-                    const price = method.finalPrice.toFixed(2);
-
-                    // Calculate OSRS gold
-                    const osrsGoldRate = 5.5; // 5.5M per $1 USD
-                    const osrsGold = method.finalPrice * osrsGoldRate;
-                    const osrsGoldFormatted = osrsGold >= 1000
-                        ? `${(osrsGold / 1000).toFixed(2)}B`
-                        : `${osrsGold.toFixed(1)}M`;
-
-                    logger.info(`[PriceCalculator] 💰 ${method.methodName}: $${price} = ${osrsGoldFormatted} OSRS Gold`);
-
-                    // Compact display for segments
-                    priceLines.push(`◻️ **${method.methodName}**`);
-                    priceLines.push(`   💰 \`$${price}\` • 🔥 \`${osrsGoldFormatted}\` OSRS`);
-                    priceLines.push(''); // Spacing
-                }
             }
 
             // Remove last empty line
-            priceLines.pop();
+            if (priceLines.length > 0) {
+                priceLines.pop();
 
-            embed.addFields({
-                name: "💵 Pricing Options",
-                value: priceLines.join('\n'),
-                inline: false,
+                embed.addFields({
+                    name: "💵 Pricing Options",
+                    value: priceLines.join('\n'),
+                    inline: false,
+                });
+            }
+
+            // Show beautiful breakdown for cheapest COMPLETE option (not partial segments)
+            // Filter to only methods that cover the FULL requested range
+            const completeMethods = data.methodOptions.filter((m: any) => {
+                // Check if this method covers the full range
+                if (!m.levelRanges || m.levelRanges.length === 0) return false;
+
+                const minLevel = Math.min(...m.levelRanges.map((r: any) => r.startLevel));
+                const maxLevel = Math.max(...m.levelRanges.map((r: any) => r.endLevel));
+
+                return minLevel <= data.levels.start && maxLevel >= data.levels.end;
             });
 
-            // Show beautiful breakdown for cheapest option
-            const cheapest = data.methodOptions.find(m => m.isCheapest);
+            // Find cheapest complete method
+            const cheapest = completeMethods.length > 0
+                ? completeMethods.reduce((min, curr) => curr.finalPrice < min.finalPrice ? curr : min)
+                : data.methodOptions.find(m => m.isCheapest); // Fallback to original logic
             if (cheapest) {
                 const hasModifiers = cheapest.modifiersTotal !== 0;
 
@@ -304,8 +277,11 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
 
                 // Add each segment as its own field for professional display
                 if (cheapest.levelRanges && cheapest.levelRanges.length > 0) {
-                    for (let i = 0; i < cheapest.levelRanges.length; i++) {
-                        const range = cheapest.levelRanges[i];
+                    // Sort level ranges by start level
+                    const sortedRanges = [...cheapest.levelRanges].sort((a, b) => a.startLevel - b.startLevel);
+
+                    for (let i = 0; i < sortedRanges.length; i++) {
+                        const range = sortedRanges[i];
                         const methodName = range.methodName || cheapest.methodName;
                         const ratePerXp = range.ratePerXp || cheapest.basePrice;
                         const segmentPrice = range.totalPrice || 0;
@@ -351,20 +327,12 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
 
                 pricingSummary += `\`\`\``;
 
-                // Calculate OSRS gold conversion (1 USD = 5.5M OSRS gold average)
-                const osrsGoldRate = 5.5; // 5.5M per $1 USD
-                const osrsGold = cheapest.finalPrice * osrsGoldRate;
-                const osrsGoldFormatted = osrsGold >= 1000
-                    ? `${(osrsGold / 1000).toFixed(3)}B`
-                    : `${osrsGold.toFixed(1)}M`;
+                logger.info('[PriceCalculator] 💰 Final price: $' + cheapest.finalPrice.toFixed(2));
 
-                logger.info('[PriceCalculator] 🔥 Final breakdown OSRS gold: ' + osrsGoldFormatted + ' for $' + cheapest.finalPrice.toFixed(2));
-
-                // Add final price in ANSI color with OSRS gold
+                // Add final price in ANSI color
                 pricingSummary += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${cheapest.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
-                pricingSummary += `\`\`\`ansi\n\u001b[1;33m🔥 ${osrsGoldFormatted} OSRS Gold\u001b[0m\n\`\`\``;
 
-                logger.info('[PriceCalculator] ✅ Sending embed with all features');
+                logger.info('[PriceCalculator] ✅ Sending embed with all segments');
 
                 embed.addFields({
                     name: "💰 Price Summary",
@@ -555,12 +523,20 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
 
         const defaultPaymentMethod = paymentMethods[0];
 
+        // Get all active service modifier IDs to apply them automatically
+        const serviceModifierIds = (service.serviceModifiers || [])
+            .filter((m: any) => m.active)
+            .map((m: any) => m.id);
+
+        logger.info(`[PvM] Applying ${serviceModifierIds.length} service-level modifiers`);
+
         for (const method of allMethods) {
             try {
                 const result = await pricingService.calculatePrice({
                     methodId: method.id,
                     paymentMethodId: defaultPaymentMethod.id,
                     quantity: killCount,
+                    serviceModifierIds, // ✅ Pass service modifier IDs
                 });
 
                 logger.info(`[PvM] Method: ${method.name} | Base: $${result.basePrice} | Modifiers: $${result.breakdown?.totalModifiers || 0} | Final: $${result.finalPrice}`);
@@ -646,124 +622,226 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
     }
 }
 
-// Handler for !m command (Minigames - PER_ITEM pricing)
-async function handleMinigamesCommand(message: Message, apiService: ApiService) {
-    const prefix = discordConfig.prefix;
-    const args = message.content.slice(prefix.length + 2).trim().split(/\s+/);
+// Helper function to find minigame service or method
+function findMinigameItem(services: any[], searchTerm: string): {
+    service: any;
+    method: any | null;
+    showAllMethods: boolean;
+} | null {
+    const normalized = searchTerm.toLowerCase().trim();
 
-    if (args.length < 2) {
-        await message.reply({
-            content: "❌ **Invalid Command Format**\n\n" +
-                "**Usage:** `!m <game-name> <count>`\n" +
-                "**Example:** `!m barrows 100`",
-        });
-        return;
-    }
+    logger.info(`[Minigames] 🔍 Searching for: "${searchTerm}"`);
 
-    // Last argument is item/game count
-    const countStr = args[args.length - 1];
-    const count = parseInt(countStr);
-
-    if (isNaN(count) || count < 1) {
-        await message.reply({
-            content: "❌ **Invalid Count**\n\n" +
-                "Please specify a valid number.\n" +
-                "**Example:** `100`",
-        });
-        return;
-    }
-
-    // Service name is everything except the last argument
-    const serviceName = args.slice(0, -1).join(" ").toLowerCase();
-
-    logger.info(`[PriceCalculator] Command: !m ${serviceName} ${count} by ${message.author.tag}`);
-
-    // Send "calculating..." message
-    const thinkingMsg = await message.reply("🔢 Calculating price...");
-
-    // Get all services to find matching service
-    const services = await apiService.getAllServicesWithPricing();
-
-    // Find service by name or slug (filter for PER_ITEM services)
-    const service = services.find((s: any) => {
-        const matchesName = s.name.toLowerCase().includes(serviceName) ||
-            s.slug.toLowerCase().includes(serviceName);
+    // Filter for minigame services (PER_ITEM pricing)
+    // Note: We don't exclude any categories here - let the search find what matches
+    const minigameServices = services.filter((s: any) => {
         const hasPerItemPricing = s.pricingMethods?.some((m: any) => m.pricingUnit === 'PER_ITEM');
-        return matchesName && hasPerItemPricing;
+        return hasPerItemPricing;
     });
 
-    if (!service) {
-        await thinkingMsg.edit({
-            content: `❌ **Service Not Found**\n\n` +
-                `Could not find a minigame service matching "${serviceName}".\n\n` +
-                `Make sure the service supports per-item pricing.`,
-        });
-        return;
+    logger.info(`[Minigames] 📋 Found ${minigameServices.length} PER_ITEM services to search`);
+
+    // Log first few service names for debugging
+    minigameServices.slice(0, 5).forEach((s: any) => {
+        logger.info(`[Minigames]   - "${s.name}" (${s.pricingMethods?.filter((m: any) => m.pricingUnit === 'PER_ITEM').length} methods)`);
+    });
+
+    // Priority 1: Exact match on METHOD name
+    for (const service of minigameServices) {
+        if (!service.pricingMethods) continue;
+
+        const method = service.pricingMethods.find((m: any) =>
+            m.pricingUnit === 'PER_ITEM' &&
+            (m.name.toLowerCase() === normalized || m.slug?.toLowerCase() === normalized)
+        );
+
+        if (method) {
+            logger.info(`[Minigames] ✅ Exact method match: "${method.name}" in service "${service.name}"`);
+            return {
+                service,
+                method,
+                showAllMethods: false
+            };
+        }
     }
 
+    // Priority 2: Exact match on SERVICE name
+    const exactServiceMatch = minigameServices.find((s: any) =>
+        s.name.toLowerCase() === normalized ||
+        s.slug.toLowerCase() === normalized
+    );
+
+    if (exactServiceMatch) {
+        logger.info(`[Minigames] ✅ Exact service match: "${exactServiceMatch.name}"`);
+        return {
+            service: exactServiceMatch,
+            method: null,
+            showAllMethods: true
+        };
+    }
+
+    // Priority 3: Partial match on METHOD name
+    for (const service of minigameServices) {
+        if (!service.pricingMethods) continue;
+
+        const method = service.pricingMethods.find((m: any) =>
+            m.pricingUnit === 'PER_ITEM' &&
+            m.name.toLowerCase().includes(normalized)
+        );
+
+        if (method) {
+            logger.info(`[Minigames] ✅ Partial method match: "${method.name}" in service "${service.name}"`);
+            return {
+                service,
+                method,
+                showAllMethods: false
+            };
+        }
+    }
+
+    // Priority 4: Partial match on SERVICE name
+    const partialServiceMatch = minigameServices.find((s: any) =>
+        s.name.toLowerCase().includes(normalized) ||
+        s.slug.toLowerCase().includes(normalized)
+    );
+
+    if (partialServiceMatch) {
+        logger.info(`[Minigames] ✅ Partial service match: "${partialServiceMatch.name}"`);
+        return {
+            service: partialServiceMatch,
+            method: null,
+            showAllMethods: true
+        };
+    }
+
+    logger.warn(`[Minigames] ❌ No matches found for "${searchTerm}"`);
+    return null;
+}
+
+// Batch minigame quote handler
+async function handleBatchMinigameQuote(
+    message: Message,
+    apiService: ApiService,
+    items: Array<{ name: string; quantity: number }>
+) {
+    logger.info(`[Minigames] Batch quote: ${items.length} items by ${message.author.tag}`);
+    const thinkingMsg = await message.reply("🎮 Calculating batch Minigame quote...");
+
     try {
-        logger.info(`[PriceCalculator] Calculating with serviceId: ${service.id}, count: ${count}`);
-
+        const services = await apiService.getAllServicesWithPricing();
         const pricingService = new PricingCalculatorService();
-
-        // Get the first PER_ITEM pricing method
-        if (!service.pricingMethods || service.pricingMethods.length === 0) {
-            throw new Error('No pricing methods found for this service');
-        }
-
-        const method = service.pricingMethods.find((m: any) => m.pricingUnit === 'PER_ITEM');
-
-        if (!method) {
-            throw new Error('No PER_ITEM pricing method found for this service');
-        }
-
-        // Get payment methods to get the default one
         const paymentMethods = await apiService.getPaymentMethods();
+
         if (!paymentMethods || paymentMethods.length === 0) {
             throw new Error('No payment methods available');
         }
+
         const defaultPaymentMethod = paymentMethods[0];
 
-        // Calculate price
-        const result = await pricingService.calculatePrice({
-            methodId: method.id,
-            paymentMethodId: defaultPaymentMethod.id,
-            quantity: count,
-        });
+        const calculations: Array<{
+            itemName: string;
+            quantity: number;
+            service: any;
+            method: any;
+            result: any;
+        }> = [];
 
+        let totalPrice = 0;
+
+        for (const item of items) {
+            const searchResult = findMinigameItem(services, item.name);
+            if (!searchResult) {
+                await thinkingMsg.edit({
+                    content:
+                        `❌ **Service Not Found**\n\n` +
+                        `Could not find: **"${item.name}"**\n\n` +
+                        `*Try a different name or use \`/services\` to see all available services.*`,
+                });
+                return;
+            }
+
+            const { service, method: specificMethod } = searchResult;
+            const fullService = await apiService.getServiceWithPricing(service.id);
+
+            // Get service modifiers
+            const serviceModifierIds = (fullService.serviceModifiers || [])
+                .filter((m: any) => m.active)
+                .map((m: any) => m.id);
+
+            // Determine which method to use
+            let method = specificMethod;
+            if (!method) {
+                // Use cheapest method if service search
+                const allMethods = fullService.pricingMethods.filter((m: any) => m.pricingUnit === 'PER_ITEM');
+                let cheapestMethod = allMethods[0];
+                let cheapestPrice = Infinity;
+
+                for (const m of allMethods) {
+                    const result = await pricingService.calculatePrice({
+                        methodId: m.id,
+                        paymentMethodId: defaultPaymentMethod.id,
+                        quantity: item.quantity,
+                        serviceModifierIds,
+                    });
+                    if (result.finalPrice < cheapestPrice) {
+                        cheapestPrice = result.finalPrice;
+                        cheapestMethod = m;
+                    }
+                }
+                method = cheapestMethod;
+            }
+
+            const result = await pricingService.calculatePrice({
+                methodId: method.id,
+                paymentMethodId: defaultPaymentMethod.id,
+                quantity: item.quantity,
+                serviceModifierIds,
+            });
+
+            calculations.push({
+                itemName: item.name,
+                quantity: item.quantity,
+                service,
+                method,
+                result,
+            });
+
+            totalPrice += result.finalPrice;
+        }
+
+        // Build batch quote embed
         const embed = new EmbedBuilder()
-            .setTitle(`${service.emoji || '🎮'} ${service.name}`)
+            .setTitle(`🎮 Minigame Batch Quote`)
             .setColor(0xfca311)
             .setTimestamp();
 
+        let itemsList = `\`\`\`yml\n`;
+        for (let i = 0; i < calculations.length; i++) {
+            const calc = calculations[i];
+            itemsList += `${i + 1}. ${calc.method.name}\n`;
+            itemsList += `   Quantity:    ${calc.quantity.toLocaleString()} items\n`;
+            itemsList += `   Price:       $${calc.result.finalPrice.toFixed(2)}\n`;
+            if (i < calculations.length - 1) {
+                itemsList += `\n`;
+            }
+        }
+        itemsList += `\`\`\``;
+
         embed.addFields({
-            name: "🎮 Quantity",
-            value: `\`\`\`ansi\n\u001b[36m${count} Games/Items\u001b[0m\n\`\`\``,
+            name: "🎮 Minigames",
+            value: itemsList,
             inline: false,
         });
 
-        // Add modifiers info
-        const appliedModifiers = result.modifiers.filter((m: any) => m.applied);
-        if (appliedModifiers.length > 0) {
-            const modLines = appliedModifiers.map((m: any) =>
-                `${m.displayType === 'UPCHARGE' ? '⚠️' : '→'} ${m.name}`
-            );
-            embed.addFields({
-                name: "📝 Modifiers Applied",
-                value: modLines.join('\n').substring(0, 1024),
-                inline: false,
-            });
-        }
-
-        // Add total price
-        const totalSection =
-            `**Base Price:** $${result.basePrice.toFixed(2)}\n` +
-            (result.breakdown.totalModifiers > 0 ? `**Modifiers:** +$${result.breakdown.totalModifiers.toFixed(2)}\n` : '') +
-            `\`\`\`ansi\n\u001b[1;32mTotal: $${result.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
+        let totalDisplay = `\`\`\`yml\n`;
+        totalDisplay += `Items:          ${calculations.length}\n`;
+        totalDisplay += `─────────────────────────────────────────\n`;
+        totalDisplay += `\`\`\``;
+        totalDisplay += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${totalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
 
         embed.addFields({
-            name: "💰 Total Price",
-            value: totalSection,
+            name: "💰 Total",
+            value: totalDisplay,
             inline: false,
         });
 
@@ -772,9 +850,307 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
             embeds: [embed.toJSON() as any],
         });
 
-        logger.info(`[PriceCalculator] Result sent for ${service.name} (${count} items) to ${message.author.tag}`);
-    } catch (apiError) {
-        logger.error('[PriceCalculator] API error:', apiError);
+        logger.info(`[Minigames] ✅ Batch quote sent: ${calculations.length} items, total $${totalPrice.toFixed(2)}`);
+    } catch (error) {
+        logger.error('[Minigames] Batch quote error:', error);
+        await thinkingMsg.edit({
+            content: `❌ **Calculation Error**\n\nAn error occurred while calculating the batch quote.`,
+        });
+    }
+}
+
+// Handler for !m command (Minigames - PER_ITEM pricing)
+async function handleMinigamesCommand(message: Message, apiService: ApiService) {
+    const prefix = discordConfig.prefix;
+    const input = message.content.slice(prefix.length + 2).trim();
+
+    if (!input) {
+        await message.reply({
+            content: "❌ **Invalid Command Format**\n\n" +
+                "**Single Minigame:** `!m <game-name> <quantity>`\n" +
+                "**Multiple Minigames:** `!m <game1> <qty1>, <game2> <qty2>`\n" +
+                "**Examples:**\n" +
+                "• `!m barrows 100`\n" +
+                "• `!m toa 50, barrows 100`\n" +
+                "• `!m corrupted gauntlet 25`",
+        });
+        return;
+    }
+
+    // Parse multiple items (comma-separated)
+    const items: Array<{ name: string; quantity: number }> = [];
+
+    if (input.includes(',')) {
+        // Comma-separated format: "game1 qty1, game2 qty2"
+        const parts = input.split(',').map(s => s.trim());
+
+        for (const part of parts) {
+            const tokens = part.split(/\s+/);
+            if (tokens.length < 2) {
+                await message.reply({
+                    content: `❌ **Invalid Format**\n\nEach minigame needs a name and quantity.\n**Example:** \`barrows 100, toa 50\``,
+                });
+                return;
+            }
+
+            const qty = parseInt(tokens[tokens.length - 1]);
+            if (isNaN(qty) || qty < 1) {
+                await message.reply({
+                    content: `❌ **Invalid Quantity**\n\nQuantity must be a positive number in: \`${part}\``,
+                });
+                return;
+            }
+
+            const itemName = tokens.slice(0, -1).join(" ").toLowerCase();
+            items.push({ name: itemName, quantity: qty });
+        }
+    } else {
+        // Single item format: "game name quantity"
+        const args = input.split(/\s+/);
+
+        if (args.length < 2) {
+            await message.reply({
+                content: "❌ **Invalid Command Format**\n\n" +
+                    "**Usage:** `!m <game-name> <quantity>`\n" +
+                    "**Example:** `!m barrows 100`",
+            });
+            return;
+        }
+
+        const quantity = parseInt(args[args.length - 1]);
+        if (isNaN(quantity) || quantity < 1) {
+            await message.reply({
+                content: "❌ **Invalid Quantity**\n\n" +
+                    "Please specify a valid number.\n" +
+                    "**Example:** `100`",
+            });
+            return;
+        }
+
+        const gameName = args.slice(0, -1).join(" ").toLowerCase();
+        items.push({ name: gameName, quantity });
+    }
+
+    // Check if batch quote (multiple items)
+    if (items.length > 1) {
+        await handleBatchMinigameQuote(message, apiService, items);
+        return;
+    }
+
+    // Single item - continue with show all methods or specific method logic
+    const gameName = items[0].name;
+    const quantity = items[0].quantity;
+
+    logger.info(`[Minigames] Command: !m ${gameName} ${quantity} by ${message.author.tag}`);
+
+    // Send "calculating..." message
+    const thinkingMsg = await message.reply("🎮 Calculating Minigame service price...");
+
+    // Get all services
+    const services = await apiService.getAllServicesWithPricing();
+
+    // Find minigame item (service or method)
+    const searchResult = findMinigameItem(services, gameName);
+
+    if (!searchResult) {
+        await thinkingMsg.edit({
+            content:
+                `❌ **Service Not Found**\n\n` +
+                `Could not find: **"${gameName}"**\n\n` +
+                `*Try a different name or use \`/services\` to see all available services.*`,
+        });
+        return;
+    }
+
+    const { service, method: specificMethod, showAllMethods } = searchResult;
+
+    try {
+        logger.info(`[Minigames] Calculating with serviceId: ${service.id}, quantity: ${quantity}, showAllMethods: ${showAllMethods}`);
+
+        // Fetch full service details with pricing methods
+        const fullService = await apiService.getServiceWithPricing(service.id);
+
+        const pricingService = new PricingCalculatorService();
+
+        // Get payment methods
+        const paymentMethods = await apiService.getPaymentMethods();
+        if (!paymentMethods || paymentMethods.length === 0) {
+            throw new Error('No payment methods available');
+        }
+        const defaultPaymentMethod = paymentMethods[0];
+
+        // Get all active service modifier IDs
+        const serviceModifierIds = (fullService.serviceModifiers || [])
+            .filter((m: any) => m.active)
+            .map((m: any) => m.id);
+
+        logger.info(`[Minigames] Applying ${serviceModifierIds.length} service-level modifiers`);
+
+        if (!fullService.pricingMethods || fullService.pricingMethods.length === 0) {
+            throw new Error('No pricing methods found for this service');
+        }
+
+        // CASE A: Show all methods (when service name is used)
+        if (showAllMethods) {
+            logger.info('[Minigames] 📋 Showing all methods for service');
+
+            // Get all PER_ITEM methods
+            const allMethods = fullService.pricingMethods.filter((m: any) => m.pricingUnit === 'PER_ITEM');
+
+            if (allMethods.length === 0) {
+                throw new Error('No PER_ITEM pricing methods found for this service');
+            }
+
+            // Calculate price for each method
+            const methodResults = [];
+            for (const method of allMethods) {
+                const result = await pricingService.calculatePrice({
+                    methodId: method.id,
+                    paymentMethodId: defaultPaymentMethod.id,
+                    quantity: quantity,
+                    serviceModifierIds,
+                });
+
+                methodResults.push({
+                    method,
+                    result,
+                });
+            }
+
+            // Sort by price (cheapest first)
+            methodResults.sort((a, b) => a.result.finalPrice - b.result.finalPrice);
+
+            // Build embed showing all methods
+            const embed = new EmbedBuilder()
+                .setTitle(`${service.emoji || '🎮'} ${service.name}`)
+                .setColor(0xfca311)
+                .setTimestamp();
+
+            embed.addFields({
+                name: "🎮 Quantity",
+                value: `\`\`\`ansi\n\u001b[36m${quantity.toLocaleString()} items\u001b[0m\n\`\`\``,
+                inline: false,
+            });
+
+            // Show all pricing options
+            const priceLines: string[] = [];
+            for (let i = 0; i < methodResults.length; i++) {
+                const { method, result } = methodResults[i];
+                const indicator = i === 0 ? "✅" : "◻️"; // Cheapest first
+                priceLines.push(`${indicator} **${method.name}**`);
+                priceLines.push(`   💰 \`$${result.finalPrice.toFixed(2)}\``);
+                priceLines.push('');
+            }
+            priceLines.pop(); // Remove last empty line
+
+            embed.addFields({
+                name: "💵 Pricing Options",
+                value: priceLines.join('\n'),
+                inline: false,
+            });
+
+            // Show breakdown for cheapest option
+            const cheapest = methodResults[0];
+            const appliedModifiers = cheapest.result.modifiers.filter((m: any) => m.applied);
+
+            let breakdown = `\`\`\`yml\n`;
+            breakdown += `Method:         ${cheapest.method.name}\n`;
+            breakdown += `─────────────────────────────────────────\n`;
+            breakdown += `Quantity:       ${quantity.toLocaleString()} items\n`;
+            breakdown += `Rate:           $${cheapest.method.basePrice.toFixed(6)}/item\n`;
+            breakdown += `─────────────────────────────────────────\n`;
+            breakdown += `Base Cost:      $${cheapest.result.basePrice.toFixed(2)}\n`;
+
+            if (appliedModifiers.length > 0) {
+                for (const mod of appliedModifiers) {
+                    const icon = Number(mod.value) > 0 ? '⚠️  ' : Number(mod.value) < 0 ? '✅ ' : '';
+                    const displayName = `${icon}${mod.name}`;
+                    const modValue = mod.type === 'PERCENTAGE'
+                        ? `${mod.value}%`
+                        : `$${mod.value.toFixed(2)}`;
+                    breakdown += `${displayName}:`.padEnd(20) + `${modValue}\n`;
+                }
+                breakdown += `─────────────────────────────────────────\n`;
+            }
+
+            breakdown += `\`\`\``;
+            breakdown += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${cheapest.result.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
+
+            embed.addFields({
+                name: "✅ Recommended Option — Full Breakdown",
+                value: breakdown,
+                inline: false,
+            });
+
+            await thinkingMsg.edit({
+                content: "",
+                embeds: [embed.toJSON() as any],
+            });
+
+            logger.info(`[Minigames] ✅ Sent all methods for ${service.name} to ${message.author.tag}`);
+        }
+        // CASE B: Show specific method (when method name is used)
+        else {
+            logger.info(`[Minigames] 🎯 Showing specific method: ${specificMethod.name}`);
+
+            const method = specificMethod;
+
+            // Calculate price
+            const result = await pricingService.calculatePrice({
+                methodId: method.id,
+                paymentMethodId: defaultPaymentMethod.id,
+                quantity: quantity,
+                serviceModifierIds,
+            });
+
+            const embed = new EmbedBuilder()
+                .setTitle(`${service.emoji || '🎮'} ${service.name}`)
+                .setColor(0xfca311)
+                .setTimestamp();
+
+            // Build clean price calculation display
+            let priceCalc = `\`\`\`yml\n`;
+            priceCalc += `Method:         ${method.name}\n`;
+            priceCalc += `─────────────────────────────────────────\n`;
+            priceCalc += `Quantity:       ${quantity.toLocaleString()} items\n`;
+            priceCalc += `Rate:           $${method.basePrice.toFixed(6)}/item\n`;
+            priceCalc += `─────────────────────────────────────────\n`;
+            priceCalc += `Base Cost:      $${result.basePrice.toFixed(2)}\n`;
+
+            // Add modifiers
+            const appliedModifiers = result.modifiers.filter((m: any) => m.applied);
+            if (appliedModifiers.length > 0) {
+                for (const mod of appliedModifiers) {
+                    const icon = Number(mod.value) > 0 ? '⚠️  ' : Number(mod.value) < 0 ? '✅ ' : '';
+                    const displayName = `${icon}${mod.name}`;
+                    const modValue = mod.type === 'PERCENTAGE'
+                        ? `${mod.value}%`
+                        : `$${mod.value.toFixed(2)}`;
+                    priceCalc += `${displayName}:`.padEnd(20) + `${modValue}\n`;
+                }
+                priceCalc += `─────────────────────────────────────────\n`;
+            }
+
+            priceCalc += `\`\`\``;
+
+            // Add final price in ANSI color
+            priceCalc += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${result.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
+
+            embed.addFields({
+                name: "💰 Price Breakdown",
+                value: priceCalc,
+                inline: false,
+            });
+
+            await thinkingMsg.edit({
+                content: "",
+                embeds: [embed.toJSON() as any],
+            });
+
+            logger.info(`[Minigames] ✅ Sent specific method price for ${service.name} to ${message.author.tag}`);
+        }
+    } catch (error) {
+        logger.error('[Minigames] Error handling minigame command:', error);
         await thinkingMsg.edit({
             content: `❌ **Calculation Error**\n\n` +
                 `An error occurred while calculating the price.\n\n` +
@@ -783,35 +1159,319 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
     }
 }
 
+/**
+ * Find Ironman item by service name or method name
+ * Returns: { service, method?, showAllMethods }
+ */
+function findIronmanItem(services: any[], searchTerm: string): any | null {
+    const normalized = searchTerm.toLowerCase().trim();
+
+    // Filter to only Ironman Gathering services
+    const ironmanServices = services.filter((s: any) =>
+        s.category?.slug === 'ironman-gathering' ||
+        s.category?.name?.toLowerCase().includes('ironman')
+    );
+
+    logger.info(`[Ironman] Searching for: "${normalized}" in ${ironmanServices.length} Ironman services`);
+
+    // Priority 1: Exact match on METHOD name
+    for (const service of ironmanServices) {
+        if (!service.pricingMethods) continue;
+
+        const method = service.pricingMethods.find((m: any) =>
+            m.pricingUnit === 'PER_ITEM' &&
+            m.name.toLowerCase() === normalized
+        );
+
+        if (method) {
+            logger.info(`[Ironman] ✅ Exact method match: "${method.name}" in service "${service.name}"`);
+            return {
+                service,
+                method,
+                showAllMethods: false
+            };
+        }
+    }
+
+    // Priority 2: Exact match on SERVICE name
+    const exactServiceMatch = ironmanServices.find((s: any) =>
+        s.name.toLowerCase() === normalized ||
+        s.slug.toLowerCase() === normalized
+    );
+
+    if (exactServiceMatch) {
+        logger.info(`[Ironman] ✅ Exact service match: "${exactServiceMatch.name}"`);
+        return {
+            service: exactServiceMatch,
+            method: null,
+            showAllMethods: true
+        };
+    }
+
+    // Priority 3: Partial match on METHOD name
+    for (const service of ironmanServices) {
+        if (!service.pricingMethods) continue;
+
+        const method = service.pricingMethods.find((m: any) =>
+            m.pricingUnit === 'PER_ITEM' &&
+            m.name.toLowerCase().includes(normalized)
+        );
+
+        if (method) {
+            logger.info(`[Ironman] ✅ Partial method match: "${method.name}" in service "${service.name}"`);
+            return {
+                service,
+                method,
+                showAllMethods: false
+            };
+        }
+    }
+
+    // Priority 4: Partial match on SERVICE name
+    const partialServiceMatch = ironmanServices.find((s: any) =>
+        s.name.toLowerCase().includes(normalized) ||
+        s.slug.toLowerCase().includes(normalized)
+    );
+
+    if (partialServiceMatch) {
+        logger.info(`[Ironman] ✅ Partial service match: "${partialServiceMatch.name}"`);
+        return {
+            service: partialServiceMatch,
+            method: null,
+            showAllMethods: true
+        };
+    }
+
+    logger.warn(`[Ironman] ❌ No match found for: "${searchTerm}"`);
+    return null;
+}
+
+// Handler for batch Ironman quote (multiple items)
+async function handleBatchIronmanQuote(
+    message: Message,
+    apiService: ApiService,
+    items: Array<{ name: string; quantity: number }>
+) {
+    logger.info(`[Ironman] Batch quote: ${items.length} items by ${message.author.tag}`);
+
+    const thinkingMsg = await message.reply("🔗 Calculating batch Ironman quote...");
+
+    try {
+        const services = await apiService.getAllServicesWithPricing();
+        const pricingService = new PricingCalculatorService();
+        const paymentMethods = await apiService.getPaymentMethods();
+
+        if (!paymentMethods || paymentMethods.length === 0) {
+            throw new Error('No payment methods available');
+        }
+        const defaultPaymentMethod = paymentMethods[0];
+
+        // Calculate price for each item
+        const calculations: Array<{
+            itemName: string;
+            quantity: number;
+            service: any;
+            method: any;
+            result: any;
+        }> = [];
+
+        let totalPrice = 0;
+
+        for (const item of items) {
+            const searchResult = findIronmanItem(services, item.name);
+
+            if (!searchResult) {
+                await thinkingMsg.edit({
+                    content: `❌ **Item Not Found**\n\nCould not find: "${item.name}"\n\nPlease check the item name and try again.`,
+                });
+                return;
+            }
+
+            const { service, method: specificMethod } = searchResult;
+
+            // Get full service details
+            const fullService = await apiService.getServiceWithPricing(service.id);
+
+            // Get all active service modifier IDs to apply them automatically
+            const serviceModifierIds = (fullService.serviceModifiers || [])
+                .filter((m: any) => m.active)
+                .map((m: any) => m.id);
+
+            // Determine which method to use
+            let method = specificMethod;
+            if (!method) {
+                // If service search, use cheapest method
+                const allMethods = fullService.pricingMethods.filter((m: any) => m.pricingUnit === 'PER_ITEM');
+                if (allMethods.length === 0) continue;
+
+                // Calculate prices for all methods and find cheapest
+                let cheapestMethod = allMethods[0];
+                let cheapestPrice = Infinity;
+
+                for (const m of allMethods) {
+                    const result = await pricingService.calculatePrice({
+                        methodId: m.id,
+                        paymentMethodId: defaultPaymentMethod.id,
+                        quantity: item.quantity,
+                        serviceModifierIds, // ✅ Pass service modifier IDs
+                    });
+                    if (result.finalPrice < cheapestPrice) {
+                        cheapestPrice = result.finalPrice;
+                        cheapestMethod = m;
+                    }
+                }
+                method = cheapestMethod;
+            }
+
+            // Calculate final price
+            const result = await pricingService.calculatePrice({
+                methodId: method.id,
+                paymentMethodId: defaultPaymentMethod.id,
+                quantity: item.quantity,
+                serviceModifierIds, // ✅ Pass service modifier IDs
+            });
+
+            calculations.push({
+                itemName: item.name,
+                quantity: item.quantity,
+                service,
+                method,
+                result,
+            });
+
+            totalPrice += result.finalPrice;
+        }
+
+        // Build batch quote embed
+        const embed = new EmbedBuilder()
+            .setTitle(`🔗 Ironman Batch Quote`)
+            .setColor(0xfca311)
+            .setTimestamp();
+
+        // Build items list
+        let itemsList = `\`\`\`yml\n`;
+        for (let i = 0; i < calculations.length; i++) {
+            const calc = calculations[i];
+            itemsList += `${i + 1}. ${calc.method.name}\n`;
+            itemsList += `   Quantity:    ${calc.quantity.toLocaleString()} items\n`;
+            itemsList += `   Price:       $${calc.result.finalPrice.toFixed(2)}\n`;
+            if (i < calculations.length - 1) {
+                itemsList += `\n`;
+            }
+        }
+        itemsList += `\`\`\``;
+
+        embed.addFields({
+            name: "📦 Items",
+            value: itemsList,
+            inline: false,
+        });
+
+        // Build total price display
+        let totalDisplay = `\`\`\`yml\n`;
+        totalDisplay += `Items:          ${calculations.length}\n`;
+        totalDisplay += `─────────────────────────────────────────\n`;
+        totalDisplay += `\`\`\``;
+        totalDisplay += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${totalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
+
+        embed.addFields({
+            name: "💰 Total",
+            value: totalDisplay,
+            inline: false,
+        });
+
+        await thinkingMsg.edit({
+            content: "",
+            embeds: [embed.toJSON() as any],
+        });
+
+        logger.info(`[Ironman] ✅ Batch quote sent: ${calculations.length} items, total $${totalPrice.toFixed(2)}`);
+    } catch (error) {
+        logger.error('[Ironman] Batch quote error:', error);
+        await thinkingMsg.edit({
+            content: `❌ **Calculation Error**\n\nAn error occurred while calculating the batch quote.`,
+        });
+    }
+}
+
 // Handler for !i command (Ironman Gathering - PER_ITEM pricing, filtered by category)
 async function handleIronmanCommand(message: Message, apiService: ApiService) {
     const prefix = discordConfig.prefix;
-    const args = message.content.slice(prefix.length + 2).trim().split(/\s+/);
+    const input = message.content.slice(prefix.length + 2).trim();
 
-    if (args.length < 2) {
+    if (!input) {
         await message.reply({
             content: "❌ **Invalid Command Format**\n\n" +
-                "**Usage:** `!i <item-name> <quantity>`\n" +
-                "**Example:** `!i amethyst 1000`",
+                "**Single Item:** `!i <item-name> <quantity>`\n" +
+                "**Multiple Items:** `!i <item1> <qty1>, <item2> <qty2>`\n" +
+                "**Example:** `!i blue dragon scales 1000, snape grass 500`",
         });
         return;
     }
 
-    // Last argument is quantity
-    const quantityStr = args[args.length - 1];
-    const quantity = parseInt(quantityStr);
+    // Parse multiple items (comma-separated)
+    const items: Array<{ name: string; quantity: number }> = [];
 
-    if (isNaN(quantity) || quantity < 1) {
-        await message.reply({
-            content: "❌ **Invalid Quantity**\n\n" +
-                "Please specify a valid number.\n" +
-                "**Example:** `1000`",
-        });
+    if (input.includes(',')) {
+        // Comma-separated format: "item1 qty1, item2 qty2, item3 qty3"
+        const parts = input.split(',').map(s => s.trim());
+
+        for (const part of parts) {
+            const tokens = part.split(/\s+/);
+            if (tokens.length < 2) {
+                await message.reply({
+                    content: `❌ **Invalid Format**\n\nEach item needs a name and quantity.\n**Example:** \`blue dragon scales 1000\``,
+                });
+                return;
+            }
+
+            const qty = parseInt(tokens[tokens.length - 1]);
+            if (isNaN(qty) || qty < 1) {
+                await message.reply({
+                    content: `❌ **Invalid Quantity**\n\nQuantity must be a positive number in: \`${part}\``,
+                });
+                return;
+            }
+
+            const itemName = tokens.slice(0, -1).join(" ").toLowerCase();
+            items.push({ name: itemName, quantity: qty });
+        }
+    } else {
+        // Single item format: "item name quantity"
+        const args = input.split(/\s+/);
+
+        if (args.length < 2) {
+            await message.reply({
+                content: "❌ **Invalid Command Format**\n\n" +
+                    "**Usage:** `!i <item-name> <quantity>`\n" +
+                    "**Example:** `!i amethyst 1000`",
+            });
+            return;
+        }
+
+        const quantity = parseInt(args[args.length - 1]);
+        if (isNaN(quantity) || quantity < 1) {
+            await message.reply({
+                content: "❌ **Invalid Quantity**\n\n" +
+                    "Please specify a valid number.\n" +
+                    "**Example:** `1000`",
+            });
+            return;
+        }
+
+        const serviceName = args.slice(0, -1).join(" ").toLowerCase();
+        items.push({ name: serviceName, quantity });
+    }
+
+    // Check if batch quote (multiple items)
+    if (items.length > 1) {
+        await handleBatchIronmanQuote(message, apiService, items);
         return;
     }
 
-    // Service name is everything except the last argument
-    const serviceName = args.slice(0, -1).join(" ").toLowerCase();
+    // Single item - use existing logic
+    const serviceName = items[0].name;
+    const quantity = items[0].quantity;
 
     logger.info(`[Ironman] Command: !i ${serviceName} ${quantity} by ${message.author.tag}`);
 
@@ -821,18 +1481,10 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
     // Get all services to find matching service
     const services = await apiService.getAllServicesWithPricing();
 
-    // Find service by name or slug (filter for Ironman Gathering category)
-    const service = services.find((s: any) => {
-        const matchesName = s.name.toLowerCase().includes(serviceName) ||
-            s.slug.toLowerCase().includes(serviceName);
-        const isIronmanCategory = s.category?.slug === 'ironman-gathering' ||
-                                  s.category?.name?.toLowerCase().includes('ironman');
+    // Find Ironman item (service or method)
+    const searchResult = findIronmanItem(services, serviceName);
 
-        // All Ironman services use PER_ITEM pricing, so we only check category
-        return matchesName && isIronmanCategory;
-    });
-
-    if (!service) {
+    if (!searchResult) {
         await thinkingMsg.edit({
             content: `❌ **Ironman Service Not Found**\n\n` +
                 `Could not find an Ironman gathering service matching "${serviceName}".\n\n` +
@@ -841,24 +1493,15 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
         return;
     }
 
+    const { service, method: specificMethod, showAllMethods } = searchResult;
+
     try {
-        logger.info(`[Ironman] Calculating with serviceId: ${service.id}, quantity: ${quantity}`);
+        logger.info(`[Ironman] Calculating with serviceId: ${service.id}, quantity: ${quantity}, showAllMethods: ${showAllMethods}`);
 
         // Fetch full service details with pricing methods
         const fullService = await apiService.getServiceWithPricing(service.id);
 
         const pricingService = new PricingCalculatorService();
-
-        // Get the first PER_ITEM pricing method
-        if (!fullService.pricingMethods || fullService.pricingMethods.length === 0) {
-            throw new Error('No pricing methods found for this service');
-        }
-
-        const method = fullService.pricingMethods.find((m: any) => m.pricingUnit === 'PER_ITEM');
-
-        if (!method) {
-            throw new Error('No PER_ITEM pricing method found for this service');
-        }
 
         // Get payment methods to get the default one
         const paymentMethods = await apiService.getPaymentMethods();
@@ -867,79 +1510,196 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
         }
         const defaultPaymentMethod = paymentMethods[0];
 
-        // Calculate price
-        const result = await pricingService.calculatePrice({
-            methodId: method.id,
-            paymentMethodId: defaultPaymentMethod.id,
-            quantity: quantity,
-        });
+        // Get all active service modifier IDs to apply them automatically
+        const serviceModifierIds = (fullService.serviceModifiers || [])
+            .filter((m: any) => m.active)
+            .map((m: any) => m.id);
 
-        // Calculate OSRS gold conversion
-        const osrsGoldRate = 5.5; // 5.5M per $1 USD
-        const osrsGold = result.finalPrice * osrsGoldRate;
-        const osrsGoldFormatted = osrsGold >= 1000
-            ? `${(osrsGold / 1000).toFixed(3)}B`
-            : `${osrsGold.toFixed(1)}M`;
+        logger.info(`[Ironman] Applying ${serviceModifierIds.length} service-level modifiers`);
 
-        const embed = new EmbedBuilder()
-            .setTitle(`${service.emoji || '🔗'} ${service.name}`)
-            .setColor(0xfca311) // Orange color
-            .setTimestamp();
+        if (!fullService.pricingMethods || fullService.pricingMethods.length === 0) {
+            throw new Error('No pricing methods found for this service');
+        }
 
-        embed.addFields({
-            name: "🔗 Ironman Gathering",
-            value: `\`\`\`ansi\n\u001b[36m${quantity} × ${method.name}\u001b[0m\n\`\`\``,
-            inline: false,
-        });
+        // CASE A: Show all methods (when service name is used)
+        if (showAllMethods) {
+            logger.info('[Ironman] 📋 Showing all methods for service');
 
-        // Add modifiers info
-        const appliedModifiers = result.modifiers.filter((m: any) => m.applied);
-        if (appliedModifiers.length > 0) {
-            const modLines = appliedModifiers.map((m: any) => {
-                const icon = m.displayType === 'UPCHARGE' ? '⚠️' : m.displayType === 'DISCOUNT' ? '✅' : '→';
-                return `${icon} ${m.name}: ${m.type === 'PERCENTAGE' ? m.value + '%' : '$' + m.value}`;
-            });
+            // Get all PER_ITEM methods
+            const allMethods = fullService.pricingMethods.filter((m: any) => m.pricingUnit === 'PER_ITEM');
+
+            if (allMethods.length === 0) {
+                throw new Error('NO PER_ITEM pricing methods found for this service');
+            }
+
+            // Calculate price for each method
+            const methodResults = [];
+            for (const method of allMethods) {
+                const result = await pricingService.calculatePrice({
+                    methodId: method.id,
+                    paymentMethodId: defaultPaymentMethod.id,
+                    quantity: quantity,
+                    serviceModifierIds, // ✅ Pass service modifier IDs
+                });
+
+                methodResults.push({
+                    method,
+                    result,
+                });
+            }
+
+            // Sort by price (cheapest first)
+            methodResults.sort((a, b) => a.result.finalPrice - b.result.finalPrice);
+
+            // Build embed showing all methods
+            const embed = new EmbedBuilder()
+                .setTitle(`${service.emoji || '🔗'} ${service.name}`)
+                .setColor(0xfca311) // Orange color
+                .setTimestamp();
+
             embed.addFields({
-                name: "📝 Modifiers Applied",
-                value: modLines.join('\n').substring(0, 1024),
+                name: "🔗 Ironman Gathering",
+                value: `\`\`\`ansi\n\u001b[36m${quantity} items\u001b[0m\n\`\`\``,
                 inline: false,
             });
-        }
 
-        // Build price breakdown
-        let priceBreakdown = `**Method:** ${method.name}\n`;
-        priceBreakdown += `**Rate:** $${method.basePrice.toFixed(6)}/item\n`;
-        priceBreakdown += `**Base Cost:** $${result.basePrice.toFixed(2)}\n`;
+            // Build pricing options display
+            const priceLines: string[] = [];
 
-        if (result.breakdown.totalModifiers !== 0) {
-            const modSymbol = result.breakdown.totalModifiers > 0 ? '+' : '';
-            priceBreakdown += `**Modifiers:** ${modSymbol}$${result.breakdown.totalModifiers.toFixed(2)}\n`;
-        }
+            for (let i = 0; i < methodResults.length; i++) {
+                const { method, result } = methodResults[i];
+                const indicator = i === 0 ? "✅" : "◻️"; // First is cheapest
+                const price = result.finalPrice.toFixed(2);
+                const rate = method.basePrice.toFixed(6);
 
-        priceBreakdown += `\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${result.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
-        priceBreakdown += `\`\`\`ansi\n\u001b[1;33m🔥 ${osrsGoldFormatted} OSRS Gold\u001b[0m\n\`\`\``;
+                logger.info(`[Ironman] 💰 ${method.name}: $${price} (${rate}/item)`);
 
-        embed.addFields({
-            name: "💰 Price Breakdown",
-            value: priceBreakdown,
-            inline: false,
-        });
+                // Compact display with rate
+                priceLines.push(`${indicator} **${method.name}**`);
+                priceLines.push(`   💰 \`$${price}\` • Rate: \`$${rate}/item\``);
+                priceLines.push(''); // Spacing
+            }
 
-        // Add requirements note if available
-        if (method.description) {
+            // Remove last empty line
+            if (priceLines.length > 0) {
+                priceLines.pop();
+            }
+
             embed.addFields({
-                name: "📋 Requirements",
-                value: method.description,
+                name: "💵 Pricing Options",
+                value: priceLines.join('\n'),
                 inline: false,
             });
+
+            // Show breakdown for cheapest method
+            const cheapest = methodResults[0];
+            let breakdown = `\`\`\`yml\n`;
+            breakdown += `Service:        ${service.name}\n`;
+            breakdown += `─────────────────────────────────────────\n`;
+            breakdown += `Quantity:       ${quantity} items\n`;
+            breakdown += `Method:         ${cheapest.method.name}\n`;
+            breakdown += `Rate:           $${cheapest.method.basePrice.toFixed(6)}/item\n`;
+            breakdown += `─────────────────────────────────────────\n`;
+            breakdown += `Base Cost:      $${cheapest.result.basePrice.toFixed(2)}\n`;
+
+            // Show modifiers
+            const appliedModifiers = cheapest.result.modifiers.filter((m: any) => m.applied);
+            if (appliedModifiers.length > 0) {
+                for (const mod of appliedModifiers) {
+                    const modValue = mod.type === 'PERCENTAGE'
+                        ? `${mod.value}%`
+                        : (mod.value < 0 ? `-$${Math.abs(mod.value).toFixed(2)}` : `+$${mod.value.toFixed(2)}`);
+                    breakdown += `${mod.name}:`.padEnd(16) + `${modValue}\n`;
+                }
+                breakdown += `─────────────────────────────────────────\n`;
+            }
+
+            breakdown += `\`\`\``;
+            breakdown += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${cheapest.result.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
+
+            embed.addFields({
+                name: "✅ Recommended Option — Full Breakdown",
+                value: breakdown,
+                inline: false,
+            });
+
+            await thinkingMsg.edit({
+                content: "",
+                embeds: [embed.toJSON() as any],
+            });
+
+            logger.info(`[Ironman] ✅ Sent all methods for ${service.name} to ${message.author.tag}`);
         }
+        // CASE B: Show specific method (when method name is used)
+        else {
+            logger.info(`[Ironman] 🎯 Showing specific method: ${specificMethod.name}`);
 
-        await thinkingMsg.edit({
-            content: "",
-            embeds: [embed.toJSON() as any],
-        });
+            const method = specificMethod;
 
-        logger.info(`[Ironman] Result sent for ${service.name} (${quantity} items) to ${message.author.tag}`);
+            // Calculate price
+            const result = await pricingService.calculatePrice({
+                methodId: method.id,
+                paymentMethodId: defaultPaymentMethod.id,
+                quantity: quantity,
+                serviceModifierIds, // ✅ Pass service modifier IDs
+            });
+
+            const embed = new EmbedBuilder()
+                .setTitle(`${service.emoji || '🔗'} ${service.name}`)
+                .setColor(0xfca311) // Orange color
+                .setTimestamp();
+
+            // Build clean price calculation display
+            let priceCalc = `\`\`\`yml\n`;
+            priceCalc += `Method:         ${method.name}\n`;
+            priceCalc += `─────────────────────────────────────────\n`;
+            priceCalc += `Quantity:       ${quantity.toLocaleString()} items\n`;
+            priceCalc += `Rate:           $${method.basePrice.toFixed(6)}/item\n`;
+            priceCalc += `─────────────────────────────────────────\n`;
+            priceCalc += `Base Cost:      $${result.basePrice.toFixed(2)}\n`;
+
+            // Add modifiers
+            const appliedModifiers = result.modifiers.filter((m: any) => m.applied);
+            if (appliedModifiers.length > 0) {
+                for (const mod of appliedModifiers) {
+                    const modValue = mod.type === 'PERCENTAGE'
+                        ? `${mod.value}%`
+                        : (mod.value < 0 ? `-$${Math.abs(mod.value).toFixed(2)}` : `+$${mod.value.toFixed(2)}`);
+                    // Determine icon based on modifier value (positive = upcharge, negative = discount)
+                    const icon = Number(mod.value) > 0 ? '⚠️  ' : Number(mod.value) < 0 ? '✅ ' : '';
+                    const displayName = `${icon}${mod.name}`;
+                    priceCalc += `${displayName}:`.padEnd(16) + `${modValue}\n`;
+                }
+                priceCalc += `─────────────────────────────────────────\n`;
+            }
+
+            priceCalc += `\`\`\``;
+
+            // Add final price in ANSI color
+            priceCalc += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${result.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
+
+            embed.addFields({
+                name: "💰 Price Calculation",
+                value: priceCalc,
+                inline: false,
+            });
+
+            // Add requirements note if available
+            if (method.description) {
+                embed.addFields({
+                    name: "📋 Requirements",
+                    value: `\`\`\`${method.description}\`\`\``,
+                    inline: false,
+                });
+            }
+
+            await thinkingMsg.edit({
+                content: "",
+                embeds: [embed.toJSON() as any],
+            });
+
+            logger.info(`[Ironman] ✅ Result sent for ${method.name} (${quantity} items) to ${message.author.tag}`);
+        }
     } catch (apiError) {
         logger.error('[Ironman] API error:', apiError);
         await thinkingMsg.edit({
@@ -994,12 +1754,16 @@ async function handleQuoteCommand(message: Message, apiService: ApiService) {
 
     for (const questName of questNames) {
         // Find service with improved matching
-        const service = findBestQuestMatch(services, questName);
+        let service = findBestQuestMatch(services, questName);
 
         if (!service) {
             notFound.push(questName);
             continue;
         }
+
+        // Fetch full service with modifiers
+        const fullService = await apiService.getServiceWithPricing(service.id);
+        service = fullService;
 
         try {
             // Get all FIXED pricing methods
@@ -1017,6 +1781,13 @@ async function handleQuoteCommand(message: Message, apiService: ApiService) {
             }
             const defaultPaymentMethod = paymentMethods[0];
 
+            // Get all active service modifier IDs to apply them automatically
+            const serviceModifierIds = (service.serviceModifiers || [])
+                .filter((m: any) => m.active)
+                .map((m: any) => m.id);
+
+            logger.info(`[Quote] Applying ${serviceModifierIds.length} service-level modifiers for ${service.name}`);
+
             const pricingService = new PricingCalculatorService();
 
             // Calculate prices for all methods
@@ -1026,6 +1797,7 @@ async function handleQuoteCommand(message: Message, apiService: ApiService) {
                         methodId: method.id,
                         paymentMethodId: defaultPaymentMethod.id,
                         quantity: 1,
+                        serviceModifierIds, // ✅ Pass service modifier IDs
                     });
                     return {
                         method: method.name,

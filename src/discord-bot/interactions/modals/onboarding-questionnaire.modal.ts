@@ -1,18 +1,24 @@
-import { ModalSubmitInteraction, GuildMember, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from "discord.js";
+import { ModalSubmitInteraction, GuildMember, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { onboardingConfig } from "../../config/onboarding.config";
 import { discordConfig } from "../../config/discord.config";
 import { OnboardingManagerService } from "../../services/onboardingManager.service";
 import axios from "axios";
 import logger from "../../../common/loggers";
+import { getRedisService } from "../../../common/services/redis.service";
 
-// Store user answers temporarily (in production, use Redis or database)
-const userAnswersCache = new Map<string, any[]>();
+// Use Redis for storing user answers
+const redis = getRedisService();
+const ONBOARDING_ANSWERS_PREFIX = "onboarding:answers:";
+const ONBOARDING_ANSWERS_TTL = 24 * 60 * 60; // 24 hours
 
 export default {
     customId: /^onboarding_questionnaire_\d+$/,
 
     async execute(interaction: ModalSubmitInteraction) {
         try {
+            // Defer reply immediately to prevent timeout
+            await interaction.deferReply({ ephemeral: true });
+
             const discordId = interaction.user.id;
             const member = interaction.member as GuildMember;
 
@@ -27,48 +33,75 @@ export default {
             const batchAnswers: any[] = [];
             interaction.fields.fields.forEach((field, key) => {
                 const questionId = key.replace("question_", "");
+                const answer = field.value.trim();
+
+                // Validate email if this is an email question
+                const question = allQuestions.find((q: any) => q.id === questionId);
+                if (question?.question.toLowerCase().includes("email")) {
+                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                    if (!emailRegex.test(answer)) {
+                        interaction.reply({
+                            content: `❌ **Invalid Email Address**\n\nPlease enter a valid email address for: "${question.question}"\n\nExample: user@example.com`,
+                            ephemeral: true
+                        });
+                        return;
+                    }
+                }
+
                 batchAnswers.push({
                     questionId,
-                    answer: field.value
+                    answer
                 });
             });
 
-            // Get or initialize user's answers from cache
-            let userAnswers = userAnswersCache.get(discordId) || [];
+            // Get or initialize user's answers from Redis
+            const cacheKey = `${ONBOARDING_ANSWERS_PREFIX}${discordId}`;
+            let userAnswers = await redis.get<any[]>(cacheKey) || [];
             userAnswers = [...userAnswers, ...batchAnswers];
-            userAnswersCache.set(discordId, userAnswers);
+
+            // Save to Redis with TTL
+            await redis.set(cacheKey, userAnswers, ONBOARDING_ANSWERS_TTL);
 
             // Calculate remaining questions
             const answeredCount = userAnswers.length;
             const totalQuestions = allQuestions.length;
             const remainingQuestions = allQuestions.slice(answeredCount);
 
+            logger.info(`[Onboarding] User ${interaction.user.username} answered ${answeredCount}/${totalQuestions} questions`);
+
             // Check if more questions remain
             if (remainingQuestions.length > 0) {
-                // Note: Cannot show modal from modal submit interaction
-                // This would need a button-based approach instead
-                await interaction.reply({
-                    content: `✅ Answers saved! You have ${remainingQuestions.length} more questions remaining.\n\nPlease contact an admin to continue the onboarding process.`,
-                    ephemeral: true
+                // Show button to continue to next batch
+                const continueButton = new ButtonBuilder()
+                    .setCustomId(`continue_onboarding_${batchNumber + 1}`)
+                    .setLabel(`Continue Registration (${remainingQuestions.length} questions remaining)`)
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji("▶️");
+
+                const row = new ActionRowBuilder<ButtonBuilder>()
+                    .addComponents(continueButton);
+
+                await interaction.editReply({
+                    content:
+                        `✅ **Progress Saved!**\n\n` +
+                        `📝 Answered: **${answeredCount}** / **${totalQuestions}** questions\n` +
+                        `⏳ Remaining: **${remainingQuestions.length}** questions\n\n` +
+                        `Click the button below to continue your registration.`,
+                    components: [row as any]
                 });
                 return;
             }
 
             // All questions answered - complete onboarding
-            await interaction.deferReply({ ephemeral: true });
 
-            // Submit all answers to backend
-            await axios.post(`${discordConfig.apiBaseUrl}/onboarding/answers`, {
-                discordId,
-                answers: userAnswers
-            });
+            logger.info(`[Onboarding] ${interaction.user.username} completed all questions, starting registration...`);
 
             // Extract user data from answers
             const userData = {
                 fullname: userAnswers.find(a => {
                     const q = allQuestions.find((q: any) => q.id === a.questionId);
                     return q?.question.toLowerCase().includes("name");
-                })?.answer || interaction.user.username,
+                })?.answer || interaction.user.displayName || interaction.user.username,
 
                 email: userAnswers.find(a => {
                     const q = allQuestions.find((q: any) => q.id === a.questionId);
@@ -81,44 +114,101 @@ export default {
                 })?.answer || null
             };
 
+            // Submit all answers to backend first
+            try {
+                await axios.post(`${discordConfig.apiBaseUrl}/onboarding/answers`, {
+                    discordId,
+                    answers: userAnswers
+                });
+            } catch (apiError: any) {
+                logger.error("[Onboarding] Failed to submit answers:", apiError.message);
+                // Continue anyway - answers are already in database from previous steps
+            }
+
             // Complete onboarding (create user, assign role)
             const onboardingManager = new OnboardingManagerService(interaction.client);
-            await onboardingManager.completeOnboarding(member, userData);
 
-            // Clear cache
-            userAnswersCache.delete(discordId);
+            try {
+                await onboardingManager.completeOnboarding(member, userData);
+            } catch (completionError: any) {
+                logger.error("[Onboarding] Failed to complete onboarding:", completionError.message);
+
+                // Show retry button
+                const retryButton = new ButtonBuilder()
+                    .setCustomId(`retry_onboarding`)
+                    .setLabel("Retry Registration")
+                    .setStyle(ButtonStyle.Danger)
+                    .setEmoji("🔄");
+
+                const row = new ActionRowBuilder<ButtonBuilder>()
+                    .addComponents(retryButton);
+
+                await interaction.editReply({
+                    content:
+                        `❌ **Registration Failed**\n\n` +
+                        `An error occurred while completing your registration:\n` +
+                        `\`\`\`${completionError.message}\`\`\`\n\n` +
+                        `Your answers have been saved. Click the button below to retry.`,
+                    components: [row as any]
+                });
+                return;
+            }
+
+            // Clear Redis cache after successful completion
+            await redis.delete(cacheKey);
 
             // Send success message
             const successEmbed = new EmbedBuilder()
                 .setTitle("✅ Welcome Aboard!")
                 .setDescription(
                     `Thank you for completing registration!\n\n` +
-                    `✅ Customer role assigned\n` +
-                    `✅ Account created\n\n` +
-                    `You now have access to all customer channels. Enjoy!`
+                    `✅ **Customer role assigned**\n` +
+                    `✅ **Account created**\n` +
+                    `✅ **Profile updated**\n\n` +
+                    `You now have access to all customer channels. Enjoy our services!`
                 )
                 .setColor(0x00FF00)
+                .setFooter({ text: `Registered as: ${userData.fullname}` })
                 .setTimestamp();
 
             await interaction.editReply({
                 embeds: [successEmbed as any]
             });
 
-            logger.info(`${interaction.user.username} completed onboarding`);
+            logger.info(`[Onboarding] ✅ ${interaction.user.username} completed onboarding successfully`);
 
         } catch (error) {
-            logger.error("Error in onboarding questionnaire modal:", error);
+            logger.error("[Onboarding] Error in questionnaire modal:", error);
 
             const errorMessage = error instanceof Error ? error.message : "Unknown error";
 
-            await interaction.reply({
-                content: `❌ An error occurred during registration: ${errorMessage}\n\nPlease contact support for assistance.`,
-                ephemeral: true
-            }).catch(() => {
-                interaction.editReply({
-                    content: `❌ An error occurred during registration: ${errorMessage}\n\nPlease contact support for assistance.`
-                });
-            });
+            // Show retry button on error
+            const retryButton = new ButtonBuilder()
+                .setCustomId(`retry_onboarding`)
+                .setLabel("Retry Registration")
+                .setStyle(ButtonStyle.Danger)
+                .setEmoji("🔄");
+
+            const row = new ActionRowBuilder<ButtonBuilder>()
+                .addComponents(retryButton);
+
+            const replyContent = {
+                content:
+                    `❌ **An error occurred during registration**\n\n` +
+                    `Error: \`${errorMessage}\`\n\n` +
+                    `Please try again or contact support for assistance.`,
+                components: [row as any]
+            };
+
+            try {
+                if (interaction.deferred || interaction.replied) {
+                    await interaction.editReply(replyContent);
+                } else {
+                    await interaction.reply({ ...replyContent, ephemeral: true });
+                }
+            } catch (replyError) {
+                logger.error("[Onboarding] Could not send error message:", replyError);
+            }
         }
     }
 };

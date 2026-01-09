@@ -14,7 +14,6 @@ export default {
 
     async execute(interaction: CommandInteraction) {
         try {
-            // Check if user has admin permissions
             if (
                 !interaction.memberPermissions?.has(
                     PermissionFlagsBits.Administrator
@@ -30,7 +29,6 @@ export default {
 
             await interaction.deferReply({ ephemeral: true });
 
-            // Refresh ticket category messages
             await interaction.client.ticketCategoryManager.refreshMessages();
 
             await interaction.editReply({

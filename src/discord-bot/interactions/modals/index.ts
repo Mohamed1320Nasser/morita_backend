@@ -17,6 +17,8 @@ import { handleOrderReviewModal } from "./order-review.modal";
 import { handleResolveApproveWorkCompleteModal } from "./resolve-approve-work-complete.modal";
 import { handleResolveRequestCorrectionsModal } from "./resolve-request-corrections.modal";
 import { handleResolveApproveCustomerRefundModal } from "./resolve-approve-customer-refund.modal";
+// Onboarding modal handlers
+import onboardingQuestionnaireModal from "./onboarding-questionnaire.modal";
 
 // Modal handler mapping (exact matches)
 const modalHandlers: {
@@ -74,6 +76,10 @@ const patternModalHandlers: Array<{
     {
         pattern: /^resolve_refund_modal_/,
         handler: handleResolveApproveCustomerRefundModal,
+    },
+    {
+        pattern: /^onboarding_questionnaire_\d+$/,
+        handler: onboardingQuestionnaireModal.execute,
     },
 ];
 

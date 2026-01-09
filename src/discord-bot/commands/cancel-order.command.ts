@@ -29,10 +29,8 @@ export default {
 
     async execute(interaction: CommandInteraction) {
         try {
-            // Defer reply immediately
             await interaction.deferReply({ ephemeral: false });
 
-            // Check if user has Support or Admin role
             const member = interaction.member;
             if (!member || !("roles" in member)) {
                 const embed = new EmbedBuilder()
@@ -66,13 +64,11 @@ export default {
                 return;
             }
 
-            // Get command options
             const orderId = interaction.options.get("order-id")?.value as string;
             const reason = interaction.options.get("reason")?.value as string || "Cancelled by support";
 
             logger.info(`[cancel-order] ${interaction.user.tag} cancelling order ${orderId}`);
 
-            // Get order details first
             const orderResponse: any = await discordApiClient.get(`/discord/orders/${orderId}`);
             const orderData = orderResponse.data || orderResponse;
 
@@ -89,7 +85,6 @@ export default {
                 return;
             }
 
-            // Check if order can be cancelled
             if (orderData.status === "CANCELLED") {
                 const embed = new EmbedBuilder()
                     .setTitle("⚠️ Order Already Cancelled")
