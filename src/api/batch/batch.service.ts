@@ -1,11 +1,9 @@
 import { Service } from 'typedi';
-import { PrismaClient } from '@prisma/client';
 import slugify from 'slugify';
 import { BatchCreateServicesDto } from './dtos/batchCreateServices.dto';
 import { BatchCreatePricingMethodsDto } from './dtos/batchCreatePricingMethods.dto';
 import { BatchCreateServicesWithPricingDto } from './dtos/batchCreateServicesWithPricing.dto';
-
-const prisma = new PrismaClient();
+import prisma from '../../common/prisma/client';
 
 @Service()
 export class BatchService {

@@ -434,11 +434,75 @@ export default class OrderService {
     }
 
     /**
+     * Get debug info about orders (for troubleshooting)
+     */
+    async getOrderDebugInfo() {
+        try {
+            const totalOrders = await prisma.order.count();
+            const ordersByStatus = await prisma.order.groupBy({
+                by: ['status'],
+                _count: true,
+            });
+
+            const recentOrders = await prisma.order.findMany({
+                take: 5,
+                orderBy: { createdAt: 'desc' },
+                select: {
+                    id: true,
+                    orderNumber: true,
+                    status: true,
+                    orderValue: true,
+                    createdAt: true,
+                    customer: {
+                        select: {
+                            id: true,
+                            fullname: true,
+                            username: true,
+                        }
+                    }
+                }
+            });
+
+            logger.info(`[OrderService] Debug info - Total orders: ${totalOrders}`);
+            logger.info(`[OrderService] Debug info - Orders by status:`, ordersByStatus);
+
+            return {
+                totalOrders,
+                ordersByStatus: ordersByStatus.map(item => ({
+                    status: item.status,
+                    count: item._count
+                })),
+                recentOrders: recentOrders.map(order => ({
+                    ...order,
+                    orderValue: parseFloat(order.orderValue.toString())
+                })),
+                message: 'Debug info retrieved successfully',
+                timestamp: new Date().toISOString()
+            };
+        } catch (error) {
+            logger.error(`[OrderService] Error getting debug info:`, error);
+            throw error;
+        }
+    }
+
+    /**
      * Get order list with filters
      */
     async getOrders(query: GetOrderListDto) {
         const { search, status, customerId, workerId, ticketId, page, limit, sortBy, sortOrder } = query;
         const skip = (page! - 1) * limit!;
+
+        logger.info(`[OrderService] getOrders called with params:`, {
+            page,
+            limit,
+            search,
+            status,
+            customerId,
+            workerId,
+            ticketId,
+            sortBy,
+            sortOrder
+        });
 
         const where: any = {};
 
@@ -447,67 +511,84 @@ export default class OrderService {
 
             if (isNumber) {
                 where.orderNumber = parseInt(search);
+                logger.info(`[OrderService] Searching by order number: ${search}`);
             } else {
                 where.OR = [
                     { customer: { fullname: { contains: search } } },
                     { worker: { fullname: { contains: search } } },
                 ];
+                logger.info(`[OrderService] Searching by name: ${search}`);
             }
         }
 
         if (status) {
             where.status = status;
+            logger.info(`[OrderService] Filtering by status: ${status}`);
         }
 
         if (customerId) {
             where.customerId = customerId;
+            logger.info(`[OrderService] Filtering by customerId: ${customerId}`);
         }
 
         if (workerId) {
             where.workerId = workerId;
+            logger.info(`[OrderService] Filtering by workerId: ${workerId}`);
         }
 
         if (ticketId) {
             where.ticketId = ticketId;
+            logger.info(`[OrderService] Filtering by ticketId: ${ticketId}`);
         }
 
-        const [orders, total] = await Promise.all([
-            prisma.order.findMany({
-                where,
-                include: {
-                    customer: {
-                        select: {
-                            id: true,
-                            fullname: true,
-                            username: true,
-                            discordId: true,
-                        },
-                    },
-                    worker: {
-                        select: {
-                            id: true,
-                            fullname: true,
-                            username: true,
-                            discordId: true,
-                        },
-                    },
-                    service: true,
-                    method: true,
-                },
-                skip,
-                take: limit,
-                orderBy: { [sortBy!]: sortOrder },
-            }),
-            prisma.order.count({ where }),
-        ]);
+        logger.info(`[OrderService] Built where clause:`, JSON.stringify(where));
+        logger.info(`[OrderService] Pagination: skip=${skip}, take=${limit}`);
 
-        return {
-            list: orders,
-            total,
-            page: page!,
-            limit: limit!,
-            totalPages: Math.ceil(total / limit!),
-        };
+        try {
+            const [orders, total] = await Promise.all([
+                prisma.order.findMany({
+                    where,
+                    include: {
+                        customer: {
+                            select: {
+                                id: true,
+                                fullname: true,
+                                username: true,
+                                discordId: true,
+                            },
+                        },
+                        worker: {
+                            select: {
+                                id: true,
+                                fullname: true,
+                                username: true,
+                                discordId: true,
+                            },
+                        },
+                        service: true,
+                        method: true,
+                    },
+                    skip,
+                    take: limit,
+                    orderBy: { [sortBy!]: sortOrder },
+                }),
+                prisma.order.count({ where }),
+            ]);
+
+            logger.info(`[OrderService] Found ${orders.length} orders out of ${total} total`);
+            logger.info(`[OrderService] Response: page=${page}, limit=${limit}, totalPages=${Math.ceil(total / limit!)}`);
+
+            return {
+                list: orders,
+                total,
+                page: page!,
+                limit: limit!,
+                totalPages: Math.ceil(total / limit!),
+            };
+        } catch (error) {
+            logger.error(`[OrderService] Error fetching orders:`, error);
+            throw error;
+        }
     }
 
     /**

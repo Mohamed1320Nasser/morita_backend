@@ -3,6 +3,7 @@ import prisma from "../../common/prisma/client";
 import { NotFoundError, BadRequestError } from "routing-controllers";
 import { getXpBetweenLevels, formatXp } from "../../common/utils/xpCalculator";
 import logger from "../../common/loggers";
+import { getRedisService } from "../../common/services/redis.service";
 
 export interface PriceCalculationRequest {
     methodId: string;
@@ -59,6 +60,7 @@ export interface LevelRangeCalculationRequest {
     serviceId: string;
     startLevel: number;
     endLevel: number;
+    groupName?: string; // Optional: filter methods by group name (e.g., "zulrah", "vorkath")
 }
 
 export interface MethodOption {
@@ -112,7 +114,58 @@ export interface LevelRangeCalculationResult {
 
 @Service()
 export default class PricingCalculatorService {
-    constructor() {}
+    private redis = getRedisService();
+
+    // Cache TTL constants (in seconds)
+    private readonly CACHE_TTL = {
+        SERVICE_DATA: 5 * 60,        // 5 minutes
+        PRICING_CALCULATION: 10 * 60, // 10 minutes
+        PAYMENT_METHODS: 60 * 60,     // 1 hour
+    };
+
+    constructor() {
+        logger.info('[PricingCalculator] Service initialized with Redis caching');
+    }
+
+    /**
+     * Generate cache key for pricing calculations
+     */
+    private generatePricingCacheKey(
+        methodId: string,
+        paymentMethodId: string,
+        quantity: number,
+        serviceModifierIds: string[]
+    ): string {
+        const modifiersKey = serviceModifierIds.sort().join(',') || 'none';
+        return `pricing:calc:${methodId}:${paymentMethodId}:${quantity}:${modifiersKey}`;
+    }
+
+    /**
+     * Generate cache key for level range calculations
+     */
+    private generateLevelRangeCacheKey(
+        serviceId: string,
+        startLevel: number,
+        endLevel: number,
+        groupName?: string
+    ): string {
+        const groupKey = groupName || 'all';
+        return `pricing:range:${serviceId}:${startLevel}-${endLevel}:${groupKey}`;
+    }
+
+    /**
+     * Invalidate all pricing cache for a service
+     */
+    async invalidateServiceCache(serviceId: string): Promise<void> {
+        try {
+            // Note: Redis doesn't have a built-in way to delete by pattern in this implementation
+            // In production, you'd want to use Redis SCAN with pattern matching
+            logger.info(`[PricingCalculator] Cache invalidation requested for service: ${serviceId}`);
+            // For now, we rely on TTL expiration
+        } catch (error) {
+            logger.error('[PricingCalculator] Error invalidating cache:', error);
+        }
+    }
 
     async calculatePrice(
         request: PriceCalculationRequest
@@ -124,6 +177,26 @@ export default class PricingCalculatorService {
             serviceModifierIds = [],
             customConditions = {},
         } = request;
+
+        // Generate cache key
+        const cacheKey = this.generatePricingCacheKey(
+            methodId,
+            paymentMethodId,
+            quantity,
+            serviceModifierIds
+        );
+
+        // Try to get from cache
+        try {
+            const cached = await this.redis.get<PriceCalculationResult>(cacheKey);
+            if (cached) {
+                logger.debug(`[PricingCalculator] 🎯 Cache HIT: ${cacheKey}`);
+                return cached;
+            }
+            logger.debug(`[PricingCalculator] 💨 Cache MISS: ${cacheKey}`);
+        } catch (error) {
+            logger.warn('[PricingCalculator] Cache read error, continuing without cache:', error);
+        }
 
         // Get pricing method with modifiers and service
         const method = await prisma.pricingMethod.findFirst({
@@ -307,7 +380,7 @@ export default class PricingCalculatorService {
             })),
         ];
 
-        return {
+        const result: PriceCalculationResult = {
             basePrice: basePrice,
             finalPrice: Math.round(calculatedPrice * 100) / 100,
             serviceModifiers: serviceModifiersApplied,
@@ -322,6 +395,16 @@ export default class PricingCalculatorService {
                 finalPrice: Math.round(calculatedPrice * 100) / 100,
             },
         };
+
+        // Cache the result
+        try {
+            await this.redis.set(cacheKey, result, this.CACHE_TTL.PRICING_CALCULATION);
+            logger.debug(`[PricingCalculator] 💾 Cached result: ${cacheKey}`);
+        } catch (error) {
+            logger.warn('[PricingCalculator] Cache write error:', error);
+        }
+
+        return result;
     }
 
     private calculateBasePrice(
@@ -453,7 +536,7 @@ export default class PricingCalculatorService {
     async calculateLevelRangePrice(
         request: LevelRangeCalculationRequest
     ): Promise<LevelRangeCalculationResult> {
-        const { serviceId, startLevel, endLevel } = request;
+        const { serviceId, startLevel, endLevel, groupName } = request;
 
         // Validate input
         if (startLevel < 1 || startLevel > 99) {
@@ -464,6 +547,26 @@ export default class PricingCalculatorService {
         }
         if (startLevel >= endLevel) {
             throw new BadRequestError("Start level must be less than end level");
+        }
+
+        // Generate cache key
+        const cacheKey = this.generateLevelRangeCacheKey(
+            serviceId,
+            startLevel,
+            endLevel,
+            groupName
+        );
+
+        // Try to get from cache
+        try {
+            const cached = await this.redis.get<LevelRangeCalculationResult>(cacheKey);
+            if (cached) {
+                logger.info(`[PricingCalculator] 🎯 Cache HIT: Level range ${startLevel}-${endLevel} for service ${serviceId}`);
+                return cached;
+            }
+            logger.info(`[PricingCalculator] 💨 Cache MISS: Level range ${startLevel}-${endLevel} for service ${serviceId}`);
+        } catch (error) {
+            logger.warn('[PricingCalculator] Cache read error, continuing without cache:', error);
         }
 
         // Get service with service modifiers
@@ -486,10 +589,12 @@ export default class PricingCalculatorService {
         }
 
         // Get pricing methods using raw SQL to avoid Prisma Decimal precision bug
-        const pricingMethodsRaw: any[] = await prisma.$queryRawUnsafe(`
+        // Support filtering by groupName if provided
+        let query = `
             SELECT
                 id,
                 name,
+                groupName,
                 CAST(basePrice AS CHAR) as basePrice,
                 pricingUnit,
                 startLevel,
@@ -499,9 +604,22 @@ export default class PricingCalculatorService {
             WHERE serviceId = ?
                 AND active = 1
                 AND deletedAt IS NULL
-                AND pricingUnit = 'PER_LEVEL'
-            ORDER BY displayOrder ASC
-        `, serviceId);
+                AND pricingUnit = 'PER_LEVEL'`;
+
+        const queryParams: any[] = [serviceId];
+
+        // Add groupName filter if provided
+        if (groupName) {
+            query += `
+                AND groupName = ?`;
+            queryParams.push(groupName);
+            logger.info(`[PricingCalculator] 🎯 Filtering methods by groupName: "${groupName}"`);
+        }
+
+        query += `
+            ORDER BY displayOrder ASC`;
+
+        const pricingMethodsRaw: any[] = await prisma.$queryRawUnsafe(query, ...queryParams);
 
         logger.info(`[PricingCalculator] 📊 Found ${pricingMethodsRaw.length} PER_LEVEL pricing methods for service`);
         pricingMethodsRaw.forEach(m => {
@@ -554,7 +672,7 @@ export default class PricingCalculatorService {
         logger.info(`[PricingCalculator] 🎯 Generated ${methodOptions.length} method option(s)`);
         logger.info(`[PricingCalculator] 💰 Cheapest: "${cheapestOption.methodName}" at $${cheapestOption.finalPrice.toFixed(2)}`);
 
-        return {
+        const result: LevelRangeCalculationResult = {
             service: {
                 id: service.id,
                 name: service.name,
@@ -568,6 +686,16 @@ export default class PricingCalculatorService {
             },
             methodOptions,
         };
+
+        // Cache the result
+        try {
+            await this.redis.set(cacheKey, result, this.CACHE_TTL.PRICING_CALCULATION);
+            logger.debug(`[PricingCalculator] 💾 Cached level range result: ${cacheKey}`);
+        } catch (error) {
+            logger.warn('[PricingCalculator] Cache write error:', error);
+        }
+
+        return result;
     }
 
     /**
@@ -677,8 +805,50 @@ export default class PricingCalculatorService {
             }
         }
 
-        // Sort by price (cheapest first)
-        options.sort((a, b) => a.finalPrice - b.finalPrice);
+        // Sort by grouping methods with same name, then by level
+        // Step 1: Extract base name and group methods
+        const groupedOptions: Record<string, typeof options> = {};
+
+        for (const option of options) {
+            // Extract base name by removing level range patterns like "(48-58)", "(1-48)", etc.
+            let baseName = option.methodName
+                .replace(/\s*\(\d+-\d+\)\s*/g, '') // Remove (1-27)
+                .replace(/\s*\d+-\d+\s*/g, '') // Remove 1-27
+                .trim();
+
+            // If empty after cleaning, use original name
+            if (!baseName) {
+                baseName = option.methodName;
+            }
+
+            if (!groupedOptions[baseName]) {
+                groupedOptions[baseName] = [];
+            }
+            groupedOptions[baseName].push(option);
+        }
+
+        // Step 2: Sort methods within each group by starting level
+        for (const baseName in groupedOptions) {
+            groupedOptions[baseName].sort((a, b) => {
+                const aStartLevel = a.levelRanges && a.levelRanges.length > 0 ? a.levelRanges[0].startLevel : 0;
+                const bStartLevel = b.levelRanges && b.levelRanges.length > 0 ? b.levelRanges[0].startLevel : 0;
+                return aStartLevel - bStartLevel;
+            });
+        }
+
+        // Step 3: Sort groups by minimum starting level in each group
+        const sortedGroups = Object.entries(groupedOptions).sort(([nameA, methodsA], [nameB, methodsB]) => {
+            const minLevelA = methodsA[0].levelRanges && methodsA[0].levelRanges.length > 0
+                ? methodsA[0].levelRanges[0].startLevel
+                : 0;
+            const minLevelB = methodsB[0].levelRanges && methodsB[0].levelRanges.length > 0
+                ? methodsB[0].levelRanges[0].startLevel
+                : 0;
+            return minLevelA - minLevelB;
+        });
+
+        // Step 4: Flatten back to array while maintaining group order
+        options = sortedGroups.flatMap(([name, methods]) => methods);
 
         logger.info(`[PricingCalculator] 📊 Total options generated: ${options.length}`);
 

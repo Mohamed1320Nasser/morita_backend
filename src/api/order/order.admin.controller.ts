@@ -29,6 +29,12 @@ export default class AdminOrderController {
         return await this.orderService.getOrderStats();
     }
 
+    @Get("/debug/count")
+    @Authorized(API.Role.admin)
+    async getOrderDebugCount() {
+        return await this.orderService.getOrderDebugInfo();
+    }
+
     @Authorized(API.Role.admin)
     @Get("/stats/volume")
     async getOrderVolumeStats(@QueryParams() query: { days?: number; startDate?: string; endDate?: string }) {

@@ -1,8 +1,6 @@
 import { Client, TextChannel, Message, MessageCreateOptions, MessageEditOptions } from "discord.js";
-import { PrismaClient } from "@prisma/client";
 import logger from "../../common/loggers";
-
-const prisma = new PrismaClient();
+import prisma from "../../common/prisma/client";
 
 export class MessagePersistenceService {
     private client: Client;

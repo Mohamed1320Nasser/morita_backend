@@ -138,10 +138,30 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
         );
     }
 
+    // If still no service found, check if serviceName is a groupName
+    let groupNameToUse: string | undefined = undefined;
+    if (!service) {
+        logger.info(`[PriceCalculator] 🔍 Service not found, checking if "${serviceName}" is a groupName`);
+
+        // Search for methods with this groupName across all services
+        for (const s of services) {
+            const methodWithGroup = s.pricingMethods?.find((m: any) =>
+                m.groupName && m.groupName.toLowerCase() === serviceName
+            );
+
+            if (methodWithGroup) {
+                service = s;
+                groupNameToUse = methodWithGroup.groupName;
+                logger.info(`[PriceCalculator] ✅ Found groupName "${groupNameToUse}" in service "${service.name}"`);
+                break;
+            }
+        }
+    }
+
     if (!service) {
         await thinkingMsg.edit({
             content: `❌ **Service Not Found**\n\n` +
-                `Could not find a service matching "${serviceName}".\n\n` +
+                `Could not find a service or group matching "${serviceName}".\n\n` +
                 `Use \`/services\` to see all available services.`,
         });
         return;
@@ -159,6 +179,7 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
             serviceId: service.id,
             startLevel,
             endLevel,
+            groupName: groupNameToUse, // Pass groupName if found
         });
 
         logger.info('[PriceCalculator] Calculation completed successfully');
@@ -436,6 +457,28 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
         return matchesName && hasPerKillPricing;
     });
 
+    // If no service found, check if serviceName is a groupName
+    let groupNameFilter: string | undefined = undefined;
+    if (!service) {
+        logger.info(`[PvM] 🔍 Service not found, checking if "${serviceName}" is a groupName`);
+
+        // Search for methods with this groupName across all services
+        for (const s of services) {
+            const methodWithGroup = s.pricingMethods?.find((m: any) =>
+                m.pricingUnit === 'PER_KILL' &&
+                m.groupName &&
+                m.groupName.toLowerCase() === serviceName
+            );
+
+            if (methodWithGroup) {
+                service = s;
+                groupNameFilter = methodWithGroup.groupName;
+                logger.info(`[PvM] ✅ Found groupName "${groupNameFilter}" in service "${service.name}"`);
+                break;
+            }
+        }
+    }
+
     // Fetch full service with modifiers (both service-level and method-level)
     if (service) {
         const fullService = await apiService.getServiceWithPricing(service.id);
@@ -446,7 +489,7 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
         logger.warn(`[PvM] ❌ No service found matching "${serviceName}" with PER_KILL pricing`);
         await thinkingMsg.edit({
             content: `❌ **Service Not Found**\n\n` +
-                `Could not find a PvM service matching "${serviceName}".\n\n` +
+                `Could not find a PvM service or group matching "${serviceName}".\n\n` +
                 `Make sure the service supports kill-count pricing.\n` +
                 `**Tip:** Try \`!p cox 120\`, \`!p cgp 50\`, or \`!p zulrah 100\``,
         });
@@ -465,10 +508,19 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
             throw new Error('No pricing methods found for this service');
         }
 
-        const allMethods = service.pricingMethods.filter((m: any) => m.pricingUnit === 'PER_KILL');
+        let allMethods = service.pricingMethods.filter((m: any) => m.pricingUnit === 'PER_KILL');
+
+        // Filter by groupName if specified
+        if (groupNameFilter) {
+            allMethods = allMethods.filter((m: any) => m.groupName === groupNameFilter);
+            logger.info(`[PvM] 🎯 Filtered to ${allMethods.length} methods with groupName "${groupNameFilter}"`);
+        }
 
         if (allMethods.length === 0) {
-            throw new Error('No PER_KILL pricing method found for this service');
+            throw new Error(groupNameFilter
+                ? `No PER_KILL pricing methods found with groupName "${groupNameFilter}"`
+                : 'No PER_KILL pricing method found for this service'
+            );
         }
 
         // Get ALL payment methods (to show multiple price options like old system)
@@ -627,6 +679,7 @@ function findMinigameItem(services: any[], searchTerm: string): {
     service: any;
     method: any | null;
     showAllMethods: boolean;
+    groupName?: string;
 } | null {
     const normalized = searchTerm.toLowerCase().trim();
 
@@ -678,6 +731,27 @@ function findMinigameItem(services: any[], searchTerm: string): {
             method: null,
             showAllMethods: true
         };
+    }
+
+    // Priority 2.5: Exact match on GROUP NAME
+    for (const service of minigameServices) {
+        if (!service.pricingMethods) continue;
+
+        const methodsInGroup = service.pricingMethods.filter((m: any) =>
+            m.pricingUnit === 'PER_ITEM' &&
+            m.groupName &&
+            m.groupName.toLowerCase() === normalized
+        );
+
+        if (methodsInGroup.length > 0) {
+            logger.info(`[Minigames] ✅ Exact groupName match: "${methodsInGroup[0].groupName}" in service "${service.name}" (${methodsInGroup.length} methods)`);
+            return {
+                service,
+                method: null,
+                showAllMethods: true,
+                groupName: methodsInGroup[0].groupName
+            };
+        }
     }
 
     // Priority 3: Partial match on METHOD name
@@ -962,10 +1036,10 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
         return;
     }
 
-    const { service, method: specificMethod, showAllMethods } = searchResult;
+    const { service, method: specificMethod, showAllMethods, groupName } = searchResult;
 
     try {
-        logger.info(`[Minigames] Calculating with serviceId: ${service.id}, quantity: ${quantity}, showAllMethods: ${showAllMethods}`);
+        logger.info(`[Minigames] Calculating with serviceId: ${service.id}, quantity: ${quantity}, showAllMethods: ${showAllMethods}, groupName: ${groupName || 'none'}`);
 
         // Fetch full service details with pricing methods
         const fullService = await apiService.getServiceWithPricing(service.id);
@@ -990,12 +1064,18 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
             throw new Error('No pricing methods found for this service');
         }
 
-        // CASE A: Show all methods (when service name is used)
+        // CASE A: Show all methods (when service name or groupName is used)
         if (showAllMethods) {
             logger.info('[Minigames] 📋 Showing all methods for service');
 
             // Get all PER_ITEM methods
-            const allMethods = fullService.pricingMethods.filter((m: any) => m.pricingUnit === 'PER_ITEM');
+            let allMethods = fullService.pricingMethods.filter((m: any) => m.pricingUnit === 'PER_ITEM');
+
+            // Filter by groupName if specified
+            if (groupName) {
+                allMethods = allMethods.filter((m: any) => m.groupName === groupName);
+                logger.info(`[Minigames] 🎯 Filtered to ${allMethods.length} methods with groupName "${groupName}"`);
+            }
 
             if (allMethods.length === 0) {
                 throw new Error('No PER_ITEM pricing methods found for this service');
@@ -1206,6 +1286,27 @@ function findIronmanItem(services: any[], searchTerm: string): any | null {
             method: null,
             showAllMethods: true
         };
+    }
+
+    // Priority 2.5: Exact match on GROUP NAME
+    for (const service of ironmanServices) {
+        if (!service.pricingMethods) continue;
+
+        const methodsInGroup = service.pricingMethods.filter((m: any) =>
+            m.pricingUnit === 'PER_ITEM' &&
+            m.groupName &&
+            m.groupName.toLowerCase() === normalized
+        );
+
+        if (methodsInGroup.length > 0) {
+            logger.info(`[Ironman] ✅ Exact groupName match: "${methodsInGroup[0].groupName}" in service "${service.name}" (${methodsInGroup.length} methods)`);
+            return {
+                service,
+                method: null,
+                showAllMethods: true,
+                groupName: methodsInGroup[0].groupName
+            };
+        }
     }
 
     // Priority 3: Partial match on METHOD name
@@ -1493,10 +1594,10 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
         return;
     }
 
-    const { service, method: specificMethod, showAllMethods } = searchResult;
+    const { service, method: specificMethod, showAllMethods, groupName } = searchResult;
 
     try {
-        logger.info(`[Ironman] Calculating with serviceId: ${service.id}, quantity: ${quantity}, showAllMethods: ${showAllMethods}`);
+        logger.info(`[Ironman] Calculating with serviceId: ${service.id}, quantity: ${quantity}, showAllMethods: ${showAllMethods}, groupName: ${groupName || 'none'}`);
 
         // Fetch full service details with pricing methods
         const fullService = await apiService.getServiceWithPricing(service.id);
@@ -1521,12 +1622,18 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
             throw new Error('No pricing methods found for this service');
         }
 
-        // CASE A: Show all methods (when service name is used)
+        // CASE A: Show all methods (when service name or groupName is used)
         if (showAllMethods) {
             logger.info('[Ironman] 📋 Showing all methods for service');
 
             // Get all PER_ITEM methods
-            const allMethods = fullService.pricingMethods.filter((m: any) => m.pricingUnit === 'PER_ITEM');
+            let allMethods = fullService.pricingMethods.filter((m: any) => m.pricingUnit === 'PER_ITEM');
+
+            // Filter by groupName if specified
+            if (groupName) {
+                allMethods = allMethods.filter((m: any) => m.groupName === groupName);
+                logger.info(`[Ironman] 🎯 Filtered to ${allMethods.length} methods with groupName "${groupName}"`);
+            }
 
             if (allMethods.length === 0) {
                 throw new Error('NO PER_ITEM pricing methods found for this service');
@@ -1892,6 +1999,25 @@ function findBestQuestMatch(services: any[], searchName: string): any | null {
                 ...service,
                 name: methodMatch.name,
                 pricingMethods: [methodMatch],
+            };
+        }
+    }
+
+    // Try exact match on GROUP NAME
+    for (const service of fixedServices) {
+        const methodsInGroup = service.pricingMethods?.filter((m: any) =>
+            m.pricingUnit === 'FIXED' &&
+            m.groupName &&
+            normalizeQuestName(m.groupName) === normalized
+        );
+
+        if (methodsInGroup && methodsInGroup.length > 0) {
+            logger.info(`[Quest] ✅ Exact groupName match: "${methodsInGroup[0].groupName}" in service "${service.name}" (${methodsInGroup.length} quests)`);
+            // Return service with only methods from this group
+            return {
+                ...service,
+                name: `${service.name} - ${methodsInGroup[0].groupName}`,
+                pricingMethods: methodsInGroup,
             };
         }
     }

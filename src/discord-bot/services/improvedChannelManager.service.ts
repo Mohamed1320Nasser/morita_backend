@@ -1,5 +1,4 @@
 import { Client, TextChannel, Message, AttachmentBuilder } from "discord.js";
-import { PrismaClient } from "@prisma/client";
 import { ApiService } from "./api.service";
 import { EnhancedPricingBuilder } from "../utils/enhancedPricingBuilder";
 import { getSelectMenuResetManager } from "./selectMenuResetManager";
@@ -16,8 +15,7 @@ import {
 import { discordConfig } from "../config/discord.config";
 import logger from "../../common/loggers";
 import path from "path";
-
-const prisma = new PrismaClient();
+import prisma from "../../common/prisma/client";
 
 /**
  * Improved Pricing Channel Manager with Real-Time Updates

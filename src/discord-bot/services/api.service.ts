@@ -8,9 +8,17 @@ import {
     PriceCalculationResult,
 } from "../types/discord.types";
 import logger from "../../common/loggers";
+import { getRedisService } from "../../common/services/redis.service";
 
 export class ApiService {
     private client: AxiosInstance;
+    private redis = getRedisService();
+
+    // Cache TTL constants (in seconds)
+    private readonly CACHE_TTL = {
+        SERVICES: 5 * 60,        // 5 minutes
+        PAYMENT_METHODS: 60 * 60, // 1 hour
+    };
 
     constructor(baseURL: string) {
         this.client = axios.create({
@@ -20,6 +28,8 @@ export class ApiService {
                 "Content-Type": "application/json",
             },
         });
+
+        logger.info('[ApiService] Initialized with Redis caching');
 
         this.client.interceptors.request.use(
             config => config,
@@ -147,6 +157,20 @@ export class ApiService {
 
     // Payment Methods
     async getPaymentMethods(): Promise<PaymentMethod[]> {
+        const cacheKey = 'api:payment-methods:all';
+
+        // Try to get from cache
+        try {
+            const cached = await this.redis.get<PaymentMethod[]>(cacheKey);
+            if (cached) {
+                logger.debug('[ApiService] 🎯 Cache HIT: Payment methods');
+                return cached;
+            }
+            logger.debug('[ApiService] 💨 Cache MISS: Payment methods');
+        } catch (error) {
+            logger.warn('[ApiService] Cache read error, continuing without cache:', error);
+        }
+
         try {
             const response: AxiosResponse<{
                 msg: string;
@@ -159,7 +183,17 @@ export class ApiService {
             }> = await this.client.get("/api/public/payment-methods");
 
             if (response.data.data.success) {
-                return response.data.data.data;
+                const paymentMethods = response.data.data.data;
+
+                // Cache the result
+                try {
+                    await this.redis.set(cacheKey, paymentMethods, this.CACHE_TTL.PAYMENT_METHODS);
+                    logger.debug('[ApiService] 💾 Cached payment methods');
+                } catch (error) {
+                    logger.warn('[ApiService] Cache write error:', error);
+                }
+
+                return paymentMethods;
             }
             throw new Error("Failed to fetch payment methods");
         } catch (error) {
@@ -240,6 +274,20 @@ export class ApiService {
     }
 
     async getAllServicesWithPricing(): Promise<Service[]> {
+        const cacheKey = 'api:services:all-with-pricing';
+
+        // Try to get from cache
+        try {
+            const cached = await this.redis.get<Service[]>(cacheKey);
+            if (cached) {
+                logger.debug('[ApiService] 🎯 Cache HIT: All services with pricing');
+                return cached;
+            }
+            logger.debug('[ApiService] 💨 Cache MISS: All services with pricing');
+        } catch (error) {
+            logger.warn('[ApiService] Cache read error, continuing without cache:', error);
+        }
+
         try {
             const categories = await this.getCategoriesWithServices();
             const services: Service[] = [];
@@ -261,6 +309,14 @@ export class ApiService {
                     }));
                     services.push(...servicesWithCategory);
                 }
+            }
+
+            // Cache the result
+            try {
+                await this.redis.set(cacheKey, services, this.CACHE_TTL.SERVICES);
+                logger.debug('[ApiService] 💾 Cached all services with pricing');
+            } catch (error) {
+                logger.warn('[ApiService] Cache write error:', error);
             }
 
             return services;

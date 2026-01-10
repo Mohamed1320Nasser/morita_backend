@@ -1,5 +1,4 @@
 import { Client, TextChannel, Message, Collection, AttachmentBuilder } from "discord.js";
-import { PrismaClient } from "@prisma/client";
 import { ApiService } from "./api.service";
 import { SelectMenuPricingBuilder } from "../utils/selectMenuPricingBuilder";
 import {
@@ -10,8 +9,7 @@ import {
 import { discordConfig } from "../config/discord.config";
 import logger from "../../common/loggers";
 import path from "path";
-
-const prisma = new PrismaClient();
+import prisma from "../../common/prisma/client";
 
 export class ChannelManagerService {
     private client: Client;

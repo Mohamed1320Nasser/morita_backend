@@ -127,8 +127,12 @@ function emitPricingEvents(
     }
 }
 
-// Create Prisma client with extensions
-const prisma = new PrismaClient().$extends({
+// Create Prisma client with connection pooling and extensions
+const prisma = new PrismaClient({
+    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+    // Connection pooling is configured via DATABASE_URL parameters
+    // See .env.example for connection pool configuration
+}).$extends({
     query: {
         $allModels: {
             async $allOperations({ model, operation, args, query }) {
