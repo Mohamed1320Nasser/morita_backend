@@ -711,7 +711,7 @@ export default class PricingCalculatorService {
         endLevel: number,
         serviceModifiers: any[]
     ): MethodOption[] {
-        const options: MethodOption[] = [];
+        let options: MethodOption[] = [];
 
         logger.info(`[PricingCalculator] 🔍 Generating method options for ${startLevel}-${endLevel}`);
 
