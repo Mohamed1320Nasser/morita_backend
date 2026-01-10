@@ -96,22 +96,24 @@ export default class AdminUserController {
                 prisma.user.count({ where }),
             ]);
 
-            return {
-                success: true,
-                data: {
-                    list: users.map((user) => ({
-                        ...user,
-                        ordersAsCustomer: user.customerOrders.length,
-                        ordersAsWorker: user.workerOrders.length,
-                        // Don't send password hash to frontend
-                        password: undefined,
-                    })),
-                    total,
-                    page,
-                    limit,
-                    totalPages: Math.ceil(total / limit),
-                },
+            const responseData = {
+                list: users.map((user) => ({
+                    ...user,
+                    ordersAsCustomer: user.customerOrders.length,
+                    ordersAsWorker: user.workerOrders.length,
+                    // Don't send password hash to frontend
+                    password: undefined,
+                })),
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit),
             };
+
+            logger.info(`[Admin] Returning ${responseData.list.length} users out of ${total} total`);
+            logger.info(`[Admin] Response will be wrapped by global interceptor in { msg, status, error, data } format`);
+
+            return responseData;
         } catch (error) {
             logger.error(`[Admin] Get users error:`, error);
             throw error;

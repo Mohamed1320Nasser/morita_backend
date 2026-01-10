@@ -145,34 +145,36 @@ export default class AdminTransactionController {
                 prisma.walletTransaction.count({ where }),
             ]);
 
-            return {
-                success: true,
-                data: {
-                    list: transactions.map((tx) => ({
-                        id: tx.id,
-                        type: tx.type,
-                        amount: new Decimal(tx.amount.toString()).toNumber(),
-                        balanceBefore: new Decimal(tx.balanceBefore.toString()).toNumber(),
-                        balanceAfter: new Decimal(tx.balanceAfter.toString()).toNumber(),
-                        currency: tx.currency,
-                        status: tx.status,
-                        reference: tx.reference,
-                        notes: tx.notes,
-                        createdAt: tx.createdAt,
-                        wallet: {
-                            id: tx.wallet.id,
-                            walletType: tx.wallet.walletType,
-                            user: tx.wallet.user,
-                        },
-                        createdBy: tx.createdBy,
-                        order: tx.order,
-                    })),
-                    total,
-                    page,
-                    limit,
-                    totalPages: Math.ceil(total / limit),
-                },
+            const responseData = {
+                list: transactions.map((tx) => ({
+                    id: tx.id,
+                    type: tx.type,
+                    amount: new Decimal(tx.amount.toString()).toNumber(),
+                    balanceBefore: new Decimal(tx.balanceBefore.toString()).toNumber(),
+                    balanceAfter: new Decimal(tx.balanceAfter.toString()).toNumber(),
+                    currency: tx.currency,
+                    status: tx.status,
+                    reference: tx.reference,
+                    notes: tx.notes,
+                    createdAt: tx.createdAt,
+                    wallet: {
+                        id: tx.wallet.id,
+                        walletType: tx.wallet.walletType,
+                        user: tx.wallet.user,
+                    },
+                    createdBy: tx.createdBy,
+                    order: tx.order,
+                })),
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit),
             };
+
+            logger.info(`[Admin] Returning ${responseData.list.length} transactions out of ${total} total`);
+            logger.info(`[Admin] Response will be wrapped by global interceptor in { msg, status, error, data } format`);
+
+            return responseData;
         } catch (error) {
             logger.error(`[Admin] Get transactions error:`, error);
             throw error;
