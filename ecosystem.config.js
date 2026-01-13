@@ -67,7 +67,8 @@ module.exports = {
       // Production (live bot)
       env_production: {
         NODE_ENV: 'production',
-        ENV_FILE: '.env.production'
+        ENV_FILE: '.env.production',
+        BOT_API_PORT: 3002
       },
 
       error_file: './logs/bot-error.log',
