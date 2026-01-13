@@ -18,6 +18,42 @@ export class TicketCategoryManager {
     }
 
     /**
+     * Setup only - validates guild/category exists but doesn't publish messages
+     * Used for manual publish mode
+     */
+    async setupOnly(): Promise<void> {
+        try {
+            logger.info("[TicketCategoryManager] Setting up (manual publish mode)...");
+
+            // Get guild
+            this.guild = this.client.guilds.cache.get(discordConfig.guildId);
+            if (!this.guild) {
+                logger.warn("[TicketCategoryManager] Guild not found");
+                return;
+            }
+
+            // Check if category exists
+            if (discordConfig.createTicketCategoryId) {
+                const existing = this.guild.channels.cache.get(discordConfig.createTicketCategoryId);
+                if (existing && existing.type === ChannelType.GuildCategory) {
+                    this.ticketCategory = existing as CategoryChannel;
+                    logger.info(`[TicketCategoryManager] Setup complete - connected to category: ${this.ticketCategory.name}`);
+                }
+            }
+        } catch (error) {
+            logger.error("[TicketCategoryManager] Setup failed:", error);
+        }
+    }
+
+    /**
+     * Publish ticket channels to Discord
+     * Call this via API endpoint for manual publishing
+     */
+    async publishTickets(): Promise<void> {
+        await this.initialize();
+    }
+
+    /**
      * Initialize the ticket category and channels
      */
     async initialize(): Promise<void> {

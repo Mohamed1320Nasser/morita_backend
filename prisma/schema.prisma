@@ -854,3 +854,26 @@ model OnboardingSession {
   @@index([discordId])
   @@index([tosAccepted, questionsCompleted])
 }
+
+// Discord Channel Publish Status - Track when channels were last published
+enum DiscordChannelType {
+  PRICING        // Services/Pricing channel
+  TOS            // Terms of Service channel
+  TICKETS        // Ticket creation channels (4 channels)
+}
+
+model DiscordChannelPublishStatus {
+  id              String             @id @default(uuid())
+  channelType     DiscordChannelType @unique
+  channelId       String?            // Discord channel ID
+  lastPublishedAt DateTime?          @db.DateTime(0)
+  lastPublishedBy Int?               @db.UnsignedInt // User who triggered publish
+  messageCount    Int                @default(0)
+  status          String             @default("never_published") // never_published, published, needs_update, error
+  lastError       String?            @db.Text
+  createdAt       DateTime           @default(now()) @db.DateTime(0)
+  updatedAt       DateTime           @default(now()) @updatedAt @db.DateTime(0)
+
+  @@index([channelType])
+  @@index([status])
+}

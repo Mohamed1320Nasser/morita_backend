@@ -60,6 +60,10 @@ export default {
             if (!questions || questions.length === 0) {
                 logger.info(`[Onboarding] No questions configured, completing onboarding directly for ${username}`);
 
+                // IMPORTANT: Defer reply FIRST to prevent "interaction failed"
+                // Discord only gives 3 seconds to respond, but onboarding takes longer
+                await interaction.deferReply({ ephemeral: true });
+
                 try {
                     // Record TOS acceptance first
                     await axios.post(`${discordConfig.apiBaseUrl}/onboarding/tos/accept`, {
@@ -81,23 +85,21 @@ export default {
 
                     await onboardingManager.completeOnboarding(member, defaultUserData);
 
-                    return await interaction.reply({
+                    return await interaction.editReply({
                         content:
                             `✅ **Welcome!**\n\n` +
                             `Your account has been created successfully.\n\n` +
                             `✅ Customer role assigned\n` +
                             `✅ Access granted to all channels\n\n` +
-                            `Enjoy our services!`,
-                        ephemeral: true
+                            `Enjoy our services!`
                     });
                 } catch (error: any) {
                     logger.error(`[Onboarding] Failed to complete direct onboarding:`, error);
-                    return await interaction.reply({
+                    return await interaction.editReply({
                         content:
                             `❌ **Registration Failed**\n\n` +
                             `An error occurred: ${error.message}\n\n` +
-                            `Please try clicking "Accept Terms" again or contact an administrator.`,
-                        ephemeral: true
+                            `Please try clicking "Accept Terms" again or contact an administrator.`
                     });
                 }
             }
@@ -166,18 +168,20 @@ export default {
             logger.error("[Onboarding] Error in accept-tos button:", error);
 
             const errorMsg = error.message || "Unknown error";
+            const errorContent =
+                `❌ **An Error Occurred**\n\n` +
+                `Error: \`${errorMsg}\`\n\n` +
+                `Please try again or contact an administrator.`;
 
-            // Try to reply if interaction not handled
-            if (!interaction.replied && !interaction.deferred) {
-                await interaction.reply({
-                    content:
-                        `❌ **An Error Occurred**\n\n` +
-                        `Error: \`${errorMsg}\`\n\n` +
-                        `Please try again or contact an administrator.`,
-                    ephemeral: true
-                }).catch((replyError) => {
-                    logger.error("[Onboarding] Could not send error reply:", replyError);
-                });
+            // Try to reply based on interaction state
+            try {
+                if (interaction.deferred) {
+                    await interaction.editReply({ content: errorContent });
+                } else if (!interaction.replied) {
+                    await interaction.reply({ content: errorContent, ephemeral: true });
+                }
+            } catch (replyError) {
+                logger.error("[Onboarding] Could not send error reply:", replyError);
             }
         }
     }

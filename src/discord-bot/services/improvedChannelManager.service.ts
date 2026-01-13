@@ -44,11 +44,28 @@ export class ImprovedChannelManager {
     }
 
     /**
-     * Initialize pricing channel and event listeners
+     * Setup only - connects to channel but doesn't publish anything
+     * Used for manual publish mode - bot startup won't update channels
+     */
+    async setupOnly(): Promise<void> {
+        try {
+            logger.info("[ImprovedChannelManager] Setting up (manual publish mode)...");
+            await this.setupPricingChannel();
+            this.isInitialized = true;
+            logger.info("[ImprovedChannelManager] Setup complete - ready for manual publish");
+        } catch (error) {
+            logger.error("[ImprovedChannelManager] Setup failed:", error);
+            throw error;
+        }
+    }
+
+    /**
+     * Initialize pricing channel and event listeners (LEGACY - auto-update mode)
+     * @deprecated Use setupOnly() + manual publish via API instead
      */
     async initialize(): Promise<void> {
         try {
-            logger.info("[ImprovedChannelManager] Initializing...");
+            logger.info("[ImprovedChannelManager] Initializing (auto-update mode)...");
 
             // Setup pricing channel
             await this.setupPricingChannel();

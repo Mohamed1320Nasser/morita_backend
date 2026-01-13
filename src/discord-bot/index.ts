@@ -114,14 +114,21 @@ client.once(Events.ClientReady, async readyClient => {
         logger.error("Failed to register slash commands:", error);
     }
 
+    // ============================================================
+    // MANUAL PUBLISH MODE - Channels are NOT auto-updated on startup
+    // Use dashboard "Publish to Discord" buttons or API endpoints to update
+    // ============================================================
+
+    // Initialize channel managers (but don't publish to channels)
     try {
-        await client.improvedChannelManager.initialize();
+        // Only setup channel reference, don't rebuild/publish
+        await client.improvedChannelManager.setupOnly();
         logger.info(
-            "Improved pricing channel manager initialized with real-time updates"
+            "Pricing channel manager ready (manual publish mode - use API to publish)"
         );
     } catch (error) {
         logger.error(
-            "Failed to initialize improved pricing channel manager:",
+            "Failed to setup pricing channel manager:",
             error
         );
     }
@@ -129,13 +136,14 @@ client.once(Events.ClientReady, async readyClient => {
     try {
         const { getTicketCategoryManager } = await import("./services/ticketCategoryManager.service");
         client.ticketCategoryManager = getTicketCategoryManager(client);
-        await client.ticketCategoryManager.initialize();
+        // Only setup, don't initialize channels
+        await client.ticketCategoryManager.setupOnly();
         logger.info(
-            "Ticket category manager initialized (4 ticket types ready)"
+            "Ticket category manager ready (manual publish mode - use API to publish)"
         );
     } catch (error) {
         logger.error(
-            "Failed to initialize ticket category manager:",
+            "Failed to setup ticket category manager:",
             error
         );
     }
@@ -143,10 +151,11 @@ client.once(Events.ClientReady, async readyClient => {
     try {
         const { TosManagerService } = await import("./services/tosManager.service");
         client.tosManager = new TosManagerService(client);
-        await client.tosManager.initializeTosChannel();
-        logger.info("TOS channel initialized successfully");
+        // Only setup, don't publish TOS
+        await client.tosManager.setupOnly();
+        logger.info("TOS manager ready (manual publish mode - use API to publish)");
     } catch (error) {
-        logger.error("Failed to initialize TOS channel:", error);
+        logger.error("Failed to setup TOS manager:", error);
     }
 });
 

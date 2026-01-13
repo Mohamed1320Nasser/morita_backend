@@ -7,9 +7,42 @@ import { getMessagePersistence } from "./messagePersistence.service";
 
 export class TosManagerService {
     private client: Client;
+    private tosChannel: TextChannel | null = null;
 
     constructor(client: Client) {
         this.client = client;
+    }
+
+    /**
+     * Setup only - validates channel exists but doesn't publish
+     * Used for manual publish mode
+     */
+    async setupOnly(): Promise<void> {
+        try {
+            if (!onboardingConfig.tosChannelId) {
+                logger.warn("[TosManager] TOS channel ID not configured");
+                return;
+            }
+
+            this.tosChannel = await this.client.channels.fetch(onboardingConfig.tosChannelId) as TextChannel;
+
+            if (!this.tosChannel || !this.tosChannel.isTextBased()) {
+                logger.warn("[TosManager] TOS channel not found or not text-based");
+                return;
+            }
+
+            logger.info(`[TosManager] Setup complete - connected to channel: ${this.tosChannel.name}`);
+        } catch (error) {
+            logger.error("[TosManager] Setup failed:", error);
+        }
+    }
+
+    /**
+     * Publish TOS to Discord channel
+     * Call this via API endpoint for manual publishing
+     */
+    async publishTos(): Promise<void> {
+        await this.initializeTosChannel();
     }
 
     async initializeTosChannel() {
