@@ -14,16 +14,15 @@ export default class DiscordChannelsService {
     async getAllChannelsStatus(): Promise<any> {
         try {
             const response = await axios.get(`${BOT_API_URL}/discord/channels/status`);
-            return response.data;
+            // Bot API returns { success, data: { botConnected, botUsername, channels } }
+            // Return just the inner data so interceptor wraps it correctly
+            return response.data?.data || response.data;
         } catch (error: any) {
             logger.error("[DiscordChannelsService] Error getting channels status:", error.message);
             return {
-                success: false,
-                data: {
-                    botConnected: false,
-                    botUsername: undefined,
-                    channels: [],
-                },
+                botConnected: false,
+                botUsername: undefined,
+                channels: [],
                 error: "Bot API not available. Make sure the Discord bot is running.",
             };
         }
