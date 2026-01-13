@@ -1,37 +1,6 @@
 import { PrismaClient } from "@prisma/client";
-import { Decimal } from "@prisma/client/runtime/library";
 import { pricingEventService } from "../../../discord-bot/services/pricingEvent.service";
 import logger from "../../loggers";
-
-function convertDecimalsToNumbers(obj: any): any {
-    if (obj === null || obj === undefined) return obj;
-
-    if (obj instanceof Decimal) {
-        try {
-            // Convert to number without rounding to preserve precision
-            return obj.toNumber();
-        } catch {
-            // Fallback: convert via string
-            return Number(obj.toString());
-        }
-    }
-
-    if (Array.isArray(obj)) {
-        return obj.map(item => convertDecimalsToNumbers(item));
-    }
-
-    if (typeof obj === "object" && obj.constructor === Object) {
-        const result: Record<string, any> = {};
-        for (const key in obj) {
-            if (Object.prototype.hasOwnProperty.call(obj, key)) {
-                result[key] = convertDecimalsToNumbers(obj[key]);
-            }
-        }
-        return result;
-    }
-
-    return obj;
-}
 
 // Emit pricing events for Discord real-time updates
 function emitPricingEvents(
@@ -53,7 +22,6 @@ function emitPricingEvents(
         if (!eventAction) return;
 
         let entityId: string | undefined;
-        let additionalData: any = {};
 
         switch (model) {
             case "ServiceCategory":
@@ -129,7 +97,7 @@ function emitPricingEvents(
 
 // Create Prisma client with connection pooling and extensions
 const prisma = new PrismaClient({
-    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+    log: ['error'], // Only log errors
     // Connection pooling is configured via DATABASE_URL parameters
     // See .env.example for connection pool configuration
 }).$extends({
@@ -148,8 +116,7 @@ const prisma = new PrismaClient({
                     emitPricingEvents(model, operation, args, result);
                 }
 
-                // Convert decimals to numbers
-                return convertDecimalsToNumbers(result);
+                return result;
             },
         },
     },

@@ -45,37 +45,27 @@ model User {
   updatedAt           DateTime  @default(now()) @updatedAt() @db.DateTime(0)
   deletedAt           DateTime?
 
-  // Discord integration
-  discordId          String?      @unique // Discord user ID (e.g., "1135250199338549299")
-  discordUsername    String? // Discord username (e.g., "monasser.eng_09706")
-  discordDisplayName String? // Discord display name / global name (e.g., "Mohamed Nasser")
-  discordRole        DiscordRole? @default(customer) // Discord server role
+  discordId          String?      @unique 
+  discordUsername    String? 
+  discordDisplayName String?
+  discordRole        DiscordRole? @default(customer)
 
   sessions    Session[]
   otpRequests OtpRequest[]
   files       File[]       @relation("fileUploader")
   profile     File?        @relation("userProfile", fields: [profileId], references: [id])
-
-  // Order relations
   customerOrders      Order[]              @relation("customerOrders")
   workerOrders        Order[]              @relation("workerOrders")
   supportOrders       Order[]              @relation("supportOrders")
   statusChangeHistory OrderStatusHistory[] @relation("statusChangeHistory")
-
   transactions              Transaction[]       @relation("userTransactions")
   wallet                    Wallet?             @relation("userWallet")
   walletTransactionsCreated WalletTransaction[] @relation("transactionCreator")
-
-  // Ticket relations
   customerTickets Ticket[]        @relation("customerTickets")
   supportTickets  Ticket[]        @relation("supportTickets")
   ticketMessages  TicketMessage[] @relation("ticketMessageAuthor")
-
-  // Onboarding relations
   tosAcceptances    TosAcceptance[]    @relation("userTosAcceptances")
   onboardingAnswers OnboardingAnswer[] @relation("userOnboardingAnswers")
-
-  // Issue relations
   reportedIssues OrderIssue[] @relation("reportedIssues")
   resolvedIssues OrderIssue[] @relation("resolvedIssues")
 
@@ -144,67 +134,67 @@ enum PricingUnit {
 }
 
 enum ModifierType {
-  PERCENTAGE // +10%, +20%, etc.
-  FIXED // +50M, -10M, etc.
+  PERCENTAGE 
+  FIXED 
 }
 
 enum ModifierDisplayType {
-  NORMAL // Standard modifier display
-  UPCHARGE // Highlighted as upcharge (red)
-  DISCOUNT // Highlighted as discount (green)
-  NOTE // Highlighted as note (green)
-  WARNING // Highlighted as warning (yellow)
+  NORMAL 
+  UPCHARGE 
+  DISCOUNT 
+  NOTE 
+  WARNING 
 }
 
 enum PaymentType {
-  CRYPTO // Bitcoin, ETH, etc.
-  NON_CRYPTO // PayPal, Bank, etc.
+  CRYPTO 
+  NON_CRYPTO 
 }
 
 enum AccountStatus {
-  AVAILABLE // Ready to use
-  RESERVED // Reserved for order
-  IN_USE // Currently being used
-  COMPLETED // Service completed
+  AVAILABLE
+  RESERVED 
+  IN_USE 
+  COMPLETED 
 }
 
 enum OrderStatus {
-  PENDING // Created, awaiting assignment
-  CLAIMING // Posted to job claiming channel
-  ASSIGNED // Worker assigned
-  IN_PROGRESS // Worker actively working
-  AWAITING_CONFIRM // Worker marked complete
-  COMPLETED // Customer confirmed
-  CANCELLED // Order cancelled
-  DISPUTED // Issue reported
-  REFUNDED // Refund issued
+  PENDING 
+  CLAIMING 
+  ASSIGNED 
+  IN_PROGRESS 
+  AWAITING_CONFIRM 
+  COMPLETED 
+  CANCELLED 
+  DISPUTED 
+  REFUNDED 
 }
 
 enum TicketType {
-  PURCHASE_SERVICES_OSRS // Buy OSRS services (Sailing, Agility, etc.)
-  PURCHASE_SERVICES_RS3 // Buy RS3 services
-  BUY_GOLD_OSRS // Purchase OSRS gold
-  BUY_GOLD_RS3 // Purchase RS3 gold
-  SELL_GOLD_OSRS // Sell OSRS gold to us
-  SELL_GOLD_RS3 // Sell RS3 gold to us
-  SWAP_CRYPTO // Swap cryptocurrency
-  GENERAL // General support ticket
+  PURCHASE_SERVICES_OSRS 
+  PURCHASE_SERVICES_RS3 
+  BUY_GOLD_OSRS 
+  BUY_GOLD_RS3 
+  SELL_GOLD_OSRS 
+  SELL_GOLD_RS3 
+  SWAP_CRYPTO 
+  GENERAL 
 }
 
 enum TicketStatus {
-  OPEN // Just created, waiting for support
-  IN_PROGRESS // Order created, work ongoing
-  AWAITING_CONFIRMATION // Worker marked complete
-  COMPLETED // Customer confirmed, payouts done
-  CANCELLED // Order cancelled
-  CLOSED // Ticket closed without order
+  OPEN 
+  IN_PROGRESS 
+  AWAITING_CONFIRMATION 
+  COMPLETED 
+  CANCELLED 
+  CLOSED 
 }
 
 enum TransactionType {
-  DEPOSIT // User adds money
-  WITHDRAWAL // User withdraws money
-  PAYMENT // User pays for service
-  REFUND // Refund issued
+  DEPOSIT
+  WITHDRAWAL 
+  PAYMENT 
+  REFUND 
 }
 
 model ServiceCategory {
@@ -221,10 +211,8 @@ model ServiceCategory {
   deletedAt    DateTime?
 
   icon File? @relation("categoryIcon", fields: [iconId], references: [id])
-
   services Service[] @relation("serviceCategory")
   accounts Account[] @relation("accountCategory")
-
   tickets        Ticket[]                @relation("categoryTickets")
   ticketSettings CategoryTicketSettings? @relation("categoryTicketSettings")
 
@@ -240,7 +228,7 @@ model Service {
   slug         String
   description  String?   @db.Text
   emoji        String?
-  imageUrl     String? // OSRS Wiki image URL for service icon
+  imageUrl     String? 
   active       Boolean   @default(true)
   displayOrder Int       @default(0)
   createdAt    DateTime  @default(now()) @db.DateTime(0)
@@ -284,12 +272,12 @@ model PricingMethod {
   id           String      @id @default(uuid())
   serviceId    String
   name         String
-  groupName    String? // Group name for organizing methods (e.g., "ARMA - Armadyl", "BANDOS - Bandos")
+  groupName    String?
   description  String?     @db.Text
   basePrice    Decimal     @db.Decimal(18, 8)
   pricingUnit  PricingUnit @default(FIXED)
-  startLevel   Int? // Starting level for level-based pricing (e.g., 1, 40, 50)
-  endLevel     Int? // Ending level for level-based pricing (e.g., 40, 50, 99)
+  startLevel   Int? 
+  endLevel     Int? 
   displayOrder Int         @default(0)
   active       Boolean     @default(true)
   createdAt    DateTime    @default(now()) @db.DateTime(0)
@@ -314,8 +302,8 @@ model PricingModifier {
   name         String
   modifierType ModifierType
   value        Decimal             @db.Decimal(10, 2)
-  condition    String?             @db.Text // JSON string for complex conditions
-  displayType  ModifierDisplayType @default(NORMAL) // How to display this modifier
+  condition    String?             @db.Text 
+  displayType  ModifierDisplayType @default(NORMAL) 
   priority     Int                 @default(0)
   active       Boolean             @default(true)
   createdAt    DateTime            @default(now()) @db.DateTime(0)
@@ -362,12 +350,11 @@ model MethodPrice {
   @@index([paymentMethodId])
 }
 
-// Future Models (Schema only - not implemented in this sprint)
 model Account {
   id          String        @id @default(uuid())
   categoryId  String
   serviceId   String
-  accountData Json // Encrypted account credentials
+  accountData Json 
   status      AccountStatus @default(AVAILABLE)
   reservedAt  DateTime?
   completedAt DateTime?
@@ -388,49 +375,32 @@ model Order {
   orderNumber Int    @unique @default(0)
 
   customerId Int  @db.UnsignedInt
-  workerId   Int? @db.UnsignedInt // Null if unassigned
-  supportId  Int? @db.UnsignedInt // Support who created order
-
-  // Links
+  workerId   Int? @db.UnsignedInt 
+  supportId  Int? @db.UnsignedInt 
   ticketId        String?
   serviceId       String?
   methodId        String?
   paymentMethodId String?
   accountId       String?
-
-  // Discord
-  orderChannelId  String? @unique // Order channel ID
-  claimMessageId  String? // Message in job claiming channel
-  pinnedMessageId String? // Main pinned status message in ticket channel
-  ticketChannelId String? // Ticket channel ID (for quick access)
-
-  // Financials
+  orderChannelId  String? @unique 
+  claimMessageId  String? 
+  pinnedMessageId String? 
+  ticketChannelId String? 
   orderValue    Decimal @db.Decimal(18, 8)
   depositAmount Decimal @db.Decimal(18, 8)
   currency      String  @default("USD")
 
-  // Payout tracking
-  workerPayout    Decimal? @db.Decimal(18, 8) // 80%
-  supportPayout   Decimal? @db.Decimal(18, 8) // 5%
-  systemPayout    Decimal? @db.Decimal(18, 8) // 15%
-  payoutProcessed Boolean  @default(false) // Idempotency flag to prevent duplicate payouts
-
-  // Status
+  workerPayout    Decimal? @db.Decimal(18, 8) 
+  supportPayout   Decimal? @db.Decimal(18, 8) 
+  systemPayout    Decimal? @db.Decimal(18, 8) 
+  payoutProcessed Boolean  @default(false) 
   status OrderStatus @default(PENDING)
-
-  // Job details (for worker)
   jobDetails Json?
-
-  // Notes
   completionNotes    String? @db.Text
   cancellationReason String? @db.Text
-
-  // Customer feedback
-  rating     Int? // 1-5 stars
+  rating     Int? 
   review     String?   @db.Text
   reviewedAt DateTime? @db.DateTime(0)
-
-  // Timestamps
   createdAt   DateTime  @default(now()) @db.DateTime(0)
   updatedAt   DateTime  @default(now()) @updatedAt @db.DateTime(0)
   assignedAt  DateTime?
@@ -439,11 +409,8 @@ model Order {
   completedAt DateTime?
   confirmedAt DateTime?
   cancelledAt DateTime?
-
-  // Optimistic locking - prevents race conditions
   version Int @default(0)
 
-  // Relations
   customer           User                 @relation("customerOrders", fields: [customerId], references: [id])
   worker             User?                @relation("workerOrders", fields: [workerId], references: [id])
   support            User?                @relation("supportOrders", fields: [supportId], references: [id])
@@ -462,8 +429,8 @@ model Order {
   @@index([status])
   @@index([ticketId])
   @@index([createdAt])
-  @@index([workerId, status]) // Composite index for worker's orders filtered by status
-  @@index([customerId, status]) // Composite index for customer's orders filtered by status
+  @@index([workerId, status]) 
+  @@index([customerId, status]) 
 }
 
 model OrderStatusHistory {
@@ -540,28 +507,25 @@ model Transaction {
   @@index([createdAt])
 }
 
-// Wallet Types
 enum WalletType {
   CUSTOMER
   WORKER
   SUPPORT
 }
 
-// Wallet Transaction Types
 enum WalletTransactionType {
-  DEPOSIT // Customer adds funds
-  WITHDRAWAL // User withdraws funds
-  PAYMENT // Payment for order (locks funds)
-  REFUND // Order refunded
-  EARNING // Worker payout (80%)
-  COMMISSION // Support commission (5%)
-  SYSTEM_FEE // System takes cut (15%)
-  ADJUSTMENT // Manual correction
-  RELEASE // Release locked funds after order complete
-  WORKER_DEPOSIT // Worker security deposit payment
+  DEPOSIT
+  WITHDRAWAL
+  PAYMENT
+  REFUND
+  EARNING 
+  COMMISSION 
+  SYSTEM_FEE 
+  ADJUSTMENT 
+  RELEASE 
+  WORKER_DEPOSIT 
 }
 
-// Wallet Transaction Status
 enum WalletTransactionStatus {
   PENDING
   COMPLETED
@@ -574,8 +538,8 @@ model Wallet {
   userId         Int        @unique @db.UnsignedInt
   walletType     WalletType @default(CUSTOMER)
   balance        Decimal    @default(0) @db.Decimal(18, 8)
-  pendingBalance Decimal    @default(0) @db.Decimal(18, 8) // Locked for orders
-  deposit        Decimal    @default(0) @db.Decimal(18, 8) // Worker security deposit
+  pendingBalance Decimal    @default(0) @db.Decimal(18, 8)
+  deposit        Decimal    @default(0) @db.Decimal(18, 8)
   currency       String     @default("USD")
   isActive       Boolean    @default(true)
   createdAt      DateTime   @default(now()) @db.DateTime(0)
@@ -596,19 +560,14 @@ model WalletTransaction {
   amount        Decimal                 @db.Decimal(18, 8)
   balanceBefore Decimal                 @db.Decimal(18, 8)
   balanceAfter  Decimal                 @db.Decimal(18, 8)
-  depositBefore Decimal?                @db.Decimal(18, 8) // For WORKER_DEPOSIT tracking
-  depositAfter  Decimal?                @db.Decimal(18, 8) // For WORKER_DEPOSIT tracking
+  depositBefore Decimal?                @db.Decimal(18, 8)
+  depositAfter  Decimal?                @db.Decimal(18, 8)
   currency      String                  @default("USD")
   status        WalletTransactionStatus @default(COMPLETED)
-
-  // Payment details
   paymentMethodId String?
-  reference       String? // External transaction ID
+  reference       String? 
   notes           String? @db.Text
-
-  // Actor who created this transaction
   createdById Int @db.UnsignedInt
-
   createdAt DateTime @default(now()) @db.DateTime(0)
 
   wallet        Wallet         @relation(fields: [walletId], references: [id])
@@ -622,7 +581,6 @@ model WalletTransaction {
   @@index([createdAt])
 }
 
-// System Wallet (singleton for system funds)
 model SystemWallet {
   id        String   @id @default("system-wallet")
   balance   Decimal  @default(0) @db.Decimal(18, 8)
@@ -634,72 +592,47 @@ model DiscordMessage {
   id          String    @id @default(uuid())
   messageId   String    @unique
   channelId   String
-  messageType String // "CATEGORY_LIST", "SERVICE_DETAIL", "GROUPED_CATEGORIES", "TOS", "TICKET_MENU", "CALCULATOR", "HEADER"
+  messageType String 
   categoryId  String?
   serviceId   String?
-  groupIndex  Int? // For grouped messages (0, 1, 2, etc.)
-  isPinned    Boolean   @default(false) // Track if message is pinned
+  groupIndex  Int? 
+  isPinned    Boolean   @default(false)
   createdAt   DateTime  @default(now()) @db.DateTime(0)
-  updatedAt   DateTime  @default(now()) @updatedAt @db.DateTime(0) // Track last update
+  updatedAt   DateTime  @default(now()) @updatedAt @db.DateTime(0)
   expiresAt   DateTime? @db.DateTime(0)
 
   @@index([messageId])
   @@index([channelId])
   @@index([messageType])
 }
-
-// OSRS Experience Table (levels 1-99)
 model ExperienceTable {
-  level      Int    @id @db.UnsignedTinyInt // 1-99
-  experience BigInt // Total XP required for this level
-  difference Int // XP difference from previous level
+  level      Int    @id @db.UnsignedTinyInt
+  experience BigInt 
+  difference Int 
 
   @@index([level])
 }
 
-// ============================================
-// TICKET SYSTEM MODELS
-// ============================================
-
 model Ticket {
   id           String @id @default(uuid())
   ticketNumber Int    @unique @default(autoincrement())
-
-  // Ticket Type (NEW)
   ticketType TicketType @default(GENERAL)
-
-  // Customer who opened the ticket
   customerId        Int    @db.UnsignedInt
-  customerDiscordId String // Discord user ID of customer
-
-  // Category and service context
+  customerDiscordId String 
   categoryId String?
   serviceId  String?
-
-  // Discord channel info
-  channelId String @unique // Discord channel ID for this ticket
-
-  // Pricing info from calculator (optional)
+  channelId String @unique
   calculatedPrice Decimal? @db.Decimal(18, 8)
   paymentMethodId String?
   currency        String   @default("USD")
-
-  // Status tracking
   status TicketStatus @default(OPEN)
-
-  // Support who handled the ticket
   supportId        Int?    @db.UnsignedInt
   supportDiscordId String?
-
-  // Additional notes from customer
   customerNotes String? @db.Text
-
-  // Timestamps
   createdAt DateTime  @default(now()) @db.DateTime(0)
   updatedAt DateTime  @default(now()) @updatedAt @db.DateTime(0)
   closedAt  DateTime? @db.DateTime(0)
 
-  // Relations
   customer      User             @relation("customerTickets", fields: [customerId], references: [id])
   support       User?            @relation("supportTickets", fields: [supportId], references: [id])
   category      ServiceCategory? @relation("categoryTickets", fields: [categoryId], references: [id])
@@ -721,22 +654,13 @@ model Ticket {
 model TicketMessage {
   id       String @id @default(uuid())
   ticketId String
-
-  // Message author
   authorId        Int    @db.UnsignedInt
-  authorDiscordId String // Discord user ID
-  authorName      String // Display name at time of message
-
-  // Message content
+  authorDiscordId String
+  authorName      String
   content String @db.Text
-
-  // Message type
-  isSystem  Boolean @default(false) // Auto-generated system messages
-  isWelcome Boolean @default(false) // Welcome message
-
-  // Discord message reference
+  isSystem  Boolean @default(false)
+  isWelcome Boolean @default(false)
   discordMessageId String? @unique
-
   createdAt DateTime @default(now()) @db.DateTime(0)
 
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
@@ -747,60 +671,38 @@ model TicketMessage {
   @@index([createdAt])
 }
 
-// Category-specific ticket welcome message settings
 model CategoryTicketSettings {
   id         String @id @default(uuid())
   categoryId String @unique
-
-  // Banner image
   bannerUrl String? @db.Text
-
-  // Welcome message content
   welcomeTitle   String? @db.VarChar(255)
-  welcomeMessage String  @db.Text // Rich text / Markdown supported
-
-  // Footer text
+  welcomeMessage String  @db.Text
   footerText String? @db.Text
-
-  // Embed color (hex without #)
   embedColor String? @default("5865F2") @db.VarChar(6)
-
-  // Toggle
   isActive Boolean @default(true)
-
   createdAt DateTime @default(now()) @db.DateTime(0)
   updatedAt DateTime @default(now()) @updatedAt @db.DateTime(0)
 
   category ServiceCategory @relation("categoryTicketSettings", fields: [categoryId], references: [id], onDelete: Cascade)
 }
-
-// Ticket metadata for gold/crypto transactions
 model TicketMetadata {
   id       String @id @default(uuid())
   ticketId String @unique
 
-  // Gold transaction fields
   goldAmount     Decimal? @db.Decimal(15, 2) // Amount in millions (e.g., 100M)
   goldRate       Decimal? @db.Decimal(10, 4) // Rate per M (e.g., $0.45/M)
   deliveryMethod String?  @db.VarChar(100) // F2P, P2P, Drop Trading, etc.
   worldLocation  String?  @db.VarChar(200) // "W301, Grand Exchange"
   osrsUsername   String?  @db.VarChar(100) // Customer's OSRS/RS3 username
-
-  // Crypto transaction fields
   cryptoType    String?  @db.VarChar(50) // BTC, ETH, USDT, etc.
   cryptoAmount  Decimal? @db.Decimal(20, 8) // Crypto amount
-  walletAddress String?  @db.VarChar(500) // Customer's wallet address
-  swapDirection String?  @db.VarChar(50) // CRYPTO_TO_GOLD or GOLD_TO_CRYPTO
-
-  // Payment details (for sell gold)
-  paymentEmail String?  @db.VarChar(255) // PayPal email or similar
-  paymentProof String?  @db.Text // URL to payment proof
-  payoutAmount Decimal? @db.Decimal(18, 8) // Amount paid to customer
-
-  // Additional notes
+  walletAddress String?  @db.VarChar(500) 
+  swapDirection String?  @db.VarChar(50) 
+  paymentEmail String?  @db.VarChar(255) 
+  paymentProof String?  @db.Text
+  payoutAmount Decimal? @db.Decimal(18, 8) 
   specialNotes  String? @db.Text
   internalNotes String? @db.Text // Staff-only notes
-
   createdAt DateTime @default(now()) @db.DateTime(0)
   updatedAt DateTime @default(now()) @updatedAt @db.DateTime(0)
 
@@ -877,7 +779,7 @@ model TermsOfService {
   @@index([version])
 }
 
-// User TOS Acceptances
+
 model TosAcceptance {
   id              String   @id @default(uuid())
   userId          Int      @db.UnsignedInt

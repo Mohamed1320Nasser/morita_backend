@@ -1,11 +1,10 @@
 import { Interceptor, InterceptorInterface, Action } from "routing-controllers";
-import API from "../config/api.types";
 import { Service } from "typedi";
-
+import { convertDecimalsToNumbers } from "../helpers/decimal.helper";
 @Service()
 @Interceptor()
-export class resInterceptor implements InterceptorInterface {
+export class DecimalInterceptor implements InterceptorInterface {
     intercept(action: Action, content: any) {
-        return new API.res(content);
+        return convertDecimalsToNumbers(content);
     }
 }

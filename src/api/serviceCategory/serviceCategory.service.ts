@@ -342,6 +342,7 @@ export default class ServiceCategoryService {
                             select: {
                                 id: true,
                                 name: true,
+                                groupName: true,
                                 pricingUnit: true,
                                 basePrice: true,
                                 displayOrder: true,

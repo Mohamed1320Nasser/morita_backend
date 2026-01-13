@@ -3,6 +3,14 @@ import logger from "../../common/loggers";
 import { ApiService } from "../services/api.service";
 import { discordConfig } from "../config/discord.config";
 import PricingCalculatorService from "../../api/pricingCalculator/pricingCalculator.service";
+import {
+    sendEphemeralError,
+    sendServiceNotFoundError,
+    sendValidationError,
+    sendInvalidParameterError,
+    sendCalculationError,
+    deleteThinkingMessage,
+} from "../utils/messageHelpers";
 
 const apiService = new ApiService(discordConfig.apiBaseUrl);
 
@@ -72,11 +80,11 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
     const args = message.content.slice(prefix.length + 2).trim().split(/\s+/);
 
     if (args.length < 2) {
-        await message.reply({
-            content: "❌ **Invalid Command Format**\n\n" +
-                "**Usage:** `!s <service> <start-level>-<end-level>`\n" +
-                "**Example:** `!s agility 70-99`",
-        });
+        await sendValidationError(
+            message,
+            "!s <service> <start-level>-<end-level>\nExample: !s agility 70-99",
+            "Missing service name or level range"
+        );
         return;
     }
 
@@ -85,11 +93,11 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
     const levelMatch = lastArg.match(/^(\d+)-(\d+)$/);
 
     if (!levelMatch) {
-        await message.reply({
-            content: "❌ **Invalid Level Range**\n\n" +
-                "Please specify levels in format: `start-end`\n" +
-                "**Example:** `70-99`",
-        });
+        await sendValidationError(
+            message,
+            "!s <service> <start-level>-<end-level>\nExample: !s agility 70-99",
+            "Invalid level range format. Use format: 70-99"
+        );
         return;
     }
 
@@ -103,18 +111,22 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
 
     // Validate levels
     if (startLevel < 1 || startLevel > 99 || endLevel < 1 || endLevel > 99) {
-        await message.reply({
-            content: "❌ **Invalid Levels**\n\n" +
-                "Levels must be between 1 and 99.",
-        });
+        await sendInvalidParameterError(
+            message,
+            "Level Range",
+            `${startLevel}-${endLevel}`,
+            "Levels must be between 1 and 99"
+        );
         return;
     }
 
     if (startLevel >= endLevel) {
-        await message.reply({
-            content: "❌ **Invalid Level Range**\n\n" +
-                "Start level must be less than end level.",
-        });
+        await sendInvalidParameterError(
+            message,
+            "Level Range",
+            `${startLevel}-${endLevel}`,
+            "Start level must be less than end level"
+        );
         return;
     }
 
@@ -159,11 +171,13 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
     }
 
     if (!service) {
-        await thinkingMsg.edit({
-            content: `❌ **Service Not Found**\n\n` +
-                `Could not find a service or group matching "${serviceName}".\n\n` +
-                `Use \`/services\` to see all available services.`,
-        });
+        await deleteThinkingMessage(thinkingMsg);
+        await sendServiceNotFoundError(
+            message,
+            serviceName,
+            "Skills",
+            ["!s agility 70-99", "!s mining 50-99", "!s thieving 60-99"]
+        );
         return;
     }
 
@@ -373,12 +387,11 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
 
     } catch (apiError) {
         logger.error('[PriceCalculator] API error:', apiError);
-        await thinkingMsg.edit({
-            content: `❌ **Calculation Error**\n\n` +
-                `An error occurred while calculating the price. ` +
-                `This service may not support level-based pricing.\n\n` +
-                `Please try another service or contact support.`,
-        });
+        await deleteThinkingMessage(thinkingMsg);
+        await sendCalculationError(
+            message,
+            apiError instanceof Error ? apiError.message : String(apiError)
+        );
     }
 }
 
@@ -395,11 +408,11 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
     const args = message.content.slice(prefix.length + 2).trim().split(/\s+/);
 
     if (args.length < 2) {
-        await message.reply({
-            content: "❌ **Invalid Command Format**\n\n" +
-                "**Usage:** `!p <boss-name> <kill-count>`\n" +
-                "**Example:** `!p cox 120` or `!p cgp 50`",
-        });
+        await sendValidationError(
+            message,
+            "!p <boss-name> <kill-count>\nExample: !p cox 120 or !p cgp 50",
+            "Missing boss name or kill count"
+        );
         return;
     }
 
@@ -408,11 +421,23 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
     const killCount = parseInt(killCountStr);
 
     if (isNaN(killCount) || killCount < 1) {
-        await message.reply({
-            content: "❌ **Invalid Kill Count**\n\n" +
-                "Please specify a valid number of kills.\n" +
-                "**Example:** `100`",
-        });
+        await sendInvalidParameterError(
+            message,
+            "Kill Count",
+            killCountStr,
+            "Must be a valid number greater than 0"
+        );
+        return;
+    }
+
+    // Validate kill count range
+    if (killCount > 10000) {
+        await sendInvalidParameterError(
+            message,
+            "Kill Count",
+            killCount,
+            "Must be between 1 and 10,000"
+        );
         return;
     }
 
@@ -462,6 +487,19 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
     if (!service) {
         logger.info(`[PvM] 🔍 Service not found, checking if "${serviceName}" is a groupName`);
 
+        // Debug: Log all groupNames to see what's available
+        const allGroupNames: string[] = [];
+        for (const s of services) {
+            if (s.pricingMethods) {
+                s.pricingMethods.forEach((m: any) => {
+                    if (m.pricingUnit === 'PER_KILL' && m.groupName) {
+                        allGroupNames.push(m.groupName);
+                    }
+                });
+            }
+        }
+        logger.info(`[PvM] 🔍 Available groupNames: ${allGroupNames.slice(0, 20).join(', ')}...`);
+
         // Search for methods with this groupName across all services
         for (const s of services) {
             const methodWithGroup = s.pricingMethods?.find((m: any) =>
@@ -487,12 +525,17 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
 
     if (!service) {
         logger.warn(`[PvM] ❌ No service found matching "${serviceName}" with PER_KILL pricing`);
-        await thinkingMsg.edit({
-            content: `❌ **Service Not Found**\n\n` +
-                `Could not find a PvM service or group matching "${serviceName}".\n\n` +
-                `Make sure the service supports kill-count pricing.\n` +
-                `**Tip:** Try \`!p cox 120\`, \`!p cgp 50\`, or \`!p zulrah 100\``,
-        });
+
+        // Delete thinking message
+        await deleteThinkingMessage(thinkingMsg);
+
+        // Send ephemeral error
+        await sendServiceNotFoundError(
+            message,
+            serviceName,
+            "PvM",
+            ["!p cox 120", "!p cgp 50", "!p zulrah 100", "!p tob 25"]
+        );
         return;
     }
 
@@ -534,9 +577,8 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
         // Build OLD SYSTEM style embed with table and colors
         const embed = new EmbedBuilder()
             .setTitle(`🔥 Bossing Calculator`) // Red fire emoji like old system
-            .setColor(0x36393F) // Discord dark theme color
-            .setTimestamp()
-            .setThumbnail('https://oldschool.runescape.wiki/images/thumb/Crystalline_Hunllef.png/250px-Crystalline_Hunllef.png'); // Monster image like old system
+            .setColor(0xfca311) // Orange color
+            .setTimestamp();
 
         // Calculate total discount from service-level modifiers
         const serviceModifiers = service.serviceModifiers || [];
@@ -653,9 +695,9 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
             });
         }
 
-        // Add footer with timestamp (like old system)
+        // Add footer
         embed.setFooter({
-            text: `Morita Gaming Services • Today at ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`,
+            text: `Morita Gaming Services`,
         });
 
         await thinkingMsg.edit({
@@ -666,11 +708,15 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
         logger.info(`[PriceCalculator] Multi-tier result sent for ${service.name} (${killCount} kills) to ${message.author.tag}`);
     } catch (apiError) {
         logger.error('[PriceCalculator] API error:', apiError);
-        await thinkingMsg.edit({
-            content: `❌ **Calculation Error**\n\n` +
-                `An error occurred while calculating the price.\n\n` +
-                `Please try another service or contact support.`,
-        });
+
+        // Delete thinking message
+        await deleteThinkingMessage(thinkingMsg);
+
+        // Send ephemeral error
+        await sendCalculationError(
+            message,
+            apiError instanceof Error ? apiError.message : String(apiError)
+        );
     }
 }
 
@@ -927,9 +973,11 @@ async function handleBatchMinigameQuote(
         logger.info(`[Minigames] ✅ Batch quote sent: ${calculations.length} items, total $${totalPrice.toFixed(2)}`);
     } catch (error) {
         logger.error('[Minigames] Batch quote error:', error);
-        await thinkingMsg.edit({
-            content: `❌ **Calculation Error**\n\nAn error occurred while calculating the batch quote.`,
-        });
+        await deleteThinkingMessage(thinkingMsg);
+        await sendCalculationError(
+            message,
+            error instanceof Error ? error.message : String(error)
+        );
     }
 }
 
@@ -939,15 +987,11 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
     const input = message.content.slice(prefix.length + 2).trim();
 
     if (!input) {
-        await message.reply({
-            content: "❌ **Invalid Command Format**\n\n" +
-                "**Single Minigame:** `!m <game-name> <quantity>`\n" +
-                "**Multiple Minigames:** `!m <game1> <qty1>, <game2> <qty2>`\n" +
-                "**Examples:**\n" +
-                "• `!m barrows 100`\n" +
-                "• `!m toa 50, barrows 100`\n" +
-                "• `!m corrupted gauntlet 25`",
-        });
+        await sendValidationError(
+            message,
+            "!m <game-name> <quantity>\nExample: !m barrows 100\nMultiple: !m toa 50, barrows 100",
+            "Missing minigame name or quantity"
+        );
         return;
     }
 
@@ -961,17 +1005,22 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
         for (const part of parts) {
             const tokens = part.split(/\s+/);
             if (tokens.length < 2) {
-                await message.reply({
-                    content: `❌ **Invalid Format**\n\nEach minigame needs a name and quantity.\n**Example:** \`barrows 100, toa 50\``,
-                });
+                await sendValidationError(
+                    message,
+                    "!m <game1> <qty1>, <game2> <qty2>\nExample: barrows 100, toa 50",
+                    "Each minigame needs a name and quantity"
+                );
                 return;
             }
 
             const qty = parseInt(tokens[tokens.length - 1]);
             if (isNaN(qty) || qty < 1) {
-                await message.reply({
-                    content: `❌ **Invalid Quantity**\n\nQuantity must be a positive number in: \`${part}\``,
-                });
+                await sendInvalidParameterError(
+                    message,
+                    "Quantity",
+                    tokens[tokens.length - 1],
+                    `Must be a positive number in: ${part}`
+                );
                 return;
             }
 
@@ -983,21 +1032,22 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
         const args = input.split(/\s+/);
 
         if (args.length < 2) {
-            await message.reply({
-                content: "❌ **Invalid Command Format**\n\n" +
-                    "**Usage:** `!m <game-name> <quantity>`\n" +
-                    "**Example:** `!m barrows 100`",
-            });
+            await sendValidationError(
+                message,
+                "!m <game-name> <quantity>\nExample: !m barrows 100",
+                "Missing minigame name or quantity"
+            );
             return;
         }
 
         const quantity = parseInt(args[args.length - 1]);
         if (isNaN(quantity) || quantity < 1) {
-            await message.reply({
-                content: "❌ **Invalid Quantity**\n\n" +
-                    "Please specify a valid number.\n" +
-                    "**Example:** `100`",
-            });
+            await sendInvalidParameterError(
+                message,
+                "Quantity",
+                args[args.length - 1],
+                "Must be a positive number"
+            );
             return;
         }
 
@@ -1027,12 +1077,13 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
     const searchResult = findMinigameItem(services, gameName);
 
     if (!searchResult) {
-        await thinkingMsg.edit({
-            content:
-                `❌ **Service Not Found**\n\n` +
-                `Could not find: **"${gameName}"**\n\n` +
-                `*Try a different name or use \`/services\` to see all available services.*`,
-        });
+        await deleteThinkingMessage(thinkingMsg);
+        await sendServiceNotFoundError(
+            message,
+            gameName,
+            "Minigames",
+            ["!m lms 100", "!m ba 50", "!m pc 200", "!m cw 75"]
+        );
         return;
     }
 
@@ -1231,11 +1282,11 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
         }
     } catch (error) {
         logger.error('[Minigames] Error handling minigame command:', error);
-        await thinkingMsg.edit({
-            content: `❌ **Calculation Error**\n\n` +
-                `An error occurred while calculating the price.\n\n` +
-                `Please try another service or contact support.`,
-        });
+        await deleteThinkingMessage(thinkingMsg);
+        await sendCalculationError(
+            message,
+            error instanceof Error ? error.message : String(error)
+        );
     }
 }
 
@@ -1382,9 +1433,13 @@ async function handleBatchIronmanQuote(
             const searchResult = findIronmanItem(services, item.name);
 
             if (!searchResult) {
-                await thinkingMsg.edit({
-                    content: `❌ **Item Not Found**\n\nCould not find: "${item.name}"\n\nPlease check the item name and try again.`,
-                });
+                await deleteThinkingMessage(thinkingMsg);
+                await sendServiceNotFoundError(
+                    message,
+                    item.name,
+                    "Ironman Gathering",
+                    ["!i amethyst 1000", "!i raw karambwan 500", "!i logs 200"]
+                );
                 return;
             }
 
@@ -1489,9 +1544,11 @@ async function handleBatchIronmanQuote(
         logger.info(`[Ironman] ✅ Batch quote sent: ${calculations.length} items, total $${totalPrice.toFixed(2)}`);
     } catch (error) {
         logger.error('[Ironman] Batch quote error:', error);
-        await thinkingMsg.edit({
-            content: `❌ **Calculation Error**\n\nAn error occurred while calculating the batch quote.`,
-        });
+        await deleteThinkingMessage(thinkingMsg);
+        await sendCalculationError(
+            message,
+            error instanceof Error ? error.message : String(error)
+        );
     }
 }
 
@@ -1501,12 +1558,11 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
     const input = message.content.slice(prefix.length + 2).trim();
 
     if (!input) {
-        await message.reply({
-            content: "❌ **Invalid Command Format**\n\n" +
-                "**Single Item:** `!i <item-name> <quantity>`\n" +
-                "**Multiple Items:** `!i <item1> <qty1>, <item2> <qty2>`\n" +
-                "**Example:** `!i blue dragon scales 1000, snape grass 500`",
-        });
+        await sendValidationError(
+            message,
+            "!i <item-name> <quantity>\n!i <item1> <qty1>, <item2> <qty2>",
+            "No input provided. Use a single item or comma-separated list."
+        );
         return;
     }
 
@@ -1520,17 +1576,22 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
         for (const part of parts) {
             const tokens = part.split(/\s+/);
             if (tokens.length < 2) {
-                await message.reply({
-                    content: `❌ **Invalid Format**\n\nEach item needs a name and quantity.\n**Example:** \`blue dragon scales 1000\``,
-                });
+                await sendValidationError(
+                    message,
+                    "!i blue dragon scales 1000, snape grass 500",
+                    `Each item needs a name and quantity. Check: "${part}"`
+                );
                 return;
             }
 
             const qty = parseInt(tokens[tokens.length - 1]);
             if (isNaN(qty) || qty < 1) {
-                await message.reply({
-                    content: `❌ **Invalid Quantity**\n\nQuantity must be a positive number in: \`${part}\``,
-                });
+                await sendInvalidParameterError(
+                    message,
+                    "Quantity",
+                    tokens[tokens.length - 1],
+                    `Must be a positive number in: "${part}"`
+                );
                 return;
             }
 
@@ -1542,21 +1603,22 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
         const args = input.split(/\s+/);
 
         if (args.length < 2) {
-            await message.reply({
-                content: "❌ **Invalid Command Format**\n\n" +
-                    "**Usage:** `!i <item-name> <quantity>`\n" +
-                    "**Example:** `!i amethyst 1000`",
-            });
+            await sendValidationError(
+                message,
+                "!i amethyst 1000",
+                "Missing item name or quantity"
+            );
             return;
         }
 
         const quantity = parseInt(args[args.length - 1]);
         if (isNaN(quantity) || quantity < 1) {
-            await message.reply({
-                content: "❌ **Invalid Quantity**\n\n" +
-                    "Please specify a valid number.\n" +
-                    "**Example:** `1000`",
-            });
+            await sendInvalidParameterError(
+                message,
+                "Quantity",
+                args[args.length - 1],
+                "Must be a positive number (e.g., 1000)"
+            );
             return;
         }
 
@@ -1586,11 +1648,13 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
     const searchResult = findIronmanItem(services, serviceName);
 
     if (!searchResult) {
-        await thinkingMsg.edit({
-            content: `❌ **Ironman Service Not Found**\n\n` +
-                `Could not find an Ironman gathering service matching "${serviceName}".\n\n` +
-                `Available services: amethyst, ores-bars, charter-ship, chinchompas, farm-runs, raw-fish, herblore-secondaries, impling, logs-planks`,
-        });
+        await deleteThinkingMessage(thinkingMsg);
+        await sendServiceNotFoundError(
+            message,
+            serviceName,
+            "Ironman Gathering",
+            ["!i amethyst 1000", "!i raw karambwan 500", "!i logs 200", "!i blue dragon scales 1000"]
+        );
         return;
     }
 
@@ -1809,11 +1873,11 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
         }
     } catch (apiError) {
         logger.error('[Ironman] API error:', apiError);
-        await thinkingMsg.edit({
-            content: `❌ **Calculation Error**\n\n` +
-                `An error occurred while calculating the price.\n\n` +
-                `Please try another service or contact support.`,
-        });
+        await deleteThinkingMessage(thinkingMsg);
+        await sendCalculationError(
+            message,
+            apiError instanceof Error ? apiError.message : String(apiError)
+        );
     }
 }
 
@@ -1823,11 +1887,11 @@ async function handleQuoteCommand(message: Message, apiService: ApiService) {
     const input = message.content.slice(prefix.length + 2).trim();
 
     if (!input) {
-        await message.reply({
-            content: "❌ **Invalid Command Format**\n\n" +
-                "**Single Quest:** `!q desert treasure 1`\n" +
-                "**Multiple Quests:** `!q desert treasure 1, monkey madness, infernal cape`",
-        });
+        await sendValidationError(
+            message,
+            "!q desert treasure 1\n!q desert treasure 1, monkey madness, infernal cape",
+            "No input provided. Specify a quest name (with optional quantity) or comma-separated list."
+        );
         return;
     }
 
@@ -1943,11 +2007,13 @@ async function handleQuoteCommand(message: Message, apiService: ApiService) {
 
     // Handle no results
     if (results.length === 0) {
-        await thinkingMsg.edit({
-            content: `❌ **No Quests Found**\n\n` +
-                `Could not find any quests matching your search.\n\n` +
-                `**Searched for:** ${questNames.join(', ')}`,
-        });
+        await deleteThinkingMessage(thinkingMsg);
+        await sendServiceNotFoundError(
+            message,
+            questNames.join(', '),
+            "Quest/Activity",
+            ["!q desert treasure 1", "!q monkey madness", "!q infernal cape", "!q recipe for disaster"]
+        );
         return;
     }
 

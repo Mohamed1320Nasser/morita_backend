@@ -2,7 +2,7 @@ import { Events, Client } from "discord.js";
 import { ChannelManagerService } from "../services/channelManager.service";
 import { startPricingSyncJob } from "../jobs/pricingSync.job";
 import { startCleanupJob } from "../jobs/cleanup.job";
-import { ResetManagerMonitor } from "../utils/resetManagerMonitor";
+// Note: ResetManagerMonitor removed - no longer needed with ephemeral reply pattern
 import logger from "../../common/loggers";
 
 export default {
@@ -28,13 +28,9 @@ export default {
             logger.error("❌ Backend API health check error:", error);
         }
 
-        // Start SelectMenuResetManager monitoring
-        try {
-            ResetManagerMonitor.startMonitoring();
-            logger.info("✅ SelectMenuResetManager monitoring started");
-        } catch (error) {
-            logger.error("❌ Error starting ResetManager monitoring:", error);
-        }
+        // Note: SelectMenuResetManager monitoring removed.
+        // Using ephemeral reply pattern instead - industry standard approach.
+        // Benefits: Zero message edits, no race conditions, no API rate limits.
 
         // Initialize pricing channel - OLD SYSTEM DISABLED
         // The old channelManager has been replaced by improvedChannelManager

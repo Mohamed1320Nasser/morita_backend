@@ -1,11 +1,20 @@
-import { StringSelectMenuInteraction, EmbedBuilder } from "discord.js";
+import {
+    StringSelectMenuInteraction,
+    EmbedBuilder,
+    Message,
+    ActionRowBuilder,
+    StringSelectMenuBuilder,
+    APIActionRowComponent,
+    APIMessageActionRowComponent
+} from "discord.js";
 import { EnhancedPricingBuilder } from "../../utils/enhancedPricingBuilder";
 import { ApiService } from "../../services/api.service";
 import { discordConfig } from "../../config/discord.config";
 import logger from "../../../common/loggers";
-import { pricingMessageTracker } from "../../services/pricingMessageTracker.service";
 import { DISCORD_LIMITS } from "../../constants/discord-limits";
-import { getSelectMenuResetManager } from "../../services/selectMenuResetManager";
+
+// Using interaction.update() with rebuilt components to clear the checkmark
+// This is the only way to remove the checkmark - rebuild all select menus with default: false
 
 const apiService = new ApiService(discordConfig.apiBaseUrl);
 
@@ -28,28 +37,59 @@ function isInteractionExpiredError(error: unknown): boolean {
 }
 
 /**
- * Safely edit an interaction reply, handling expired interactions gracefully
+ * Rebuild all select menu components from the message with default: false
+ * This clears the checkmark from all options using StringSelectMenuBuilder.from()
  */
-async function safeEditReply(
-    interaction: StringSelectMenuInteraction,
-    content: any
-): Promise<boolean> {
-    if (!interaction.deferred || interaction.replied) {
-        return false;
+function rebuildComponentsWithoutDefaults(
+    messageComponents: any[]
+): ActionRowBuilder<StringSelectMenuBuilder>[] {
+    const newRows: ActionRowBuilder<StringSelectMenuBuilder>[] = [];
+
+    for (const row of messageComponents) {
+        // Get components from the row - handle both ActionRow object and raw data
+        const components = row.components || [];
+
+        for (const component of components) {
+            // Check if it's a StringSelectMenu (type 3) or has the right structure
+            const isSelectMenu = component.type === 3 ||
+                component.data?.type === 3 ||
+                component.customId?.startsWith('pricing_service_select_');
+
+            if (isSelectMenu) {
+                try {
+                    // Use StringSelectMenuBuilder.from() to clone the existing menu
+                    const clonedMenu = StringSelectMenuBuilder.from(component);
+
+                    // Get current options and rebuild with default: false
+                    const currentOptions = clonedMenu.options || [];
+                    const newOptions = currentOptions.map((opt: any) => {
+                        const optData = opt.data || opt;
+                        return {
+                            label: optData.label,
+                            value: optData.value,
+                            description: optData.description,
+                            emoji: optData.emoji,
+                            default: false // Clear the checkmark
+                        };
+                    });
+
+                    // Clear and set new options
+                    clonedMenu.setOptions(newOptions);
+
+                    newRows.push(
+                        new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(clonedMenu)
+                    );
+                } catch (menuError) {
+                    logger.error(
+                        `[rebuildComponents] Error cloning menu:`,
+                        menuError instanceof Error ? menuError.message : menuError
+                    );
+                }
+            }
+        }
     }
 
-    try {
-        await interaction.editReply(content);
-        return true;
-    } catch (error) {
-        if (isInteractionExpiredError(error)) {
-            logger.debug(
-                "[PricingServiceSelect] Interaction expired during editReply"
-            );
-            return false;
-        }
-        throw error;
-    }
+    return newRows;
 }
 
 /**
@@ -73,42 +113,74 @@ export async function handleImprovedPricingServiceSelect(
         );
         const serviceId = interaction.values[0];
 
-        // Immediately reply to the interaction (this prevents checkmark)
-        // Wrap in try/catch to handle expired interactions gracefully
-        try {
-            await interaction.deferReply({ ephemeral: true });
-        } catch (deferError) {
-            // If interaction is expired (bot restart), silently fail
-            if (isInteractionExpiredError(deferError)) {
-                logger.debug(
-                    `[PricingServiceSelect] Interaction expired (likely bot restart). User: ${interaction.user.tag}`
-                );
-                return;
-            }
-            throw deferError;
-        }
-
-        // Handle "Show More" option
+        // Handle "Show More" option - use reply for this case
         if (serviceId.startsWith("show_more_")) {
-            await interaction.editReply({
+            // First update to clear checkmark
+            const rebuiltComponents = rebuildComponentsWithoutDefaults(
+                interaction.message.components as any
+            );
+            await interaction.update({
+                components: rebuiltComponents as any
+            });
+
+            // Then send followUp with the message
+            await interaction.followUp({
                 content:
                     "📋 **Additional Services**\n\n" +
                     "This category has more than 25 services. " +
                     "Please use the `/services` command to browse all available services in this category.\n\n" +
                     "Alternatively, contact us directly for assistance!",
+                ephemeral: true
             });
             return;
+        }
+
+        // Use interaction.update() to clear the checkmark immediately
+        // This rebuilds all select menus in the message with default: false
+        try {
+            logger.debug(
+                `[PricingServiceSelect] Rebuilding components for message ${interaction.message.id}`
+            );
+
+            const rebuiltComponents = rebuildComponentsWithoutDefaults(
+                interaction.message.components as any
+            );
+
+            logger.debug(
+                `[PricingServiceSelect] Rebuilt ${rebuiltComponents.length} component rows`
+            );
+
+            await interaction.update({
+                components: rebuiltComponents as any
+            });
+
+            logger.debug(
+                `[PricingServiceSelect] Update successful, checkmark cleared`
+            );
+        } catch (updateError) {
+            logger.error(
+                `[PricingServiceSelect] Update failed:`,
+                updateError instanceof Error ? updateError.message : updateError
+            );
+            if (isInteractionExpiredError(updateError)) {
+                logger.debug(
+                    `[PricingServiceSelect] Interaction expired (likely bot restart). User: ${interaction.user.tag}`
+                );
+                return;
+            }
+            throw updateError;
         }
 
         // Fetch service data
         const service = await apiService.getServiceWithPricing(serviceId);
 
         if (!service) {
-            await interaction.editReply({
+            await interaction.followUp({
                 content:
                     "❌ **Service Not Found**\n\n" +
                     "The selected service could not be loaded. It may have been removed or is temporarily unavailable.\n\n" +
                     "Please try again or contact support.",
+                ephemeral: true
             });
             return;
         }
@@ -185,7 +257,7 @@ export async function handleImprovedPricingServiceSelect(
             throw buildError;
         }
 
-        // Send the response
+        // Send the response using followUp (ephemeral)
         try {
             const embedData = embed.toJSON();
             const componentsData = actionButtons.map(row => row.toJSON());
@@ -197,38 +269,20 @@ export async function handleImprovedPricingServiceSelect(
                 );
             }
 
-            // Send the service details as ephemeral reply
-            await interaction.editReply({
+            // Send the service details as ephemeral followUp
+            await interaction.followUp({
                 embeds: [embedData as any],
                 components: componentsData as any,
+                ephemeral: true
             });
 
-            // Track message for auto-delete after 10 minutes
-            const messageId = `${interaction.id}`;
-            pricingMessageTracker.trackMessage(messageId, async () => {
-                try {
-                    await interaction.deleteReply();
-                } catch (error) {
-                    logger.debug(
-                        "[PricingServiceSelect] Could not auto-delete pricing message (likely already deleted)"
-                    );
-                }
-            });
-
-            // Schedule select menu reset to remove checkmark (smart debouncing with retry logic)
-            const resetManager = getSelectMenuResetManager();
-
-            // Use non-blocking reset scheduling (don't await to prevent blocking user interaction)
-            resetManager.scheduleReset(interaction.message, categoryId).catch((error) => {
-                logger.warn(
-                    `[PricingServiceSelect] Failed to schedule reset for message ${interaction.message.id}:`,
-                    error
-                );
-                // Non-critical error - user already got their response
-            });
+            // Note: Using interaction.update() + followUp({ ephemeral: true }) pattern:
+            // - update() clears the checkmark by rebuilding components with default: false
+            // - followUp() sends ephemeral response with pricing details
+            // - User sees "Only you can see this" ephemeral response
 
             logger.info(
-                `[PricingServiceSelect] Service details shown: ${service.name} by ${interaction.user.tag} (auto-delete in 10 minutes)`
+                `[PricingServiceSelect] Service details shown: ${service.name} by ${interaction.user.tag}`
             );
         } catch (sendError) {
             // Log the actual error with full details
@@ -277,21 +331,10 @@ export async function handleImprovedPricingServiceSelect(
                         })
                         .setTimestamp();
 
-                    await interaction.editReply({
+                    await interaction.followUp({
                         embeds: [simplifiedEmbed.toJSON() as any],
                         components: actionButtons.map(row => row.toJSON()) as any,
-                    });
-
-                    // Track simplified message for auto-delete too
-                    const messageId = `${interaction.id}`;
-                    pricingMessageTracker.trackMessage(messageId, async () => {
-                        try {
-                            await interaction.deleteReply();
-                        } catch (error) {
-                            logger.debug(
-                                "[PricingServiceSelect] Could not auto-delete simplified message"
-                            );
-                        }
+                        ephemeral: true
                     });
 
                     return;
@@ -335,20 +378,23 @@ export async function handleImprovedPricingServiceSelect(
 
         // Attempt to show error message to user
         try {
-            if (interaction.deferred || interaction.replied) {
-                await interaction.editReply({
+            // Check if we already responded
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp({
                     content:
                         "❌ **Error Loading Service**\n\n" +
                         "An error occurred while loading the service details. " +
                         "Please try again later or contact support if the problem persists.",
+                    ephemeral: true
                 });
             } else {
+                // Haven't responded yet, use reply
                 await interaction.reply({
                     content:
                         "❌ **Error Loading Service**\n\n" +
                         "An error occurred while loading the service details. " +
                         "Please try again later or contact support if the problem persists.",
-                    ephemeral: true,
+                    ephemeral: true
                 });
             }
         } catch (replyError) {

@@ -8,7 +8,7 @@ import logger from "./common/loggers";
 import Environment from "./common/config/environment";
 import useragent from "express-useragent";
 import express from "express";
-import { resInterceptor } from "./common/interceptors";
+import { resInterceptor, DecimalInterceptor } from "./common/interceptors";
 import {
     CustomErrorHandler,
     morganMiddleware,
@@ -85,7 +85,7 @@ import getControllers from "./api";
         validation: true,
         currentUserChecker,
         defaultErrorHandler: false,
-        interceptors: [resInterceptor],
+        interceptors: [resInterceptor, DecimalInterceptor],
         middlewares: [
             LangMiddleware,
             AddUserToReqMiddleware,

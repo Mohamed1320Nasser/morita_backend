@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import { pricingEventService } from "../../discord-bot/services/pricingEvent.service";
 import logger from "../loggers";
 

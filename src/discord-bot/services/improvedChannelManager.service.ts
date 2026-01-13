@@ -1,7 +1,7 @@
 import { Client, TextChannel, Message, AttachmentBuilder } from "discord.js";
 import { ApiService } from "./api.service";
 import { EnhancedPricingBuilder } from "../utils/enhancedPricingBuilder";
-import { getSelectMenuResetManager } from "./selectMenuResetManager";
+// Note: SelectMenuResetManager no longer used - ephemeral reply pattern is the best practice
 import {
     pricingEventService,
     PricingEventData,
@@ -417,10 +417,9 @@ export class ImprovedChannelManager {
                 components: components as any,
             });
 
-            // Register with reset manager for auto-reset functionality
-            const resetManager = getSelectMenuResetManager();
-            const categoryIds = categories.map((c) => c.id);
-            resetManager.registerGroupedMessage(message.id, categoryIds);
+            // Note: SelectMenuResetManager registration removed.
+            // Using ephemeral reply pattern instead - the industry standard approach
+            // used by MEE6, Dyno, Carl-bot, etc. No message edits needed.
 
             // Store reference for each category
             for (const category of categories) {
