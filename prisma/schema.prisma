@@ -797,7 +797,6 @@ model TosAcceptance {
   @@index([acceptedAt])
 }
 
-// Onboarding Questions (Admin-managed) - Only TEXT and TEXTAREA supported
 model OnboardingQuestion {
   id           String            @id @default(uuid())
   question     String            @db.Text

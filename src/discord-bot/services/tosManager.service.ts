@@ -120,7 +120,7 @@ export class TosManagerService {
                     components: [row as any]
                 },
                 {
-                    pin: true  // Pin TOS message
+                    pin: false  // Don't pin TOS message
                 }
             );
 

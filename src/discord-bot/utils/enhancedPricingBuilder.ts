@@ -1584,34 +1584,102 @@ export class EnhancedPricingBuilder {
     }
 
     /**
-     * Group pricing methods by type (e.g., "Main Accounts - Parsec", "Zerker Accounts - VPN")
+     * Group pricing methods by groupName (if exists) or display individually
+     * - If method has groupName → group by groupName, sort inside by displayOrder
+     * - If method has no groupName → treat as individual item, sort by displayOrder
+     * - Groups are ordered by the minimum displayOrder of their methods
      */
     private static groupPricingMethodsByType(methods: PricingMethod[]): Record<string, PricingMethod[]> {
-        const groups: Record<string, PricingMethod[]> = {};
+        // Separate methods with groupName and without groupName
+        const withGroup: PricingMethod[] = [];
+        const withoutGroup: PricingMethod[] = [];
 
         for (const method of methods) {
-            // Use the groupName field if it exists, otherwise use the method name as the group
-            let groupName: string;
-
             if (method.groupName && method.groupName.trim()) {
-                // Use the explicit groupName field from the database
-                groupName = method.groupName.trim();
-            } else if (method.name.includes(" - ")) {
-                // Fallback: If name contains " - ", use the full name
-                groupName = method.name;
+                withGroup.push(method);
             } else {
-                // Fallback: Group by the first part of the name (before any numbers or special chars)
-                groupName = method.name.split(/\d/)[0].trim() || method.name;
+                withoutGroup.push(method);
             }
-
-            if (!groups[groupName]) {
-                groups[groupName] = [];
-            }
-
-            groups[groupName].push(method);
         }
 
-        return groups;
+        // Group methods by groupName
+        const groupMap: Map<string, PricingMethod[]> = new Map();
+        const groupMinOrder: Map<string, number> = new Map(); // Track minimum displayOrder per group
+
+        for (const method of withGroup) {
+            const groupName = method.groupName!.trim();
+            const order = method.displayOrder ?? 999;
+
+            if (!groupMap.has(groupName)) {
+                groupMap.set(groupName, []);
+                groupMinOrder.set(groupName, order);
+            } else {
+                // Update minimum order for the group
+                const currentMin = groupMinOrder.get(groupName)!;
+                if (order < currentMin) {
+                    groupMinOrder.set(groupName, order);
+                }
+            }
+
+            groupMap.get(groupName)!.push(method);
+        }
+
+        // Sort methods inside each group by displayOrder
+        for (const [groupName, groupMethods] of groupMap) {
+            groupMethods.sort((a, b) => (a.displayOrder ?? 999) - (b.displayOrder ?? 999));
+        }
+
+        // Sort individual methods (without group) by displayOrder
+        withoutGroup.sort((a, b) => (a.displayOrder ?? 999) - (b.displayOrder ?? 999));
+
+        // Combine everything into a single ordered list
+        // Each group entry: { type: 'group', name, methods, minOrder }
+        // Each individual entry: { type: 'individual', method, order }
+        type Entry =
+            | { type: 'group'; name: string; methods: PricingMethod[]; minOrder: number }
+            | { type: 'individual'; method: PricingMethod; order: number };
+
+        const entries: Entry[] = [];
+
+        // Add groups
+        for (const [groupName, groupMethods] of groupMap) {
+            entries.push({
+                type: 'group',
+                name: groupName,
+                methods: groupMethods,
+                minOrder: groupMinOrder.get(groupName)!
+            });
+        }
+
+        // Add individual methods
+        for (const method of withoutGroup) {
+            entries.push({
+                type: 'individual',
+                method,
+                order: method.displayOrder ?? 999
+            });
+        }
+
+        // Sort all entries by their order
+        entries.sort((a, b) => {
+            const orderA = a.type === 'group' ? a.minOrder : a.order;
+            const orderB = b.type === 'group' ? b.minOrder : b.order;
+            return orderA - orderB;
+        });
+
+        // Build final result - preserve order
+        const result: Record<string, PricingMethod[]> = {};
+
+        for (const entry of entries) {
+            if (entry.type === 'group') {
+                result[entry.name] = entry.methods;
+            } else {
+                // Individual method - use method name as key
+                result[entry.method.name] = [entry.method];
+            }
+        }
+
+        return result;
     }
 
     /**

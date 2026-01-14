@@ -240,7 +240,7 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
 
         // Add each method option as a separate choice
         if (data.methodOptions && data.methodOptions.length > 0) {
-            // Build pricing display - just show all individual segments
+            // Build pricing display - group by method name (groupName)
             const priceLines: string[] = [];
 
             // Get only individual segments (not Optimal Combination)
@@ -249,17 +249,46 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
                 return m.methodName.includes('(') && m.methodName.includes('-') && m.methodName.includes(')');
             });
 
-            // Display all individual segments
+            // Group segments by method name (extract base name before level range)
+            const groupedMethods: { [key: string]: any[] } = {};
+
             for (const method of individualSegments) {
-                const price = method.finalPrice.toFixed(2);
-                const rate = method.basePrice ? method.basePrice.toFixed(8) : '0.00000000';
+                // Extract base method name: "Barbarian Fishing (50-58)" -> "Barbarian Fishing"
+                const baseNameMatch = method.methodName.match(/^(.+?)\s*\(\d+-\d+\)$/);
+                const baseName = baseNameMatch ? baseNameMatch[1].trim() : method.methodName;
 
-                logger.info(`[PriceCalculator] 💰 ${method.methodName}: $${price}`);
+                if (!groupedMethods[baseName]) {
+                    groupedMethods[baseName] = [];
+                }
+                groupedMethods[baseName].push(method);
+            }
 
-                // Compact display with rate
-                priceLines.push(`◻️ **${method.methodName}**`);
-                priceLines.push(`   💰 \`$${price}\` • Rate: \`${rate} $/XP\``);
-                priceLines.push(''); // Spacing
+            // Display grouped methods (like MMOGoldHut style)
+            for (const [groupName, methods] of Object.entries(groupedMethods)) {
+                // Sort methods by start level
+                methods.sort((a, b) => {
+                    const aMatch = a.methodName.match(/\((\d+)-\d+\)/);
+                    const bMatch = b.methodName.match(/\((\d+)-\d+\)/);
+                    return (aMatch ? parseInt(aMatch[1]) : 0) - (bMatch ? parseInt(bMatch[1]) : 0);
+                });
+
+                // Calculate total price for this group
+                const totalPrice = methods.reduce((sum, m) => sum + m.finalPrice, 0);
+
+                // Add group header
+                priceLines.push(`**${groupName}**`);
+
+                // Add level ranges with price for each method in the group
+                for (const method of methods) {
+                    const levelMatch = method.methodName.match(/\((\d+-\d+)\)/);
+                    const levelRange = levelMatch ? levelMatch[1] : '';
+                    const price = method.finalPrice.toFixed(2);
+                    priceLines.push(`  📊 [ ${levelRange} ] — $${price}`);
+                }
+
+                // Add total price for the group
+                priceLines.push(`  💰 **Total: $${totalPrice.toFixed(2)}**`);
+                priceLines.push(''); // Spacing between groups
             }
 
             // Remove last empty line
@@ -1881,7 +1910,8 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
     }
 }
 
-// Handler for !q command (Quote - FIXED pricing with batch support)
+// Handler for !q command (Quote - FIXED pricing)
+// Supports: service name (gets all methods), method name, groupName, or comma-separated list
 async function handleQuoteCommand(message: Message, apiService: ApiService) {
     const prefix = discordConfig.prefix;
     const input = message.content.slice(prefix.length + 2).trim();
@@ -1889,169 +1919,134 @@ async function handleQuoteCommand(message: Message, apiService: ApiService) {
     if (!input) {
         await sendValidationError(
             message,
-            "!q desert treasure 1\n!q desert treasure 1, monkey madness, infernal cape",
-            "No input provided. Specify a quest name (with optional quantity) or comma-separated list."
+            "!q Free Quests\n!q Cook's Assistant\n!q Cook's Assistant, Demon Slayer, Sheep Shearer",
+            "No input provided. Specify a service name, quest name, or comma-separated list."
         );
         return;
     }
 
-    // Check if this is a batch request (contains commas)
+    // Check if batch request (contains commas)
     const isBatchRequest = input.includes(',');
-    const questNames = isBatchRequest
-        ? input.split(',').map(q => q.trim().toLowerCase())
-        : [input.toLowerCase()];
 
-    logger.info(`[Quest] Command: !q ${input} by ${message.author.tag} (${questNames.length} quests)`);
+    logger.info(`[Quote] Command: !q ${input} by ${message.author.tag} (batch: ${isBatchRequest})`);
 
-    // Send "fetching..." message
     const thinkingMsg = await message.reply(
-        isBatchRequest
-            ? `💰 Fetching quotes for ${questNames.length} quests...`
-            : "💰 Fetching price quote..."
+        isBatchRequest ? "💰 Fetching quotes..." : "💰 Fetching quote..."
     );
 
-    // Get all services
-    const services = await apiService.getAllServicesWithPricing();
+    try {
+        // Get all services with pricing
+        const services = await apiService.getAllServicesWithPricing();
 
-    // Find all matching quests
-    const results: Array<{
-        questName: string;
-        service: any;
-        price: number;
-        upcharges: Array<{ method: string; price: number; difference: number }>;
-    }> = [];
+        if (isBatchRequest) {
+            // Batch mode: find each item separately
+            const itemNames = input.split(',').map(s => s.trim().toLowerCase());
+            const foundMethods: Array<{ name: string; price: number; displayOrder: number; groupName?: string }> = [];
+            const notFound: string[] = [];
 
-    const notFound: string[] = [];
-
-    for (const questName of questNames) {
-        // Find service with improved matching
-        let service = findBestQuestMatch(services, questName);
-
-        if (!service) {
-            notFound.push(questName);
-            continue;
-        }
-
-        // Fetch full service with modifiers
-        const fullService = await apiService.getServiceWithPricing(service.id);
-        service = fullService;
-
-        try {
-            // Get all FIXED pricing methods
-            const fixedMethods = service.pricingMethods?.filter((m: any) => m.pricingUnit === 'FIXED') || [];
-
-            if (fixedMethods.length === 0) {
-                notFound.push(questName);
-                continue;
+            for (const itemName of itemNames) {
+                const result = findQuoteMatch(services, itemName);
+                if (result && result.methods.length > 0) {
+                    // Add all methods from this result
+                    foundMethods.push(...result.methods);
+                } else {
+                    notFound.push(itemName);
+                }
             }
 
-            // Get payment methods
-            const paymentMethods = await apiService.getPaymentMethods();
-            if (!paymentMethods || paymentMethods.length === 0) {
-                throw new Error('No payment methods available');
+            if (foundMethods.length === 0) {
+                await deleteThinkingMessage(thinkingMsg);
+                await sendServiceNotFoundError(
+                    message,
+                    input,
+                    "Quest/Service",
+                    ["!q Free Quests", "!q Cook's Assistant", "!q Cook's Assistant, Demon Slayer"]
+                );
+                return;
             }
-            const defaultPaymentMethod = paymentMethods[0];
 
-            // Get all active service modifier IDs to apply them automatically
-            const serviceModifierIds = (service.serviceModifiers || [])
-                .filter((m: any) => m.active)
-                .map((m: any) => m.id);
+            // Build batch result
+            const batchResult = {
+                title: `Batch Quote (${foundMethods.length} items)`,
+                description: 'Multiple quests/services',
+                emoji: '📋',
+                methods: foundMethods,
+                notFound,
+            };
 
-            logger.info(`[Quote] Applying ${serviceModifierIds.length} service-level modifiers for ${service.name}`);
+            await sendQuoteEmbed(thinkingMsg, batchResult);
+            logger.info(`[Quote] ✅ Batch quote sent: ${foundMethods.length} found, ${notFound.length} not found`);
 
-            const pricingService = new PricingCalculatorService();
+        } else {
+            // Single mode: find one service/method/group
+            const result = findQuoteMatch(services, input.toLowerCase());
 
-            // Calculate prices for all methods
-            const methodPrices = await Promise.all(
-                fixedMethods.map(async (method: any) => {
-                    const result = await pricingService.calculatePrice({
-                        methodId: method.id,
-                        paymentMethodId: defaultPaymentMethod.id,
-                        quantity: 1,
-                        serviceModifierIds, // ✅ Pass service modifier IDs
-                    });
-                    return {
-                        method: method.name,
-                        price: result.finalPrice,
-                        basePrice: result.basePrice,
-                    };
-                })
-            );
+            if (!result) {
+                await deleteThinkingMessage(thinkingMsg);
+                await sendServiceNotFoundError(
+                    message,
+                    input,
+                    "Quest/Service",
+                    ["!q Free Quests", "!q Cook's Assistant", "!q desert treasure 1"]
+                );
+                return;
+            }
 
-            // Find cheapest price
-            const cheapest = methodPrices.reduce((min, curr) =>
-                curr.price < min.price ? curr : min
-            );
-
-            // Build upcharges list (other payment methods)
-            const upcharges = methodPrices
-                .filter(m => m.method !== cheapest.method)
-                .map(m => ({
-                    method: m.method,
-                    price: m.price,
-                    difference: m.price - cheapest.price,
-                }));
-
-            results.push({
-                questName: service.name,
-                service,
-                price: cheapest.price,
-                upcharges,
-            });
-
-        } catch (error) {
-            logger.error(`[Quest] Error calculating price for ${questName}:`, error);
-            notFound.push(questName);
+            await sendQuoteEmbed(thinkingMsg, result);
+            logger.info(`[Quote] ✅ Quote sent for "${result.title}" (${result.methods.length} methods) to ${message.author.tag}`);
         }
-    }
 
-    // Handle no results
-    if (results.length === 0) {
+    } catch (error) {
+        logger.error('[Quote] Error:', error);
         await deleteThinkingMessage(thinkingMsg);
-        await sendServiceNotFoundError(
-            message,
-            questNames.join(', '),
-            "Quest/Activity",
-            ["!q desert treasure 1", "!q monkey madness", "!q infernal cape", "!q recipe for disaster"]
-        );
-        return;
+        await sendCalculationError(message, "Quote calculation failed. Please try again.");
     }
-
-    // Build response based on single or batch
-    if (isBatchRequest) {
-        await sendBatchQuoteResponse(thinkingMsg, results, notFound);
-    } else {
-        await sendSingleQuoteResponse(thinkingMsg, results[0], notFound);
-    }
-
-    logger.info(`[Quest] Quote sent for ${results.length} quests to ${message.author.tag}`);
 }
 
 /**
- * Find best matching quest service with improved logic
- * Searches both service names AND pricing method names
+ * Find matching service/methods for quote command
+ * Priority: 1. Exact service name, 2. Exact method name, 3. Exact groupName, 4. Partial matches
  */
-function findBestQuestMatch(services: any[], searchName: string): any | null {
-    // Normalize search name (handle Roman numerals)
+function findQuoteMatch(services: any[], searchName: string): {
+    title: string;
+    description: string;
+    emoji: string;
+    methods: Array<{ name: string; price: number; displayOrder: number; groupName?: string }>;
+} | null {
     const normalized = normalizeQuestName(searchName);
 
-    // Filter FIXED pricing services only
+    // Filter services that have FIXED pricing methods
     const fixedServices = services.filter((s: any) =>
         s.pricingMethods?.some((m: any) => m.pricingUnit === 'FIXED')
     );
 
-    // Try exact match on SERVICE NAME first
-    let match = fixedServices.find((s: any) =>
-        normalizeQuestName(s.name) === normalized ||
-        normalizeQuestName(s.slug) === normalized
-    );
+    // 1. Try exact match on SERVICE NAME → return ALL methods in that service
+    for (const service of fixedServices) {
+        if (normalizeQuestName(service.name) === normalized ||
+            normalizeQuestName(service.slug) === normalized) {
 
-    if (match) {
-        logger.info(`[Quest] ✅ Exact service match: "${match.name}"`);
-        return match;
+            const fixedMethods = service.pricingMethods
+                .filter((m: any) => m.pricingUnit === 'FIXED')
+                .map((m: any) => ({
+                    name: m.name,
+                    price: Number(m.basePrice),
+                    displayOrder: m.displayOrder ?? 999,
+                    groupName: m.groupName || null,
+                }))
+                .sort((a: any, b: any) => a.displayOrder - b.displayOrder);
+
+            logger.info(`[Quote] ✅ Exact service match: "${service.name}" (${fixedMethods.length} methods)`);
+
+            return {
+                title: service.name,
+                description: service.description || 'Fixed price service',
+                emoji: service.emoji || '⭐',
+                methods: fixedMethods,
+            };
+        }
     }
 
-    // Try exact match on PRICING METHOD NAMES (for quests like "Cook's Assistant")
+    // 2. Try exact match on PRICING METHOD NAME → return just that method
     for (const service of fixedServices) {
         const methodMatch = service.pricingMethods?.find((m: any) =>
             m.pricingUnit === 'FIXED' &&
@@ -2059,17 +2054,23 @@ function findBestQuestMatch(services: any[], searchName: string): any | null {
         );
 
         if (methodMatch) {
-            logger.info(`[Quest] ✅ Exact pricing method match: "${methodMatch.name}" in service "${service.name}"`);
-            // Return a virtual service object for this specific quest
+            logger.info(`[Quote] ✅ Exact method match: "${methodMatch.name}" in "${service.name}"`);
+
             return {
-                ...service,
-                name: methodMatch.name,
-                pricingMethods: [methodMatch],
+                title: methodMatch.name,
+                description: service.description || 'Fixed price quest',
+                emoji: service.emoji || '⭐',
+                methods: [{
+                    name: methodMatch.name,
+                    price: Number(methodMatch.basePrice),
+                    displayOrder: methodMatch.displayOrder ?? 0,
+                    groupName: methodMatch.groupName || null,
+                }],
             };
         }
     }
 
-    // Try exact match on GROUP NAME
+    // 3. Try exact match on GROUP NAME → return all methods in that group
     for (const service of fixedServices) {
         const methodsInGroup = service.pricingMethods?.filter((m: any) =>
             m.pricingUnit === 'FIXED' &&
@@ -2078,60 +2079,146 @@ function findBestQuestMatch(services: any[], searchName: string): any | null {
         );
 
         if (methodsInGroup && methodsInGroup.length > 0) {
-            logger.info(`[Quest] ✅ Exact groupName match: "${methodsInGroup[0].groupName}" in service "${service.name}" (${methodsInGroup.length} quests)`);
-            // Return service with only methods from this group
+            logger.info(`[Quote] ✅ Exact group match: "${methodsInGroup[0].groupName}" (${methodsInGroup.length} methods)`);
+
+            const methods = methodsInGroup
+                .map((m: any) => ({
+                    name: m.name,
+                    price: Number(m.basePrice),
+                    displayOrder: m.displayOrder ?? 999,
+                    groupName: m.groupName || null,
+                }))
+                .sort((a: any, b: any) => a.displayOrder - b.displayOrder);
+
             return {
-                ...service,
-                name: `${service.name} - ${methodsInGroup[0].groupName}`,
-                pricingMethods: methodsInGroup,
+                title: methodsInGroup[0].groupName,
+                description: service.description || 'Fixed price group',
+                emoji: service.emoji || '⭐',
+                methods,
             };
         }
     }
 
-    // Try partial match on service names (but prefer shorter names to avoid DT2 matching DT1)
-    const partialMatches = fixedServices.filter((s: any) =>
-        normalizeQuestName(s.name).includes(normalized) ||
-        normalizeQuestName(s.slug).includes(normalized)
+    // 4. Try partial match on service names
+    const partialServiceMatches = fixedServices.filter((s: any) =>
+        normalizeQuestName(s.name).includes(normalized)
     );
 
-    if (partialMatches.length === 1) {
-        logger.info(`[Quest] ✅ Partial service match: "${partialMatches[0].name}"`);
-        return partialMatches[0];
-    }
-
-    if (partialMatches.length > 1) {
-        // Prefer shortest name (more specific)
-        match = partialMatches.reduce((shortest, curr) =>
+    if (partialServiceMatches.length > 0) {
+        // Prefer shortest match (more specific)
+        const bestMatch = partialServiceMatches.reduce((shortest, curr) =>
             curr.name.length < shortest.name.length ? curr : shortest
         );
-        logger.info(`[Quest] ✅ Best partial service match: "${match.name}" (shortest of ${partialMatches.length})`);
-        return match;
+
+        const fixedMethods = bestMatch.pricingMethods
+            .filter((m: any) => m.pricingUnit === 'FIXED')
+            .map((m: any) => ({
+                name: m.name,
+                price: Number(m.basePrice),
+                displayOrder: m.displayOrder ?? 999,
+                groupName: m.groupName || null,
+            }))
+            .sort((a: any, b: any) => a.displayOrder - b.displayOrder);
+
+        logger.info(`[Quote] ✅ Partial service match: "${bestMatch.name}" (${fixedMethods.length} methods)`);
+
+        return {
+            title: bestMatch.name,
+            description: bestMatch.description || 'Fixed price service',
+            emoji: bestMatch.emoji || '⭐',
+            methods: fixedMethods,
+        };
     }
 
-    // Try partial match on pricing method names
+    // 5. Try partial match on pricing method names
     for (const service of fixedServices) {
-        const methodMatches = service.pricingMethods?.filter((m: any) =>
+        const methodMatch = service.pricingMethods?.find((m: any) =>
             m.pricingUnit === 'FIXED' &&
             normalizeQuestName(m.name).includes(normalized)
         );
 
-        if (methodMatches && methodMatches.length > 0) {
-            // Use the first/shortest match
-            const bestMethod = methodMatches.reduce((shortest: any, curr: any) =>
-                curr.name.length < shortest.name.length ? curr : shortest
-            );
+        if (methodMatch) {
+            logger.info(`[Quote] ✅ Partial method match: "${methodMatch.name}"`);
 
-            logger.info(`[Quest] ✅ Partial pricing method match: "${bestMethod.name}" in service "${service.name}"`);
             return {
-                ...service,
-                name: bestMethod.name,
-                pricingMethods: [bestMethod],
+                title: methodMatch.name,
+                description: service.description || 'Fixed price quest',
+                emoji: service.emoji || '⭐',
+                methods: [{
+                    name: methodMatch.name,
+                    price: Number(methodMatch.basePrice),
+                    displayOrder: methodMatch.displayOrder ?? 0,
+                    groupName: methodMatch.groupName || null,
+                }],
             };
         }
     }
 
-    logger.warn(`[Quest] ❌ No match found for: "${searchName}"`);
+    logger.warn(`[Quote] ❌ No match found for: "${searchName}"`);
     return null;
+}
+
+/**
+ * Send quote embed (matches style of other commands like !s, !i)
+ */
+async function sendQuoteEmbed(
+    thinkingMsg: Message,
+    result: {
+        title: string;
+        description: string;
+        emoji: string;
+        methods: Array<{ name: string; price: number; displayOrder: number; groupName?: string }>;
+        notFound?: string[];
+    }
+) {
+    const embed = new EmbedBuilder()
+        .setTitle(`${result.emoji} ${result.title}`)
+        .setColor(0xfca311)
+        .setTimestamp();
+
+    // Build pricing display - show each method individually (no grouping for batch)
+    const priceLines: string[] = [];
+    let totalPrice = 0;
+
+    // Sort methods by displayOrder
+    const sortedMethods = [...result.methods].sort((a, b) => a.displayOrder - b.displayOrder);
+
+    for (const method of sortedMethods) {
+        priceLines.push(`**${method.name}**`);
+        priceLines.push(`  💰 $${method.price.toFixed(2)}`);
+        priceLines.push('');
+        totalPrice += method.price;
+    }
+
+    // Remove last empty line
+    if (priceLines.length > 0 && priceLines[priceLines.length - 1] === '') {
+        priceLines.pop();
+    }
+
+    embed.addFields({
+        name: "💵 Pricing",
+        value: priceLines.join('\n') || 'No pricing available',
+        inline: false,
+    });
+
+    // Show grand total if multiple items
+    if (result.methods.length > 1) {
+        embed.addFields({
+            name: "💎 Grand Total",
+            value: `\`\`\`ansi\n\u001b[1;32m$${totalPrice.toFixed(2)}\u001b[0m\n\`\`\``,
+            inline: false,
+        });
+    }
+
+    // Show not found items if any
+    const notFoundContent = result.notFound && result.notFound.length > 0
+        ? `⚠️ Not found: ${result.notFound.join(', ')}`
+        : "";
+
+    await thinkingMsg.edit({
+        content: notFoundContent,
+        embeds: [embed.toJSON() as any],
+    });
 }
 
 /**
@@ -2150,99 +2237,4 @@ function normalizeQuestName(name: string): string {
         .replace(/[^a-z0-9\s']/g, '') // Remove special chars BUT keep apostrophes
         .replace(/\s+/g, ' ')       // Normalize spaces
         .replace(/'+/g, "'");       // Normalize multiple apostrophes to single
-}
-
-/**
- * Send single quest quote response
- */
-async function sendSingleQuoteResponse(
-    message: any,
-    result: { questName: string; service: any; price: number; upcharges: any[] },
-    notFound: string[]
-) {
-    const embed = new EmbedBuilder()
-        .setTitle(`${result.service.emoji || '⭐'} ${result.questName}`)
-        .setDescription(result.service.description || 'Fixed price quest service')
-        .setColor(0xfca311)
-        .setTimestamp();
-
-    // Show main price
-    embed.addFields({
-        name: "💰 Price",
-        value: `\`\`\`ansi\n\u001b[1;32m$${result.price.toFixed(2)}\u001b[0m\n\`\`\``,
-        inline: false,
-    });
-
-    // Show upcharges in notes if any
-    if (result.upcharges.length > 0) {
-        const upchargeLines = result.upcharges.map(u =>
-            `• ${u.method}: $${u.price.toFixed(2)} (+$${u.difference.toFixed(2)})`
-        );
-        embed.addFields({
-            name: "📝 Payment Method Upcharges",
-            value: upchargeLines.join('\n'),
-            inline: false,
-        });
-    }
-
-    // Add general note
-    embed.addFields({
-        name: "ℹ️ Note",
-        value: "Price shown is base cost. Additional upcharges may apply based on account requirements.\nContact support for personalized quote!",
-        inline: false,
-    });
-
-    await message.edit({
-        content: notFound.length > 0 ? `⚠️ Could not find: ${notFound.join(', ')}` : "",
-        embeds: [embed.toJSON() as any],
-    });
-}
-
-/**
- * Send batch quest quote response
- */
-async function sendBatchQuoteResponse(
-    message: any,
-    results: Array<{ questName: string; service: any; price: number; upcharges: any[] }>,
-    notFound: string[]
-) {
-    const embed = new EmbedBuilder()
-        .setTitle("📋 Quest Bundle Quote")
-        .setColor(0xfca311)
-        .setTimestamp();
-
-    // Build quest list
-    const questList = results.map((r, i) =>
-        `${i + 1}. ${r.service.emoji || '⭐'} **${r.questName}** → \`$${r.price.toFixed(2)}\``
-    ).join('\n');
-
-    embed.addFields({
-        name: "Quests",
-        value: questList,
-        inline: false,
-    });
-
-    // Calculate total
-    const total = results.reduce((sum, r) => sum + r.price, 0);
-
-    embed.addFields({
-        name: "💰 Total Price",
-        value: `\`\`\`ansi\n\u001b[1;32m$${total.toFixed(2)}\u001b[0m\n\`\`\``,
-        inline: false,
-    });
-
-    // Show upcharges if any quest has them
-    const hasUpcharges = results.some(r => r.upcharges.length > 0);
-    if (hasUpcharges) {
-        embed.addFields({
-            name: "📝 Note",
-            value: "Prices shown are base costs. Payment method upcharges may apply.\nContact support for detailed breakdown!",
-            inline: false,
-        });
-    }
-
-    await message.edit({
-        content: notFound.length > 0 ? `⚠️ Could not find: ${notFound.join(', ')}` : "",
-        embeds: [embed.toJSON() as any],
-    });
 }
