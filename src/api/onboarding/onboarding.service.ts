@@ -144,10 +144,15 @@ export default class OnboardingService {
             }
         });
 
-        // Update onboarding session
-        await prisma.onboardingSession.update({
+        // Update or create onboarding session
+        await prisma.onboardingSession.upsert({
             where: { discordId: data.discordId },
-            data: { tosAccepted: true }
+            update: { tosAccepted: true },
+            create: {
+                discordId: data.discordId,
+                discordUsername: data.discordUsername,
+                tosAccepted: true
+            }
         });
 
         return acceptance;

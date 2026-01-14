@@ -29,8 +29,8 @@ export default {
                 const sessionResponse = await axios.get(`${discordConfig.apiBaseUrl}/onboarding/sessions/${discordId}`);
                 existingSession = sessionResponse.data.data;
 
-                // If session is completed, tell user they already registered
-                if (existingSession?.completed) {
+                // If session is completed (has completedAt), tell user they already registered
+                if (existingSession?.completedAt) {
                     return await interaction.reply({
                         content: "✅ You have already accepted the Terms of Service and completed registration!\n\nIf you don't have access to channels, please contact an administrator.",
                         ephemeral: true
@@ -38,7 +38,7 @@ export default {
                 }
 
                 // If TOS accepted but not completed, allow them to continue
-                if (existingSession?.tosAccepted && !existingSession?.completed) {
+                if (existingSession?.tosAccepted && !existingSession?.completedAt) {
                     logger.info(`[Onboarding] ${username} re-attempting registration after previous partial completion`);
                 }
             } catch (sessionError) {
