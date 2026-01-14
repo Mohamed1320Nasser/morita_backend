@@ -61,6 +61,7 @@ export interface LevelRangeCalculationRequest {
     startLevel: number;
     endLevel: number;
     groupName?: string; // Optional: filter methods by group name (e.g., "zulrah", "vorkath")
+    skipModifiers?: boolean; // Optional: skip applying modifiers (for calculator commands)
 }
 
 export interface MethodOption {
@@ -536,7 +537,7 @@ export default class PricingCalculatorService {
     async calculateLevelRangePrice(
         request: LevelRangeCalculationRequest
     ): Promise<LevelRangeCalculationResult> {
-        const { serviceId, startLevel, endLevel, groupName } = request;
+        const { serviceId, startLevel, endLevel, groupName, skipModifiers } = request;
 
         // Validate input
         if (startLevel < 1 || startLevel > 99) {
@@ -648,12 +649,15 @@ export default class PricingCalculatorService {
 
         logger.info(`[PricingCalculator] 🎯 Requested level range: ${startLevel}-${endLevel} (${formatXp(totalXp)} XP)`);
 
+        // Pass empty array if skipModifiers is true
+        const modifiersToApply = skipModifiers ? [] : (service.serviceModifiers || []);
+
         // NEW APPROACH: Generate ALL method options (optimal + alternatives)
         const methodOptions = this.generateAllMethodOptions(
             pricingMethods,
             startLevel,
             endLevel,
-            service.serviceModifiers || []
+            modifiersToApply
         );
 
         if (!methodOptions || methodOptions.length === 0) {

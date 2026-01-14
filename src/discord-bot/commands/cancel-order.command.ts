@@ -114,14 +114,12 @@ export default {
                 return;
             }
 
-            // Cancel the order via API
             await discordApiClient.put(`/discord/orders/${orderId}/status`, {
                 status: "CANCELLED",
                 supportDiscordId: interaction.user.id,
                 reason: reason,
             });
 
-            // Build success embed
             const embed = new EmbedBuilder()
                 .setTitle("✅ Order Cancelled")
                 .setDescription(

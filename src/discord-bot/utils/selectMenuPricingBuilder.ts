@@ -6,16 +6,12 @@ import {
 import { ServiceCategory, Service } from "../types/discord.types";
 
 export class SelectMenuPricingBuilder {
-    // Header is now just the banner image - no text needed
 
-    /**
-     * Build category select menu with all services as options (MMOGoldHut style)
-     */
     static buildCategorySelectMenu(category: ServiceCategory): {
         content: string;
         components: ActionRowBuilder<StringSelectMenuBuilder>[];
     } {
-        // Format: "🍀 Megascale - Click Here" (exact screenshot format)
+        
         const content = `**${category.emoji} ${category.name} - Click Here**`;
 
         const selectMenu = new StringSelectMenuBuilder()
@@ -24,7 +20,6 @@ export class SelectMenuPricingBuilder {
             .setMinValues(1)
             .setMaxValues(1);
 
-        // Add all services as options (pre-loaded, max 25 for Discord limit)
         const services = category.services || [];
         const maxServices = Math.min(services.length, 25);
 
@@ -38,7 +33,6 @@ export class SelectMenuPricingBuilder {
             );
         }
 
-        // If more than 25 services, add a "Show More" option
         if (services.length > 25) {
             selectMenu.addOptions(
                 new StringSelectMenuOptionBuilder()
@@ -58,9 +52,6 @@ export class SelectMenuPricingBuilder {
         };
     }
 
-    /**
-     * Build service details embed for ephemeral response
-     */
     static buildServiceDetailsEmbed(service: Service): any {
         const { EmbedBuilder } = require("discord.js");
         const { COLORS } = require("../constants/colors");
@@ -81,7 +72,6 @@ export class SelectMenuPricingBuilder {
             })
             .setTimestamp();
 
-        // Add pricing information if available
         if (service.pricingMethods && service.pricingMethods.length > 0) {
             const pricingTable = this.buildPricingTable(service.pricingMethods);
             embed.addFields({
@@ -91,7 +81,6 @@ export class SelectMenuPricingBuilder {
             });
         }
 
-        // Add service info
         embed.addFields(
             {
                 name: "📋 Service Info",
@@ -105,7 +94,6 @@ export class SelectMenuPricingBuilder {
             }
         );
 
-        // Add service description if available
         if (
             service.description &&
             service.description !== "Professional gaming service"
@@ -120,9 +108,6 @@ export class SelectMenuPricingBuilder {
         return embed;
     }
 
-    /**
-     * Build ANSI pricing table
-     */
     private static buildPricingTable(pricingMethods: any[]): string {
         if (!pricingMethods || pricingMethods.length === 0) {
             return "[1;37mNo pricing information available[0m";
@@ -163,9 +148,6 @@ export class SelectMenuPricingBuilder {
         return lines.join("\n");
     }
 
-    /**
-     * Format price with proper currency
-     */
     private static formatPrice(price: any): string {
         if (typeof price === "string") {
             price = parseFloat(price);

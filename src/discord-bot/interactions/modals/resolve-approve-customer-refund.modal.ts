@@ -8,7 +8,6 @@ export async function handleResolveApproveCustomerRefundModal(interaction: Modal
     try {
         await interaction.deferReply({ ephemeral: true });
 
-        // Parse customId: resolve_refund_modal_{issueId}_{orderId}
         const parts = interaction.customId.split("_");
         const issueId = parts[parts.length - 2];
         const orderId = parts[parts.length - 1];
@@ -19,7 +18,6 @@ export async function handleResolveApproveCustomerRefundModal(interaction: Modal
 
         logger.info(`[ApproveCustomerRefund] Processing resolution for issue ${issueId}, order ${orderId}`);
 
-        // Validate user has admin or support role
         const hasPermission = await isAdminOrSupport(interaction.client, interaction.user.id);
         if (!hasPermission) {
             await interaction.editReply({
@@ -29,7 +27,6 @@ export async function handleResolveApproveCustomerRefundModal(interaction: Modal
             return;
         }
 
-        // Validate refund type
         if (!["FULL", "PARTIAL", "NONE"].includes(refundType)) {
             await interaction.editReply({
                 content: `❌ Invalid refund type. Must be exactly "FULL", "PARTIAL", or "NONE" (you entered: "${refundType}").`,
@@ -37,7 +34,6 @@ export async function handleResolveApproveCustomerRefundModal(interaction: Modal
             return;
         }
 
-        // Parse and validate refund amount
         let refundAmount = 0;
         if (refundType === "PARTIAL") {
             refundAmount = parseFloat(refundAmountStr);
@@ -49,15 +45,11 @@ export async function handleResolveApproveCustomerRefundModal(interaction: Modal
             }
         }
 
-        // Note: Issue will be automatically marked as resolved when order is cancelled
         logger.info(`[ApproveCustomerRefund] Admin ${interaction.user.tag} approved customer refund (${refundType}) for issue ${issueId}`);
 
-        // Get order data
         const orderResponse: any = await discordApiClient.get(`/discord/orders/${orderId}`);
         const orderData = orderResponse.data || orderResponse;
 
-        // Call existing /cancel endpoint to cancel order and process refund
-        // This triggers ALL cancellation logic: refunds, notifications, channel updates
         await discordApiClient.put(`/discord/orders/${orderId}/cancel`, {
             cancelledByDiscordId: interaction.user.id,
             cancellationReason: `❌ Issue Resolved by Admin - Customer Refund Approved (${refundType})\n\nReason: ${cancellationReason}\n\nResolved by: ${interaction.user.tag}`,
@@ -67,7 +59,6 @@ export async function handleResolveApproveCustomerRefundModal(interaction: Modal
 
         logger.info(`[ApproveCustomerRefund] Order ${orderId} cancelled via /cancel endpoint with ${refundType} refund`);
 
-        // Determine refund display text
         let refundDisplayText = "";
         if (refundType === "FULL") {
             refundDisplayText = `Full Refund ($${parseFloat(orderData.orderValue || 0).toFixed(2)})`;
@@ -77,7 +68,6 @@ export async function handleResolveApproveCustomerRefundModal(interaction: Modal
             refundDisplayText = "No Refund";
         }
 
-        // Success message to admin/support
         const successEmbed = new EmbedBuilder()
             .setTitle("❌ Issue Resolved - Customer Refund Approved")
             .setDescription(
@@ -98,7 +88,7 @@ export async function handleResolveApproveCustomerRefundModal(interaction: Modal
                     inline: false
                 },
             ])
-            .setColor(0xed4245) // Red
+            .setColor(0xed4245) 
             .setTimestamp()
             .setFooter({ text: `Resolved by ${interaction.user.tag}` });
 
@@ -106,12 +96,10 @@ export async function handleResolveApproveCustomerRefundModal(interaction: Modal
             embeds: [successEmbed.toJSON() as any],
         });
 
-        // Notify customer and worker in order channel
         try {
             if (orderData.discordChannelId) {
                 const orderChannel = await interaction.client.channels.fetch(orderData.discordChannelId) as TextChannel;
 
-                // Notify customer
                 const customerNotificationEmbed = new EmbedBuilder()
                     .setTitle("❌ Order Cancelled - Refund Approved")
                     .setDescription(
@@ -131,7 +119,7 @@ export async function handleResolveApproveCustomerRefundModal(interaction: Modal
                             inline: false
                         },
                     ])
-                    .setColor(0xed4245) // Red
+                    .setColor(0xed4245) 
                     .setTimestamp()
                     .setFooter({ text: "Thank you for your patience" });
 
@@ -140,7 +128,6 @@ export async function handleResolveApproveCustomerRefundModal(interaction: Modal
                     embeds: [customerNotificationEmbed.toJSON() as any],
                 });
 
-                // Notify worker
                 if (orderData.worker?.discordId) {
                     const workerNotificationEmbed = new EmbedBuilder()
                         .setTitle("❌ Order Cancelled - Issue Resolved Against You")
@@ -161,7 +148,7 @@ export async function handleResolveApproveCustomerRefundModal(interaction: Modal
                                 inline: false
                             },
                         ])
-                        .setColor(0xed4245) // Red
+                        .setColor(0xed4245) 
                         .setTimestamp()
                         .setFooter({ text: "Resolved by support" });
 
@@ -177,9 +164,8 @@ export async function handleResolveApproveCustomerRefundModal(interaction: Modal
             logger.error(`[ApproveCustomerRefund] Failed to send notifications to order channel:`, channelError);
         }
 
-        // Update the issue in database and Discord message
         try {
-            // Mark issue as RESOLVED in database
+            
             await discordApiClient.put(`/discord/orders/issues/${issueId}`, {
                 status: "RESOLVED",
                 resolution: `❌ Customer Refund Approved - Order Cancelled\n\n${refundDisplayText}\n\n${cancellationReason}\n\nResolved by: ${interaction.user.tag}`,
@@ -188,7 +174,6 @@ export async function handleResolveApproveCustomerRefundModal(interaction: Modal
 
             logger.info(`[ApproveCustomerRefund] Marked issue ${issueId} as RESOLVED in database`);
 
-            // Update Discord message in issues channel
             const issuesChannel = await interaction.client.channels.fetch(discordConfig.issuesChannelId);
             if (issuesChannel?.isTextBased()) {
                 const issueData = await discordApiClient.get(`/discord/orders/issues/${issueId}`);
@@ -198,7 +183,7 @@ export async function handleResolveApproveCustomerRefundModal(interaction: Modal
                     const issueMessage = await issuesChannel.messages.fetch(issue.discordMessageId);
 
                     const resolvedEmbed = new EmbedBuilder(issueMessage.embeds[0].data)
-                        .setColor(0xed4245) // Red
+                        .setColor(0xed4245) 
                         .setTitle(`❌ RESOLVED - ${issueMessage.embeds[0].title}`);
 
                     resolvedEmbed.addFields({
@@ -209,7 +194,7 @@ export async function handleResolveApproveCustomerRefundModal(interaction: Modal
 
                     await issueMessage.edit({
                         embeds: [resolvedEmbed.toJSON() as any],
-                        components: [], // Remove resolution buttons
+                        components: [], 
                     });
 
                     logger.info(`[ApproveCustomerRefund] Updated issue message in Discord`);
@@ -217,7 +202,7 @@ export async function handleResolveApproveCustomerRefundModal(interaction: Modal
             }
         } catch (updateError) {
             logger.error(`[ApproveCustomerRefund] Failed to update issue:`, updateError);
-            // Don't fail the whole operation if we can't update the issue message
+            
         }
 
         logger.info(`[ApproveCustomerRefund] Resolution completed successfully`);

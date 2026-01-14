@@ -27,7 +27,6 @@ async function execute(interaction: ChatInputCommandInteraction) {
             `[StartWork] Worker ${interaction.user.tag} starting work on order #${orderNumber}`
         );
 
-        // Find order by order number
         const orderSearch = await findOrderByNumber(orderNumber);
 
         if (!orderSearch) {
@@ -39,7 +38,6 @@ async function execute(interaction: ChatInputCommandInteraction) {
 
         const { orderId, orderData } = orderSearch;
 
-        // Validate worker is assigned to this order
         if (!orderData.worker || orderData.worker.discordId !== workerDiscordId) {
             await interaction.editReply({
                 content: `❌ You are not the assigned worker for Order **#${orderNumber}**.\n\nThis order is assigned to: ${orderData.worker ? orderData.worker.fullname : "No one"}`,
@@ -47,7 +45,6 @@ async function execute(interaction: ChatInputCommandInteraction) {
             return;
         }
 
-        // Validate order status
         if (orderData.status !== "ASSIGNED") {
             await interaction.editReply({
                 content: `❌ Cannot start work on Order **#${orderNumber}**.\n\nCurrent status: \`${orderData.status}\`\n\nYou can only start work on orders with status \`ASSIGNED\`.`,
@@ -55,7 +52,6 @@ async function execute(interaction: ChatInputCommandInteraction) {
             return;
         }
 
-        // Use shared utility function
         const startWorkResult = await startWorkOnOrder(
             interaction.client,
             orderId,
@@ -63,7 +59,6 @@ async function execute(interaction: ChatInputCommandInteraction) {
             workerDiscordId
         );
 
-        // Send ephemeral response to worker
         await interaction.editReply({
             embeds: [startWorkResult.ephemeralEmbed.toJSON() as any],
             components: [startWorkResult.completeButton.toJSON() as any],

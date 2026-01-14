@@ -14,7 +14,7 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers, // Required for onboarding
+        GatewayIntentBits.GuildMembers, 
     ],
     rest: {
         timeout: 30000,
@@ -39,7 +39,6 @@ const loadCommands = async () => {
                 command.default.data.name,
                 command.default as any
             );
-            logger.info(`Loaded command: ${command.default.data.name}`);
         } else {
             logger.warn(
                 `The command at ${filePath} is missing a required "data" or "execute" property.`
@@ -48,7 +47,6 @@ const loadCommands = async () => {
     }
 };
 
-// Load events
 const loadEvents = async () => {
     const eventsPath = join(__dirname, "events");
     const eventFiles = readdirSync(eventsPath).filter(
@@ -81,7 +79,6 @@ const loadEvents = async () => {
                 );
             }
 
-            logger.info(`Loaded event: ${event.default.name}`);
         } catch (error) {
             logger.error(`Failed to load event ${file}:`, error);
         }
@@ -114,14 +111,8 @@ client.once(Events.ClientReady, async readyClient => {
         logger.error("Failed to register slash commands:", error);
     }
 
-    // ============================================================
-    // MANUAL PUBLISH MODE - Channels are NOT auto-updated on startup
-    // Use dashboard "Publish to Discord" buttons or API endpoints to update
-    // ============================================================
-
-    // Initialize channel managers (but don't publish to channels)
     try {
-        // Only setup channel reference, don't rebuild/publish
+        
         await client.improvedChannelManager.setupOnly();
         logger.info(
             "Pricing channel manager ready (manual publish mode - use API to publish)"
@@ -136,7 +127,7 @@ client.once(Events.ClientReady, async readyClient => {
     try {
         const { getTicketCategoryManager } = await import("./services/ticketCategoryManager.service");
         client.ticketCategoryManager = getTicketCategoryManager(client);
-        // Only setup, don't initialize channels
+        
         await client.ticketCategoryManager.setupOnly();
         logger.info(
             "Ticket category manager ready (manual publish mode - use API to publish)"
@@ -151,7 +142,7 @@ client.once(Events.ClientReady, async readyClient => {
     try {
         const { TosManagerService } = await import("./services/tosManager.service");
         client.tosManager = new TosManagerService(client);
-        // Only setup, don't publish TOS
+        
         await client.tosManager.setupOnly();
         logger.info("TOS manager ready (manual publish mode - use API to publish)");
     } catch (error) {
@@ -183,7 +174,6 @@ const startBot = async (retries = 3, delay = 5000) => {
     } catch (error: any) {
         logger.error("Failed to start Discord bot:", error);
 
-        // Check if this is a network/timeout error that we should retry
         const isNetworkError =
             error.message?.includes("timeout") ||
             error.message?.includes("ETIMEDOUT") ||
@@ -201,10 +191,6 @@ const startBot = async (retries = 3, delay = 5000) => {
         process.exit(1);
     }
 };
-
-// Don't auto-start the bot when this module is imported
-// The bot should only be started explicitly from start.ts
-// startBot();
 
 export default client;
 export { startBot };

@@ -19,10 +19,8 @@ import logger from "../../common/loggers";
 import axios, { AxiosInstance } from "axios";
 import { getTicketChannelMover } from "./ticket-channel-mover.service";
 
-// Import ticket type
 import { TicketType, TicketMetadata } from "../types/discord.types";
 
-// Ticket data interface
 export interface TicketData {
     id?: string;
     ticketNumber?: number;
@@ -36,10 +34,9 @@ export interface TicketData {
     currency?: string;
     customerNotes?: string;
     customerName: string;
-    ticketType?: TicketType; // NEW
+    ticketType?: TicketType; 
 }
 
-// Welcome message settings interface
 export interface WelcomeMessageSettings {
     title: string;
     message: string;
@@ -56,43 +53,37 @@ export class TicketService {
         this.client = client;
         this.apiClient = axios.create({
             baseURL: discordConfig.apiBaseUrl,
-            timeout: 5000, // Reduced timeout for faster failure detection
+            timeout: 5000, 
             headers: {
                 "Content-Type": "application/json",
             },
         });
     }
 
-    /**
-     * Create a new ticket channel
-     */
     async createTicketChannel(
         guild: Guild,
         user: User,
         ticketData: TicketData
     ): Promise<{ channel: TextChannel; ticket: any }> {
         try {
-            // Get or create the tickets category first
+            
             let ticketCategory = await this.getOrCreateTicketsCategory(guild);
 
-            // Generate a temporary ticket number for the channel name
-            // We'll use timestamp-based to ensure uniqueness
             const tempTicketNumber = Date.now().toString().slice(-6);
             const tempChannelName = `${discordConfig.ticketChannelPrefix}${tempTicketNumber}`;
 
-            // Create the channel first with proper permissions
             const channel = await guild.channels.create({
                 name: tempChannelName,
                 type: ChannelType.GuildText,
                 parent: ticketCategory?.id,
                 permissionOverwrites: [
                     {
-                        // Deny everyone from viewing
+                        
                         id: guild.id,
                         deny: [PermissionFlagsBits.ViewChannel],
                     },
                     {
-                        // Allow the customer
+                        
                         id: user.id,
                         allow: [
                             PermissionFlagsBits.ViewChannel,
@@ -103,7 +94,7 @@ export class TicketService {
                         ],
                     },
                     {
-                        // Allow support role
+                        
                         id: discordConfig.supportRoleId,
                         allow: [
                             PermissionFlagsBits.ViewChannel,
@@ -115,21 +106,20 @@ export class TicketService {
                         ],
                     },
                     {
-                        // Allow admin role
+                        
                         id: discordConfig.adminRoleId,
                         allow: [PermissionFlagsBits.Administrator],
                     },
                 ],
             });
 
-            // Now create the ticket in the database with the real channel ID
             const ticketResponse = await this.apiClient.post(
                 "/api/discord/tickets",
                 {
                     customerDiscordId: user.id,
                     categoryId: ticketData.categoryId,
                     serviceId: ticketData.serviceId,
-                    channelId: channel.id, // Use the real channel ID
+                    channelId: channel.id, 
                     calculatedPrice: ticketData.calculatedPrice,
                     paymentMethodId: ticketData.paymentMethodId,
                     currency: ticketData.currency || "USD",
@@ -141,24 +131,20 @@ export class TicketService {
 
             logger.info(`[TicketService] API Response: ${JSON.stringify(ticketResponse.data)}`);
 
-            // Handle nested response from API interceptor
-            // Response format: { msg, status, data: { success, data: ticket }, error }
             const responseData = ticketResponse.data.data || ticketResponse.data;
 
             if (!responseData.success && !responseData.id) {
-                // Delete the channel if ticket creation failed
+                
                 logger.error(`[TicketService] Ticket creation failed. Response: ${JSON.stringify(ticketResponse.data)}`);
                 await channel.delete("Ticket creation failed").catch(() => {});
                 throw new Error("Failed to create ticket in database");
             }
 
-            // Get the ticket from nested response or direct response
             const ticket = responseData.data || responseData;
             const ticketNumber = ticket.ticketNumber
                 .toString()
                 .padStart(4, "0");
 
-            // Rename the channel with the proper ticket number
             const channelName = `${discordConfig.ticketChannelPrefix}${ticketNumber}`;
             await channel.setName(channelName);
             await channel.setTopic(
@@ -179,9 +165,6 @@ export class TicketService {
         }
     }
 
-    /**
-     * Create a new ticket channel with ticket type support
-     */
     async createTicketChannelWithType(
         guild: Guild,
         user: User,
@@ -191,20 +174,15 @@ export class TicketService {
         try {
             const ticketType = ticketData.ticketType || TicketType.GENERAL;
 
-            // Get appropriate category based on ticket type
             let ticketCategory = await this.getTicketCategoryByType(guild, ticketType);
 
-            // Get ticket type category name for channel name
             const ticketTypeName = this.getTicketTypeCategoryName(ticketType);
 
-            // Clean username for channel name (Discord compatible)
             const username = user.username.replace(/[^a-z0-9_-]/gi, '').toLowerCase();
 
-            // Create temporary channel name (will be renamed after ticket is created in DB)
             const tempTimestamp = Date.now().toString().slice(-6);
             const tempChannelName = `temp-ticket-${tempTimestamp}`;
 
-            // Create the channel
             const channel = await guild.channels.create({
                 name: tempChannelName,
                 type: ChannelType.GuildText,
@@ -242,7 +220,6 @@ export class TicketService {
                 ],
             });
 
-            // Create ticket in database with type
             const ticketResponse = await this.apiClient.post(
                 "/api/discord/tickets",
                 {
@@ -256,31 +233,27 @@ export class TicketService {
                     customerNotes: ticketData.customerNotes,
                     customerName: user.username || user.displayName,
                     customerEmail: undefined,
-                    ticketType: ticketType, // NEW
+                    ticketType: ticketType, 
                 }
             );
 
             const responseData = ticketResponse.data.data || ticketResponse.data;
             const ticket = responseData.data || responseData;
 
-            // Save metadata if provided
             if (metadata && Object.keys(metadata).length > 0) {
                 await this.saveTicketMetadata(ticket.id, metadata);
             }
 
-            // Update channel name with actual ticket number from database
             const ticketNumber = ticket.ticketNumber.toString().padStart(4, "0");
             const finalChannelName = `${username}-${ticketTypeName}-${ticketNumber}`;
 
             await channel.setName(finalChannelName);
             logger.info(`[TicketService] Renamed channel to: ${finalChannelName}`);
 
-            // Update channel topic
             await channel.setTopic(
                 `Ticket #${ticketNumber} | ${this.getTicketTypeLabel(ticketType)} | Customer: ${user.tag}`
             );
 
-            // Send welcome message
             await this.sendWelcomeMessageForTicketType(channel, ticket, user, ticketType, ticketData.customerNotes);
 
             logger.info(
@@ -297,21 +270,14 @@ export class TicketService {
         }
     }
 
-    /**
-     * Get ticket category based on ticket type
-     */
     private async getTicketCategoryByType(
         guild: Guild,
         ticketType: TicketType
     ): Promise<CategoryChannel | null> {
-        // For now, use the same tickets category for all types
-        // You can extend this to use different categories per type
+
         return await this.getOrCreateTicketsCategory(guild);
     }
 
-    /**
-     * Get channel prefix based on ticket type
-     */
     private getChannelPrefixByType(ticketType: TicketType): string {
         switch (ticketType) {
             case TicketType.PURCHASE_SERVICES_OSRS:
@@ -330,9 +296,6 @@ export class TicketService {
         }
     }
 
-    /**
-     * Get user-friendly ticket type label
-     */
     private getTicketTypeLabel(ticketType: TicketType): string {
         switch (ticketType) {
             case TicketType.PURCHASE_SERVICES_OSRS:
@@ -354,9 +317,6 @@ export class TicketService {
         }
     }
 
-    /**
-     * Get ticket type category name for channel naming
-     */
     private getTicketTypeCategoryName(ticketType: TicketType): string {
         switch (ticketType) {
             case TicketType.PURCHASE_SERVICES_OSRS:
@@ -375,9 +335,6 @@ export class TicketService {
         }
     }
 
-    /**
-     * Send welcome message for ticket type (using dynamic settings from API)
-     */
     private async sendWelcomeMessageForTicketType(
         channel: TextChannel,
         ticket: any,
@@ -388,7 +345,6 @@ export class TicketService {
         try {
             const ticketNumber = ticket.ticketNumber.toString().padStart(4, "0");
 
-            // Fetch ticket type settings from API
             let welcomeSettings: any;
             try {
                 const settingsResponse = await this.apiClient.post(
@@ -413,7 +369,7 @@ export class TicketService {
                 logger.info(`[TicketService] Fetched welcome settings for ${ticketType}`);
             } catch (error) {
                 logger.warn(`[TicketService] Failed to fetch welcome settings for ${ticketType}, using fallback:`, error);
-                // Fallback to default message
+                
                 welcomeSettings = {
                     title: "🎫 Welcome to Our Support Ticket System!",
                     message: `🙋 Welcome, <@${user.id}>. Thank you for reaching out to us. We're ready to help you with your request.\n\n` +
@@ -429,20 +385,17 @@ export class TicketService {
                 };
             }
 
-            // Create the welcome embed with dynamic settings
             const embed = new EmbedBuilder()
                 .setTitle(welcomeSettings.title || "🎫 Support Ticket")
                 .setDescription(welcomeSettings.message)
                 .setColor(parseInt(welcomeSettings.embedColor || "5865F2", 16) as ColorResolvable)
                 .setTimestamp();
 
-            // Add banner image if set
             if (welcomeSettings.bannerUrl) {
                 embed.setThumbnail(welcomeSettings.bannerUrl);
                 embed.setImage(welcomeSettings.bannerUrl);
             }
 
-            // Add footer text if set
             if (welcomeSettings.footerText) {
                 embed.setFooter({
                     text: welcomeSettings.footerText,
@@ -455,7 +408,6 @@ export class TicketService {
                 });
             }
 
-            // Create the close button
             const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
                 new ButtonBuilder()
                     .setCustomId(`ticket_close_${ticket.id}`)
@@ -464,7 +416,6 @@ export class TicketService {
                     .setStyle(ButtonStyle.Danger)
             );
 
-            // Build content for mentions
             let content = "";
             if (welcomeSettings.mentionCustomer) {
                 content += `<@${user.id}> `;
@@ -473,7 +424,6 @@ export class TicketService {
                 content += `<@&${discordConfig.supportRoleId}>`;
             }
 
-            // Send the welcome message
             await channel.send({
                 content: content.trim() || undefined,
                 embeds: [embed.toJSON() as any],
@@ -483,13 +433,10 @@ export class TicketService {
             logger.info(`[TicketService] Sent welcome message to ticket #${ticketNumber}`);
         } catch (error) {
             logger.error("[TicketService] Error sending welcome message for ticket type:", error);
-            // Don't throw - welcome message is not critical
+            
         }
     }
 
-    /**
-     * Save ticket metadata
-     */
     private async saveTicketMetadata(
         ticketId: string,
         metadata: TicketMetadata
@@ -502,18 +449,15 @@ export class TicketService {
             logger.info(`[TicketService] Saved metadata for ticket ${ticketId}`);
         } catch (error) {
             logger.error(`[TicketService] Error saving ticket metadata:`, error);
-            // Don't throw - metadata is optional
+            
         }
     }
 
-    /**
-     * Get or create the tickets category
-     */
     async getOrCreateTicketsCategory(
         guild: Guild
     ): Promise<CategoryChannel | null> {
         try {
-            // Try to find existing category
+            
             if (discordConfig.ticketCategoryId) {
                 const existing = guild.channels.cache.get(
                     discordConfig.ticketCategoryId
@@ -523,7 +467,6 @@ export class TicketService {
                 }
             }
 
-            // Try to find by name
             const existingByName = guild.channels.cache.find(
                 (c) =>
                     c.name.toLowerCase() === "tickets" &&
@@ -533,7 +476,6 @@ export class TicketService {
                 return existingByName as CategoryChannel;
             }
 
-            // Create new category
             const category = await guild.channels.create({
                 name: "Tickets",
                 type: ChannelType.GuildCategory,
@@ -561,14 +503,11 @@ export class TicketService {
         }
     }
 
-    /**
-     * Get or create the Closed Tickets category
-     */
     async getOrCreateClosedTicketsCategory(
         guild: Guild
     ): Promise<CategoryChannel | null> {
         try {
-            // Try to find existing category by ID
+            
             if (discordConfig.closedTicketsCategoryId) {
                 const existing = guild.channels.cache.get(
                     discordConfig.closedTicketsCategoryId
@@ -578,7 +517,6 @@ export class TicketService {
                 }
             }
 
-            // Try to find by name
             const existingByName = guild.channels.cache.find(
                 (c) =>
                     c.name.toLowerCase() === "closed tickets" &&
@@ -588,7 +526,6 @@ export class TicketService {
                 return existingByName as CategoryChannel;
             }
 
-            // Create new category
             const category = await guild.channels.create({
                 name: "Closed Tickets",
                 type: ChannelType.GuildCategory,
@@ -616,9 +553,6 @@ export class TicketService {
         }
     }
 
-    /**
-     * Get welcome message settings for a category
-     */
     async getWelcomeMessageSettings(
         categoryId: string
     ): Promise<WelcomeMessageSettings> {
@@ -643,7 +577,6 @@ export class TicketService {
                 };
             }
 
-            // Return defaults
             return {
                 title: "Welcome to Support!",
                 message:
@@ -652,7 +585,7 @@ export class TicketService {
             };
         } catch (error) {
             logger.error("Error fetching welcome message settings:", error);
-            // Return defaults on error
+            
             return {
                 title: "Welcome to Support!",
                 message:
@@ -662,9 +595,6 @@ export class TicketService {
         }
     }
 
-    /**
-     * Render welcome message with variables
-     */
     async renderWelcomeMessage(
         categoryId: string,
         variables: {
@@ -677,16 +607,13 @@ export class TicketService {
         }
     ): Promise<WelcomeMessageSettings> {
         try {
-            // Get settings and render manually (more reliable than API call)
+            
             const settings = await this.getWelcomeMessageSettings(categoryId);
             let message = settings.message;
             let title = settings.title;
 
             logger.info(`[Ticket] Raw template message: ${message}`);
 
-            // First, handle cases where users added @ before mention variables
-            // (e.g., @{customer}, @@{support}, etc.) - the variables already contain the mention format
-            // Use @+ to match one or more @ symbols before the variable
             message = message.replace(/@+{customer}/g, "{customer}");
             message = message.replace(/@+{support}/g, "{support}");
             title = title.replace(/@+{customer}/g, "{customer}");
@@ -694,12 +621,9 @@ export class TicketService {
 
             logger.info(`[Ticket] After @ strip: ${message}`);
 
-            // Also handle literal @Support or @@Support text (not using variable)
-            // Replace any instance of @+Support (case insensitive) with the proper mention
             message = message.replace(/@+Support/gi, variables.support);
             title = title.replace(/@+Support/gi, variables.support);
 
-            // Variable replacement in message
             message = message.replace(/{customer}/g, variables.customer);
             message = message.replace(/{support}/g, variables.support);
             message = message.replace(/{service}/g, variables.service || "N/A");
@@ -707,7 +631,6 @@ export class TicketService {
             message = message.replace(/{currency}/g, variables.currency || "USD");
             message = message.replace(/{ticket_id}/g, variables.ticketId);
 
-            // Variable replacement in title
             title = title.replace(/{customer}/g, variables.customer);
             title = title.replace(/{service}/g, variables.service || "Support");
             title = title.replace(/{ticket_id}/g, variables.ticketId);
@@ -719,7 +642,7 @@ export class TicketService {
             };
         } catch (error) {
             logger.error("Error rendering welcome message:", error);
-            // Return basic defaults
+            
             return {
                 title: "Welcome to Support!",
                 message: `Hello ${variables.customer}!\n\nOur support team (${variables.support}) will assist you shortly.\n\nPlease wait patiently while we review your request.`,
@@ -728,9 +651,6 @@ export class TicketService {
         }
     }
 
-    /**
-     * Send welcome message to ticket channel
-     */
     async sendWelcomeMessage(
         channel: TextChannel,
         ticket: any,
@@ -741,12 +661,10 @@ export class TicketService {
                 .toString()
                 .padStart(4, "0");
 
-            // Build support mention - ensure clean format
             const supportMention = `<@&${discordConfig.supportRoleId}>`;
             logger.info(`[Ticket] Support mention: ${supportMention}`);
             logger.info(`[Ticket] Support role ID: ${discordConfig.supportRoleId}`);
 
-            // Get rendered welcome message
             const welcomeSettings = await this.renderWelcomeMessage(
                 ticket.categoryId,
                 {
@@ -764,7 +682,6 @@ export class TicketService {
             logger.info(`[Ticket] Welcome message: ${welcomeSettings.message}`);
             logger.info(`[Ticket] Banner URL: ${welcomeSettings.bannerUrl}`);
 
-            // Create the embed
             const embed = new EmbedBuilder()
                 .setTitle(
                     `${ticket.category?.emoji || "🎫"} ${welcomeSettings.title}`
@@ -778,13 +695,11 @@ export class TicketService {
                     text: `Ticket #${ticketNumber}`,
                 });
 
-            // Add banner image if set (both as thumbnail on right and large image at bottom)
             if (welcomeSettings.bannerUrl) {
-                embed.setThumbnail(welcomeSettings.bannerUrl); // Small image on the right
-                embed.setImage(welcomeSettings.bannerUrl);     // Large banner at the bottom
+                embed.setThumbnail(welcomeSettings.bannerUrl); 
+                embed.setImage(welcomeSettings.bannerUrl);     
             }
 
-            // Add ticket details field
             const detailsLines = [];
             if (ticket.service) {
                 detailsLines.push(
@@ -813,7 +728,6 @@ export class TicketService {
                 });
             }
 
-            // Add footer text if set
             if (welcomeSettings.footerText) {
                 embed.addFields({
                     name: "ℹ️ Information",
@@ -822,7 +736,6 @@ export class TicketService {
                 });
             }
 
-            // Create action buttons
             const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
                 new ButtonBuilder()
                     .setCustomId(`ticket_calculate_${ticket.id}`)
@@ -836,8 +749,6 @@ export class TicketService {
                     .setStyle(ButtonStyle.Danger)
             );
 
-            // Send the welcome message with mentions
-            // Use the supportMention variable we created earlier (already validated)
             const contentMention = `<@${user.id}> ${supportMention}`;
             logger.info(`[Ticket] Content mention string: ${contentMention}`);
 
@@ -928,22 +839,16 @@ export class TicketService {
         }
     }
 
-    /**
-     * Archive old closed tickets
-     * Automatically archives closed ticket channels older than the configured threshold
-     */
     async archiveOldClosedTickets(guild: Guild): Promise<void> {
         try {
             logger.info("[ArchiveClosedTickets] Starting archive process for old closed tickets");
 
-            // Get the Closed Tickets category
             const closedCategory = await this.getOrCreateClosedTicketsCategory(guild);
             if (!closedCategory) {
                 logger.warn("[ArchiveClosedTickets] Could not find Closed Tickets category");
                 return;
             }
 
-            // Get all channels in the closed tickets category
             const closedChannels = guild.channels.cache.filter(
                 channel =>
                     channel.parentId === closedCategory.id &&
@@ -964,8 +869,7 @@ export class TicketService {
 
             for (const [channelId, channel] of closedChannels) {
                 try {
-                    // Check if channel is old enough to archive
-                    // Use the channel's creation date + last message timestamp
+
                     const lastMessage = channel.isTextBased() ?
                         await channel.messages.fetch({ limit: 1 }).then(msgs => msgs.first()) :
                         null;
@@ -978,8 +882,6 @@ export class TicketService {
                             `[ArchiveClosedTickets] Archiving ${channel.name} (last activity: ${Math.floor(timeSinceLastActivity / (60 * 60 * 1000))}h ago)`
                         );
 
-                        // Archive the channel (Discord's native archive = thread lock + hide)
-                        // For text channels, we'll delete them or you can implement custom archiving
                         await channel.delete(`Auto-archive: Closed ticket older than ${Math.floor(archiveThreshold / (60 * 60 * 1000))} hours`);
                         archivedCount++;
 
@@ -996,16 +898,12 @@ export class TicketService {
         }
     }
 
-    /**
-     * Get ticket by ID
-     */
     async getTicketById(ticketId: string): Promise<any> {
         try {
             const response = await this.apiClient.get(
                 `/api/discord/tickets/${ticketId}`
             );
-            // Handle nested response from API interceptor
-            // Response format: { msg, status, data: { success, data: ticket }, error }
+
             const responseData = response.data.data || response.data;
             const ticketData = responseData.data || responseData;
 
@@ -1019,15 +917,12 @@ export class TicketService {
         }
     }
 
-    /**
-     * Get ticket by channel ID
-     */
     async getTicketByChannelId(channelId: string): Promise<any> {
         try {
             const response = await this.apiClient.get(
                 `/api/discord/tickets/channel/${channelId}`
             );
-            // Handle nested response from API interceptor
+            
             const responseData = response.data.data || response.data;
             const ticketData = responseData.data || responseData;
 
@@ -1041,15 +936,12 @@ export class TicketService {
         }
     }
 
-    /**
-     * Get open tickets for a user
-     */
     async getOpenTicketsForUser(discordId: string): Promise<any[]> {
         try {
             const response = await this.apiClient.get(
                 `/api/discord/tickets/customer/${discordId}/open`
             );
-            // Handle nested response from API interceptor
+            
             const responseData = response.data.data || response.data;
             const ticketsData = responseData.data || responseData;
 
@@ -1063,9 +955,6 @@ export class TicketService {
         }
     }
 
-    /**
-     * Update ticket status
-     */
     async updateTicketStatus(
         ticketId: string,
         status: string,
@@ -1086,7 +975,6 @@ export class TicketService {
     }
 }
 
-// Singleton instance
 let ticketServiceInstance: TicketService | null = null;
 
 export function getTicketService(client: Client): TicketService {

@@ -1,39 +1,18 @@
-/**
- * Discord Error Messages Configuration
- *
- * User-friendly error messages with suggested actions.
- * These messages are shown to users in Discord while technical details
- * are logged internally.
- *
- * Message Guidelines:
- * - Keep messages concise (1-2 sentences)
- * - Be apologetic but not alarming
- * - Provide actionable next steps
- * - Never expose technical implementation details
- * - Use emojis sparingly
- */
+
 
 import { ErrorType } from '../types/error.types';
 
-/**
- * Error Message Template Interface
- */
 export interface ErrorMessageTemplate {
-  /** Main error message */
+  
   message: string;
 
-  /** Suggested action for the user */
   action?: string;
 
-  /** Complete formatted message */
   full: string;
 }
 
-/**
- * User-friendly error messages mapped to error types
- */
 export const ERROR_MESSAGES: Record<ErrorType, ErrorMessageTemplate> = {
-  // ============ Discord API Errors ============
+  
   [ErrorType.UNKNOWN_INTERACTION]: {
     message: 'This interaction has expired.',
     action: 'Please try the command or button again.',
@@ -160,7 +139,6 @@ export const ERROR_MESSAGES: Record<ErrorType, ErrorMessageTemplate> = {
     full: '⚠️ The information provided is not valid. Please check your input and try again.',
   },
 
-  // ============ Application/Backend Errors ============
   [ErrorType.API_REQUEST_FAILED]: {
     message: 'Unable to connect to our services right now.',
     action: 'Please try again in a moment. If the issue persists, contact support.',
@@ -209,7 +187,6 @@ export const ERROR_MESSAGES: Record<ErrorType, ErrorMessageTemplate> = {
     full: '⚠️ Unable to load service information. Please try again or use /services to view available services.',
   },
 
-  // ============ Business Logic Errors ============
   [ErrorType.INSUFFICIENT_BALANCE]: {
     message: 'You do not have enough balance for this action.',
     action: 'Please add funds to your wallet using /wallet or /add-balance.',
@@ -264,7 +241,6 @@ export const ERROR_MESSAGES: Record<ErrorType, ErrorMessageTemplate> = {
     full: '⚠️ Your wallet could not be found. Please use /wallet to initialize your wallet.',
   },
 
-  // ============ System Errors ============
   [ErrorType.INTERNAL_ERROR]: {
     message: 'An unexpected error occurred.',
     action: 'Please try again. If the problem continues, contact support.',
@@ -302,23 +278,12 @@ export const ERROR_MESSAGES: Record<ErrorType, ErrorMessageTemplate> = {
   },
 };
 
-/**
- * Default fallback message when error type is not mapped
- */
 export const DEFAULT_ERROR_MESSAGE: ErrorMessageTemplate = {
   message: 'Something went wrong.',
   action: 'Please try again later or contact support.',
   full: '❌ Something went wrong. Please try again later or contact support.',
 };
 
-/**
- * Get user-friendly error message for a given error type
- *
- * @param errorType - The error type
- * @param includeAction - Whether to include the suggested action (default: true)
- * @param variables - Variables to replace in the message (e.g., {serviceName})
- * @returns Formatted user-friendly error message
- */
 export function getUserMessage(
   errorType: ErrorType,
   includeAction: boolean = true,
@@ -328,7 +293,6 @@ export function getUserMessage(
 
   let message = includeAction ? template.full : template.message;
 
-  // Replace variables if provided
   if (variables) {
     Object.entries(variables).forEach(([key, value]) => {
       message = message.replace(new RegExp(`{${key}}`, 'g'), value);
@@ -338,33 +302,17 @@ export function getUserMessage(
   return message;
 }
 
-/**
- * Get just the action suggestion for an error type
- *
- * @param errorType - The error type
- * @returns Suggested action or undefined
- */
 export function getActionSuggestion(errorType: ErrorType): string | undefined {
   const template = ERROR_MESSAGES[errorType] || DEFAULT_ERROR_MESSAGE;
   return template.action;
 }
 
-/**
- * Support contact information
- */
 export const SUPPORT_INFO = {
   message: '\n\n📧 Need help? Contact our support team or create a ticket.',
   ticketCommand: '/ticket',
   supportRole: 'Support',
 };
 
-/**
- * Get error message with support info appended
- *
- * @param errorType - The error type
- * @param includeSupportInfo - Whether to append support information
- * @returns Error message with optional support info
- */
 export function getMessageWithSupport(
   errorType: ErrorType,
   includeSupportInfo: boolean = false
@@ -378,14 +326,6 @@ export function getMessageWithSupport(
   return message;
 }
 
-/**
- * Custom error message builder for dynamic errors
- *
- * @param baseMessage - Base error message
- * @param action - Suggested action
- * @param emoji - Emoji to prepend (default: ⚠️)
- * @returns Formatted error message
- */
 export function buildCustomErrorMessage(
   baseMessage: string,
   action?: string,

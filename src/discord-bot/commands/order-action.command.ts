@@ -79,7 +79,6 @@ async function handleStartWork(
             `[OrderAction-StartWork] Worker ${interaction.user.tag} starting work on order #${orderNumber}`
         );
 
-        // Find order by order number
         const result = await findOrderByNumber(orderNumber);
 
         if (!result) {
@@ -91,7 +90,6 @@ async function handleStartWork(
 
         const { orderId, orderData } = result;
 
-        // Validate worker is assigned to this order
         if (!orderData.worker || orderData.worker.discordId !== workerDiscordId) {
             await interaction.editReply({
                 content: `❌ You are not the assigned worker for Order **#${orderNumber}**.\n\nThis order is assigned to: ${orderData.worker ? orderData.worker.fullname : "No one"}`,
@@ -99,7 +97,6 @@ async function handleStartWork(
             return;
         }
 
-        // Validate order status
         if (orderData.status !== "ASSIGNED") {
             await interaction.editReply({
                 content: `❌ Cannot start work on Order **#${orderNumber}**.\n\nCurrent status: \`${orderData.status}\`\n\nYou can only start work on orders with status \`ASSIGNED\`.`,
@@ -107,14 +104,12 @@ async function handleStartWork(
             return;
         }
 
-        // Start work - change status to IN_PROGRESS
         await discordApiClient.put(`/discord/orders/${orderId}/status`, {
             status: "IN_PROGRESS",
             workerDiscordId,
             reason: `Worker ${interaction.user.tag} started work via /order-action command`,
         });
 
-        // Create success embed
         const successEmbed = new EmbedBuilder()
             .setTitle("🚀 Work Started!")
             .setDescription(
@@ -137,7 +132,7 @@ async function handleStartWork(
                     inline: false,
                 },
             ])
-            .setColor(0xf1c40f) // Yellow for in progress
+            .setColor(0xf1c40f) 
             .setTimestamp();
 
         await interaction.editReply({
@@ -148,7 +143,6 @@ async function handleStartWork(
             `[OrderAction-StartWork] Order ${orderId} (#${orderNumber}) status changed to IN_PROGRESS by ${interaction.user.tag}`
         );
 
-        // Update pinned message in channel
         try {
             const { getOrderChannelService } = require("../services/orderChannel.service");
             const orderChannelService = getOrderChannelService(interaction.client);
@@ -173,7 +167,7 @@ async function handleStartWork(
             }
         } catch (updateError) {
             logger.error(`[OrderAction-StartWork] Failed to update pinned message:`, updateError);
-            // Don't fail the whole operation if message update fails
+            
         }
     } catch (error) {
         logger.error("[OrderAction-StartWork] Error starting work:", error);
@@ -186,7 +180,7 @@ async function handleMarkComplete(
     orderNumber: string
 ) {
     try {
-        // Find order first
+        
         const result = await findOrderByNumber(orderNumber);
 
         if (!result) {
@@ -200,7 +194,6 @@ async function handleMarkComplete(
         const { orderId, orderData } = result;
         const workerDiscordId = interaction.user.id;
 
-        // Validate worker is assigned to this order
         if (!orderData.worker || orderData.worker.discordId !== workerDiscordId) {
             await interaction.reply({
                 content: `❌ You are not the assigned worker for Order **#${orderNumber}**.`,
@@ -209,7 +202,6 @@ async function handleMarkComplete(
             return;
         }
 
-        // Validate order status
         if (orderData.status !== "IN_PROGRESS") {
             await interaction.reply({
                 content: `❌ Cannot mark Order **#${orderNumber}** as complete.\n\nCurrent status: \`${orderData.status}\`\n\nYou can only mark orders as complete when status is \`IN_PROGRESS\`.`,
@@ -220,7 +212,6 @@ async function handleMarkComplete(
 
         logger.info(`[OrderAction-MarkComplete] Worker ${interaction.user.tag} marking order #${orderNumber} as complete`);
 
-        // Show modal for confirmation
         const modal = new ModalBuilder()
             .setCustomId(`complete_order_${orderId}`)
             .setTitle(`Complete Order #${orderNumber}`);

@@ -9,7 +9,6 @@ export async function handleServiceSelect(
     try {
         await interaction.deferReply();
 
-        // Get service ID from button custom ID (assuming it's in the format 'service_select_<id>')
         const serviceId = interaction.customId.replace("service_select_", "");
 
         if (!serviceId) {
@@ -19,7 +18,6 @@ export async function handleServiceSelect(
             return;
         }
 
-        // Fetch service details
         const service =
             await interaction.client.apiService.getServiceById(serviceId);
 
@@ -30,7 +28,6 @@ export async function handleServiceSelect(
             return;
         }
 
-        // Create service details embed
         const embed = EmbedBuilder.createServiceDetailsEmbed(service);
         const actionButtons = ComponentBuilder.createServiceActionButtons();
 

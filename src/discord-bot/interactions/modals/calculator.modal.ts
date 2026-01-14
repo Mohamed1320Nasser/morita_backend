@@ -4,18 +4,15 @@ import { discordConfig } from "../../config/discord.config";
 import PricingCalculatorService from "../../../api/pricingCalculator/pricingCalculator.service";
 import Container from "typedi";
 
-// Add version check to verify new code is running
 const CALCULATOR_VERSION = "v3.0-improved-segments-display";
 
 export async function handleCalculatorModal(
     interaction: ModalSubmitInteraction
 ): Promise<void> {
     try {
-        // Defer the reply
+        
         await interaction.deferReply({ ephemeral: false });
 
-        // Get service ID from modal custom ID
-        // Format: calculator_modal_<serviceId> or calculator_modal_inticket_<serviceId>
         let serviceId = interaction.customId.replace("calculator_modal_", "");
         const isFromTicket = serviceId.startsWith("inticket_");
 
@@ -30,15 +27,12 @@ export async function handleCalculatorModal(
             return;
         }
 
-        // Get level inputs from modal
         const startLevelStr = interaction.fields.getTextInputValue("start_level");
         const endLevelStr = interaction.fields.getTextInputValue("end_level");
 
-        // Parse levels
         const startLevel = parseInt(startLevelStr);
         const endLevel = parseInt(endLevelStr);
 
-        // Validate levels
         if (isNaN(startLevel) || isNaN(endLevel)) {
             await interaction.editReply({
                 content:
@@ -67,14 +61,11 @@ export async function handleCalculatorModal(
             `[Calculator] Modal submitted: ${serviceId}, ${startLevel}-${endLevel} by ${interaction.user.tag}`
         );
 
-        // Call the pricing calculator service directly (avoids HTTP overhead and same-process issues)
         try {
             logger.info(`[Calculator] Calculating with serviceId: ${serviceId}, levels: ${startLevel}-${endLevel}`);
 
-            // Get the service instance from the dependency injection container
             const pricingService = Container.get(PricingCalculatorService);
 
-            // Call the service method directly
             const result = await pricingService.calculateLevelRangePrice({
                 serviceId,
                 startLevel,
@@ -84,7 +75,6 @@ export async function handleCalculatorModal(
             logger.info(`[Calculator] ${CALCULATOR_VERSION} - Calculation completed successfully`);
             const data = result;
 
-            // Validate response structure
             if (!data || !data.service) {
                 logger.error('[Calculator] Invalid API response structure:');
                 logger.error('[Calculator] result:', JSON.stringify(result, null, 2));
@@ -92,13 +82,11 @@ export async function handleCalculatorModal(
                 throw new Error('Invalid response from pricing calculator API');
             }
 
-            // Build the calculator result embed (MMOGoldHut style)
             const embed = new EmbedBuilder()
                 .setTitle(`${data.service.emoji} ${data.service.name} Calculator`)
-                .setColor(0xfca311) // Orange color from MMOGoldHut
+                .setColor(0xfca311) 
                 .setTimestamp();
 
-            // Calculate total discount/upcharge from all methods to show at top
             const cheapestMethod = data.methodOptions?.find((m: any) => m.isCheapest);
             logger.info('[Calculator] 🔍 Cheapest method: ' + cheapestMethod?.methodName);
             logger.info('[Calculator] 🔍 Method modifiers: ' + JSON.stringify(cheapestMethod?.modifiers, null, 2));
@@ -111,7 +99,6 @@ export async function handleCalculatorModal(
             );
             logger.info('[Calculator] 🔍 Total discount percent: ' + totalDiscountPercent);
 
-            // Add level range, XP required, and discount (if any)
             let levelRangeValue =
                 `**${data.levels.start}  →  ${data.levels.end}**\n` +
                 `\`\`\`ansi\n\u001b[36m${data.levels.formattedXp} XP Required\u001b[0m\n\`\`\``;
@@ -129,9 +116,8 @@ export async function handleCalculatorModal(
                 inline: false,
             });
 
-            // Add each method option as a separate choice
             if (data.methodOptions && data.methodOptions.length > 0) {
-                // Build beautiful pricing options display
+                
                 const priceLines: string[] = [];
 
                 for (const method of data.methodOptions) {
@@ -141,13 +127,11 @@ export async function handleCalculatorModal(
 
                     logger.info(`[Calculator] 💰 ${method.methodName}: $${price}`);
 
-                    // Create visually appealing line with proper spacing
                     priceLines.push(`${indicator} **${method.methodName}**`);
                     priceLines.push(`   💰 \`$${price}\``);
-                    priceLines.push(''); // Empty line for spacing
+                    priceLines.push(''); 
                 }
 
-                // Remove last empty line
                 priceLines.pop();
 
                 embed.addFields({
@@ -156,16 +140,13 @@ export async function handleCalculatorModal(
                     inline: false,
                 });
 
-                // Show beautiful breakdown for cheapest option
                 const cheapest = data.methodOptions.find(m => m.isCheapest);
                 if (cheapest) {
                     const hasModifiers = cheapest.modifiersTotal !== 0;
 
-                    // Separate modifiers by type
                     const discounts = cheapest.modifiers.filter(m => m.applied && Number(m.value) < 0);
                     const upcharges = cheapest.modifiers.filter(m => m.applied && Number(m.value) > 0);
 
-                    // Build beautiful breakdown
                     let breakdown = `\`\`\`yml\n`;
                     breakdown += `Service:        ${data.service.name}\n`;
                     breakdown += `─────────────────────────────────────────\n`;
@@ -173,14 +154,12 @@ export async function handleCalculatorModal(
                     breakdown += `XP Required:    ${data.levels.formattedXp}\n`;
                     breakdown += `─────────────────────────────────────────\n`;
 
-                    // Sort level ranges by start level
                     const sortedRanges = cheapest.levelRanges
                         ? [...cheapest.levelRanges].sort((a, b) => a.startLevel - b.startLevel)
                         : [];
 
                     logger.info('[Calculator] 📊 Displaying ' + sortedRanges.length + ' segment(s)');
 
-                    // Display ALL segments
                     if (sortedRanges.length > 0) {
                         for (const segment of sortedRanges) {
                             breakdown += `\n📊 ${segment.startLevel}-${segment.endLevel}\n`;
@@ -195,7 +174,6 @@ export async function handleCalculatorModal(
                     breakdown += `─────────────────────────────────────────\n`;
                     breakdown += `Base Cost:      $${cheapest.subtotal.toFixed(2)}\n`;
 
-                    // Show discounts
                     if (discounts.length > 0) {
                         for (const mod of discounts) {
                             const modValue = mod.type === 'PERCENTAGE'
@@ -205,7 +183,6 @@ export async function handleCalculatorModal(
                         }
                     }
 
-                    // Show upcharges
                     if (upcharges.length > 0) {
                         for (const mod of upcharges) {
                             const modValue = mod.type === 'PERCENTAGE'
@@ -223,7 +200,6 @@ export async function handleCalculatorModal(
 
                     logger.info('[Calculator] 💰 Final price: $' + cheapest.finalPrice.toFixed(2));
 
-                    // Add final price in ANSI color
                     breakdown += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${cheapest.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
 
                     logger.info('[Calculator] ✅ Sending embed with all segments');
@@ -236,7 +212,6 @@ export async function handleCalculatorModal(
                 }
             }
 
-            // Create action buttons for the result
             const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
             const recalculateButton = new ButtonBuilder()
@@ -245,12 +220,11 @@ export async function handleCalculatorModal(
                 .setEmoji('🔄')
                 .setStyle(ButtonStyle.Secondary);
 
-            // Build action row - only add "Open Ticket" button if NOT already in a ticket
             const actionRow = new ActionRowBuilder();
             actionRow.addComponents(recalculateButton);
 
             if (!isFromTicket) {
-                // Get the cheapest price for the ticket button
+                
                 const cheapest = data.methodOptions?.find((m: any) => m.isCheapest);
                 const finalPrice = cheapest?.finalPrice || data.methodOptions?.[0]?.finalPrice || 0;
                 const categoryId = (data.service as any).categoryId || 'general';
@@ -264,7 +238,6 @@ export async function handleCalculatorModal(
                 actionRow.addComponents(openTicketButton);
             }
 
-            // Send the result
             await interaction.editReply({
                 embeds: [embed.toJSON() as any],
                 components: [actionRow],

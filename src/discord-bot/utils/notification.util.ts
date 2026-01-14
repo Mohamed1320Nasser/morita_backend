@@ -2,9 +2,6 @@ import { Client, EmbedBuilder, TextChannel } from "discord.js";
 import logger from "../../common/loggers";
 import { discordConfig } from "../config/discord.config";
 
-/**
- * Send notification to support/admin about order status changes
- */
 export async function notifySupportOrderUpdate(
     client: Client,
     data: {
@@ -15,12 +12,12 @@ export async function notifySupportOrderUpdate(
         worker?: { discordId: string; discordUsername?: string };
         orderValue: string;
         action: "work_started" | "work_completed" | "order_confirmed" | "issue_reported";
-        actionBy: string; // User who triggered the action
+        actionBy: string; 
         notes?: string;
     }
 ): Promise<void> {
     try {
-        // Send to logs channel if configured
+        
         if (!discordConfig.logsChannelId) {
             logger.warn(`[Notification] No logs channel configured, skipping support notification`);
             return;
@@ -32,34 +29,33 @@ export async function notifySupportOrderUpdate(
             return;
         }
 
-        // Determine color and title based on action
         let color: number;
         let title: string;
         let description: string;
 
         switch (data.action) {
             case "work_started":
-                color = 0xf1c40f; // Yellow
+                color = 0xf1c40f; 
                 title = "🚀 Work Started";
                 description = `Worker has started working on Order #${data.orderNumber}`;
                 break;
             case "work_completed":
-                color = 0xf39c12; // Orange
+                color = 0xf39c12; 
                 title = "⚠️ Work Completed - Awaiting Confirmation";
                 description = `Worker has marked Order #${data.orderNumber} as complete\n**Customer needs to confirm!**`;
                 break;
             case "order_confirmed":
-                color = 0x2ecc71; // Green
+                color = 0x2ecc71; 
                 title = "✅ Order Confirmed & Paid";
                 description = `Customer has confirmed Order #${data.orderNumber}\nPayouts have been distributed`;
                 break;
             case "issue_reported":
-                color = 0xe74c3c; // Red
+                color = 0xe74c3c; 
                 title = "🔴 Issue Reported";
                 description = `Customer reported an issue with Order #${data.orderNumber}\n**Support intervention required!**`;
                 break;
             default:
-                color = 0x95a5a6; // Gray
+                color = 0x95a5a6; 
                 title = "📦 Order Update";
                 description = `Order #${data.orderNumber} status changed`;
         }
@@ -93,13 +89,10 @@ export async function notifySupportOrderUpdate(
         logger.info(`[Notification] Sent ${data.action} notification for order ${data.orderNumber} to support channel`);
     } catch (error) {
         logger.error(`[Notification] Failed to send support notification:`, error);
-        // Don't throw - notification is nice-to-have
+        
     }
 }
 
-/**
- * Send notification to support role via ping
- */
 export async function pingSupportRole(
     client: Client,
     channelId: string,

@@ -19,7 +19,6 @@ export class EmbedBuilder {
         this.embed = new DiscordEmbedBuilder();
     }
 
-    // Main services embed
     static createServicesEmbed(
         categories: ServiceCategory[]
     ): DiscordEmbedBuilder {
@@ -47,7 +46,6 @@ export class EmbedBuilder {
                     "https://via.placeholder.com/16x16/c9a961/1a2744?text=🎮",
             });
 
-        // Add category fields with enhanced formatting
         const categoryFields = categories.map(category => ({
             name: `${category.emoji || EMOJIS.SERVICE} ${category.name}`,
             value: `\`\`\`${category.description || "Click to view services"}\`\`\``,
@@ -56,7 +54,6 @@ export class EmbedBuilder {
 
         embed.addFields(categoryFields);
 
-        // Add divider
         embed.addFields({
             name: "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
             value: "**Choose a category to get started**",
@@ -66,7 +63,6 @@ export class EmbedBuilder {
         return embed;
     }
 
-    // Service details embed
     static createServiceDetailsEmbed(service: Service): DiscordEmbedBuilder {
         const embed = new DiscordEmbedBuilder()
             .setTitle(`${service.emoji || EMOJIS.SERVICE} ${service.name}`)
@@ -96,7 +92,6 @@ export class EmbedBuilder {
                     "https://via.placeholder.com/16x16/c9a961/1a2744?text=🎮",
             });
 
-        // Add pricing methods with enhanced formatting
         if (service.pricingMethods && service.pricingMethods.length > 0) {
             const pricingText = service.pricingMethods
                 .map(method => {
@@ -135,7 +130,6 @@ export class EmbedBuilder {
             });
         }
 
-        // Add service status
         embed.addFields({
             name: "📊 **Service Status**",
             value: service.active
@@ -147,7 +141,6 @@ export class EmbedBuilder {
         return embed;
     }
 
-    // Pricing calculator embed
     static createPricingCalculatorEmbed(service: Service): DiscordEmbedBuilder {
         const embed = new DiscordEmbedBuilder()
             .setTitle(
@@ -166,7 +159,6 @@ export class EmbedBuilder {
         return embed;
     }
 
-    // Price breakdown embed
     static createPriceBreakdownEmbed(
         result: PriceCalculationResult,
         serviceName: string
@@ -193,7 +185,6 @@ export class EmbedBuilder {
                     "https://via.placeholder.com/16x16/c9a961/1a2744?text=🎮",
             });
 
-        // Add price breakdown fields with enhanced formatting
         embed.addFields(
             {
                 name: `${EMOJIS.PRICE} **Base Price**`,
@@ -207,7 +198,6 @@ export class EmbedBuilder {
             }
         );
 
-        // Add service modifiers if any
         if (result.serviceModifiers && result.serviceModifiers.length > 0) {
             const appliedServiceMods = result.serviceModifiers.filter(m => m.applied);
 
@@ -229,7 +219,6 @@ export class EmbedBuilder {
             }
         }
 
-        // Add method modifiers if any
         if (result.methodModifiers && result.methodModifiers.length > 0) {
             const appliedMethodMods = result.methodModifiers.filter(m => m.applied);
 
@@ -251,7 +240,6 @@ export class EmbedBuilder {
             }
         }
 
-        // Legacy support: Show all modifiers if new format not available
         if ((!result.serviceModifiers || result.serviceModifiers.length === 0) &&
             (!result.methodModifiers || result.methodModifiers.length === 0) &&
             result.modifiers && result.modifiers.length > 0) {
@@ -276,7 +264,6 @@ export class EmbedBuilder {
             }
         }
 
-        // Add total price
         embed.addFields({
             name: `${EMOJIS.TROPHY} ${MESSAGES.TOTAL_PRICE}`,
             value: `**$${result.finalPrice}**`,
@@ -286,7 +273,6 @@ export class EmbedBuilder {
         return embed;
     }
 
-    // Order confirmation embed
     static createOrderConfirmationEmbed(orderData: any): DiscordEmbedBuilder {
         const embed = new DiscordEmbedBuilder()
             .setTitle(`${EMOJIS.ORDER} ${MESSAGES.ORDER_CONFIRMATION}`)
@@ -331,7 +317,6 @@ export class EmbedBuilder {
         return embed;
     }
 
-    // Ticket embed
     static createTicketEmbed(ticketData: any): DiscordEmbedBuilder {
         const statusColor =
             COLOR_MAPPING[ticketData.status as keyof typeof COLOR_MAPPING] ||
@@ -377,7 +362,6 @@ export class EmbedBuilder {
         return embed;
     }
 
-    // Error embed
     static createErrorEmbed(
         message: string,
         title: string = "Error"
@@ -395,7 +379,6 @@ export class EmbedBuilder {
             });
     }
 
-    // Success embed
     static createSuccessEmbed(
         message: string,
         title: string = "Success"
@@ -413,7 +396,6 @@ export class EmbedBuilder {
             });
     }
 
-    // Help embed
     static createHelpEmbed(): DiscordEmbedBuilder {
         const embed = new DiscordEmbedBuilder()
             .setTitle(`${EMOJIS.HELP} ${MESSAGES.HELP_TITLE}`)
@@ -427,7 +409,6 @@ export class EmbedBuilder {
                     "https://via.placeholder.com/16x16/c9a961/1a2744?text=🎮",
             });
 
-        // Add command fields
         Object.values(MESSAGES.COMMANDS).forEach(command => {
             embed.addFields({
                 name: `${command.name}`,
@@ -439,7 +420,6 @@ export class EmbedBuilder {
         return embed;
     }
 
-    // Loading embed
     static createLoadingEmbed(
         message: string = MESSAGES.LOADING
     ): DiscordEmbedBuilder {

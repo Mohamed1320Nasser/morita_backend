@@ -7,10 +7,9 @@ import { discordApiClient } from "../clients/DiscordApiClient";
 import logger from "../../common/loggers";
 
 export async function buildPurchaseServicesMessage() {
-    // Fetch active ticket types for the services group
+    
     const activeTypes = await getActiveTicketTypesForGroup("services");
 
-    // Fetch settings from database for PURCHASE_SERVICES_OSRS
     let welcomeTitle = "";
     let welcomeMessage = "";
     let bannerUrl = "";
@@ -23,7 +22,6 @@ export async function buildPurchaseServicesMessage() {
             `/ticket-type-settings/PURCHASE_SERVICES_OSRS`
         );
 
-        // HttpClient interceptor already unwrapped response.data, so response IS the data
         if (response && response.data) {
             const settings = response.data;
             welcomeTitle = settings.welcomeTitle || "";
@@ -38,7 +36,6 @@ export async function buildPurchaseServicesMessage() {
         welcomeMessage = "🎮 **OSRS & RS3 Services** - Click a button below to get started!";
     }
 
-    // Build embed
     const embed = new EmbedBuilder()
         .setColor(embedColor)
         .setDescription(welcomeMessage)
@@ -47,30 +44,24 @@ export async function buildPurchaseServicesMessage() {
         })
         .setTimestamp();
 
-    // Add title if provided
     if (welcomeTitle) {
         embed.setTitle(welcomeTitle);
     }
 
-    // Add thumbnail (small logo in top-right) if provided
     if (thumbnailUrl) {
         embed.setThumbnail(thumbnailUrl);
     }
 
-    // Add banner image (large image at bottom) if provided
     if (bannerUrl) {
         embed.setImage(bannerUrl);
     }
 
-    // Build buttons dynamically from active ticket types
     const buttons = buildButtonsFromTicketTypes(activeTypes);
 
-    // If no active types, return embed with no buttons
     if (buttons.length === 0) {
         return { embeds: [embed], components: [] };
     }
 
-    // Split buttons into rows (max 5 per row)
     const buttonRows: ActionRowBuilder<ButtonBuilder>[] = [];
     for (let i = 0; i < buttons.length; i += 5) {
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(

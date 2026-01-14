@@ -7,15 +7,13 @@ export async function handleResolveIssueButton(interaction: ButtonInteraction): 
     try {
         const customId = interaction.customId;
 
-        // Parse: resolve_approve_work_{issueId}_{orderId}, resolve_corrections_{issueId}_{orderId}, resolve_refund_{issueId}_{orderId}
         const parts = customId.split("_");
-        const resolutionType = parts.slice(1, -2).join("_"); // Everything between "resolve_" and last two parts
+        const resolutionType = parts.slice(1, -2).join("_"); 
         const issueId = parts[parts.length - 2];
         const orderId = parts[parts.length - 1];
 
         logger.info(`[ResolveIssue] Resolution type: ${resolutionType}, Issue: ${issueId}, Order: ${orderId}`);
 
-        // Validate user has admin or support role
         const hasPermission = await isAdminOrSupport(interaction.client, interaction.user.id);
         if (!hasPermission) {
             await interaction.reply({

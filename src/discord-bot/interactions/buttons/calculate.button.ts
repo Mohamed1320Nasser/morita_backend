@@ -9,8 +9,6 @@ export async function handleCalculate(
     try {
         await interaction.deferReply();
 
-        // This would typically get the selected method and payment from some stored state
-        // For now, we'll show a placeholder message
         const embed = EmbedBuilder.createErrorEmbed(
             "Please select a pricing method and payment method first.",
             "Selection Required"

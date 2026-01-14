@@ -2,35 +2,26 @@ import { ButtonInteraction } from "discord.js";
 import { getTicketService } from "../../services/ticket.service";
 import logger from "../../../common/loggers";
 
-/**
- * Handle confirmation of ticket closure (Support/Admin only)
- * Called when Support/Admin confirms they want to close a ticket with an active order
- */
 export async function handleConfirmCloseTicket(
     interaction: ButtonInteraction
 ): Promise<void> {
     try {
         await interaction.deferUpdate();
 
-        // Parse ticket ID and reason from custom ID
-        // Format: confirm_close_ticket_<ticketId>_<reason>
         const parts = interaction.customId.split("_");
-        const ticketId = parts[3]; // confirm_close_ticket_<ticketId>_<reason>
-        const reason = parts.slice(4).join("_"); // Rejoin in case reason has underscores
+        const ticketId = parts[3]; 
+        const reason = parts.slice(4).join("_"); 
         const actualReason = reason === "none" ? undefined : reason;
 
         logger.info(`[ConfirmCloseTicket] Admin/Support confirmed close for ticket ${ticketId}`);
 
-        // Get ticket service
         const ticketService = getTicketService(interaction.client);
 
-        // Close the ticket
         await ticketService.closeTicket(ticketId, interaction.user, actualReason);
 
-        // Update the message to show success
         await interaction.editReply({
             content: `✅ **Ticket Closed**\n\nThe ticket has been closed by <@${interaction.user.id}>. The channel will be archived shortly.`,
-            components: [], // Remove buttons
+            components: [], 
         });
 
         logger.info(
@@ -50,10 +41,6 @@ export async function handleConfirmCloseTicket(
     }
 }
 
-/**
- * Handle cancellation of ticket closure
- * Called when Support/Admin cancels the close action
- */
 export async function handleCancelCloseTicket(
     interaction: ButtonInteraction
 ): Promise<void> {
@@ -62,10 +49,9 @@ export async function handleCancelCloseTicket(
 
         logger.info(`[CancelCloseTicket] Admin/Support cancelled ticket close action`);
 
-        // Update the message to show cancellation
         await interaction.editReply({
             content: `❌ **Cancelled**\n\nTicket closure has been cancelled. The ticket remains open.`,
-            components: [], // Remove buttons
+            components: [], 
         });
     } catch (error) {
         logger.error("Error handling cancel close ticket button:", error);

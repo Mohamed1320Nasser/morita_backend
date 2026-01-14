@@ -2,27 +2,20 @@ import { ButtonBuilder, ButtonStyle } from "discord.js";
 import logger from "../../common/loggers";
 import { discordApiClient } from "../clients/DiscordApiClient";
 
-// Button color mapping
 const BUTTON_STYLE_MAP: Record<string, ButtonStyle> = {
     green: ButtonStyle.Success,
     blue: ButtonStyle.Primary,
     red: ButtonStyle.Danger,
     gray: ButtonStyle.Secondary,
-    orange: ButtonStyle.Secondary, // Discord doesn't have orange, use Secondary
+    orange: ButtonStyle.Secondary, 
 };
 
-/**
- * Fetch active ticket types for a specific group
- * @param groupKey - The group key (e.g., 'services', 'buy-gold', 'sell-gold')
- * @returns Array of active ticket type settings
- */
 export async function getActiveTicketTypesForGroup(groupKey: string) {
     try {
         const response: any = await discordApiClient.get(
             `/ticket-type-settings/group/${groupKey}`
         );
 
-        // HttpClient interceptor already unwrapped response.data, so response IS the data
         if (response && response.data) {
             const types = response.data;
 
@@ -41,11 +34,6 @@ export async function getActiveTicketTypesForGroup(groupKey: string) {
     }
 }
 
-/**
- * Build Discord buttons from ticket type settings
- * @param types - Array of ticket type settings
- * @returns Array of ButtonBuilder instances
- */
 export function buildButtonsFromTicketTypes(types: any[]): ButtonBuilder[] {
     return types.map((type) => {
         const buttonStyle = BUTTON_STYLE_MAP[type.buttonColor] || ButtonStyle.Primary;
@@ -58,11 +46,6 @@ export function buildButtonsFromTicketTypes(types: any[]): ButtonBuilder[] {
     });
 }
 
-/**
- * Get emoji for a ticket type
- * @param ticketType - The ticket type enum value
- * @returns Emoji string
- */
 function getEmojiForType(ticketType: string): string {
     const emojiMap: Record<string, string> = {
         PURCHASE_SERVICES_OSRS: "🎮",

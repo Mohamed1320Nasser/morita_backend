@@ -9,25 +9,18 @@ import logger from "../../../common/loggers";
 import { getTicketService } from "../../services/ticket.service";
 import { discordConfig } from "../../config/discord.config";
 
-/**
- * Handle the Open Ticket button click
- * This can be triggered from:
- * 1. Calculator results (with service and price info)
- * 2. General help/support button (without service info)
- */
 export async function handleOpenTicket(
     interaction: ButtonInteraction
 ): Promise<void> {
     try {
-        // Parse the custom ID to get any passed data
-        // Format: open_ticket OR open_ticket_<serviceId>_<categoryId>_<price>
+
         const customIdParts = interaction.customId.split("_");
         let serviceId: string | undefined;
         let categoryId: string | undefined;
         let calculatedPrice: number | undefined;
 
         if (customIdParts.length > 2) {
-            // Has additional data
+            
             serviceId = customIdParts[2] || undefined;
             categoryId = customIdParts[3] || undefined;
             calculatedPrice = customIdParts[4]
@@ -35,14 +28,12 @@ export async function handleOpenTicket(
                 : undefined;
         }
 
-        // Create the ticket details modal
         const modal = new ModalBuilder()
             .setCustomId(
                 `ticket_create_modal_${serviceId || "general"}_${categoryId || "general"}_${calculatedPrice || 0}`
             )
             .setTitle("Open Support Ticket");
 
-        // Service description input
         const descriptionInput = new TextInputBuilder()
             .setCustomId("ticket_description")
             .setLabel("Describe your request")
@@ -53,7 +44,6 @@ export async function handleOpenTicket(
             .setRequired(true)
             .setMaxLength(1000);
 
-        // Optional OSRS username
         const usernameInput = new TextInputBuilder()
             .setCustomId("ticket_osrs_username")
             .setLabel("OSRS Username (Optional)")
@@ -62,7 +52,6 @@ export async function handleOpenTicket(
             .setRequired(false)
             .setMaxLength(50);
 
-        // Contact preference
         const contactInput = new TextInputBuilder()
             .setCustomId("ticket_contact")
             .setLabel("Preferred Contact Method (Optional)")
@@ -71,7 +60,6 @@ export async function handleOpenTicket(
             .setRequired(false)
             .setMaxLength(100);
 
-        // Add inputs to action rows
         const row1 =
             new ActionRowBuilder<TextInputBuilder>().addComponents(
                 descriptionInput
@@ -109,16 +97,12 @@ export async function handleOpenTicket(
     }
 }
 
-/**
- * Handle ticket calculate button (within a ticket channel)
- */
 export async function handleTicketCalculate(
     interaction: ButtonInteraction
 ): Promise<void> {
     try {
         const ticketId = interaction.customId.replace("ticket_calculate_", "");
 
-        // Get the ticket service
         const ticketService = getTicketService(interaction.client);
         const ticket = await ticketService.getTicketById(ticketId);
 
@@ -130,11 +114,9 @@ export async function handleTicketCalculate(
             return;
         }
 
-        // If the ticket has a service, show the calculator modal for that service
         if (ticket.serviceId) {
             const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require("discord.js");
 
-            // Use special customId to indicate this is from within a ticket (no "Open Ticket" button needed)
             const modal = new ModalBuilder()
                 .setCustomId(`calculator_modal_inticket_${ticket.serviceId}`)
                 .setTitle("Price Calculator");
@@ -164,7 +146,7 @@ export async function handleTicketCalculate(
 
             await interaction.showModal(modal as any);
         } else {
-            // No service selected, show general calculator info
+            
             await interaction.reply({
                 content:
                     "Use the `/pricing` command to browse services and calculate prices.",
@@ -180,17 +162,12 @@ export async function handleTicketCalculate(
     }
 }
 
-/**
- * Handle ticket close button
- */
 export async function handleTicketClose(
     interaction: ButtonInteraction
 ): Promise<void> {
     try {
         const ticketId = interaction.customId.replace("ticket_close_", "");
 
-        // Check if user has permission to close (customer, support, or admin)
-        // Support and Admin can always close tickets
         const member = interaction.member;
         const isSupport =
             member &&
@@ -201,10 +178,8 @@ export async function handleTicketClose(
             "roles" in member &&
             (member.roles as any).cache?.has(discordConfig.adminRoleId);
 
-        // If user is support or admin, skip the API call and show modal immediately
-        // Customer permission will be checked during the actual close operation
         if (!isSupport && !isAdmin) {
-            // Only fetch ticket if we need to check customer permission
+            
             const ticketService = getTicketService(interaction.client);
             const ticket = await ticketService.getTicketById(ticketId);
 
@@ -227,7 +202,6 @@ export async function handleTicketClose(
             }
         }
 
-        // Show confirmation modal immediately
         const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require("discord.js");
 
         const modal = new ModalBuilder()

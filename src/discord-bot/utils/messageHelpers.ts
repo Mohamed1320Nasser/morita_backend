@@ -1,19 +1,13 @@
 import { Message, EmbedBuilder } from "discord.js";
 import logger from "../../common/loggers";
 
-/**
- * Message Configuration
- */
 export const MESSAGE_CONFIG = {
-    ERROR_AUTO_DELETE_MS: 15000, // 15 seconds
-    DELETE_USER_COMMAND: true, // Delete user's command on error
-    KEEP_SUCCESS_MESSAGES: true, // Don't auto-delete success
-    EPHEMERAL_ERRORS_ONLY: true, // Only errors are ephemeral
+    ERROR_AUTO_DELETE_MS: 15000, 
+    DELETE_USER_COMMAND: true, 
+    KEEP_SUCCESS_MESSAGES: true, 
+    EPHEMERAL_ERRORS_ONLY: true, 
 };
 
-/**
- * Error Types for Calculator Commands
- */
 export enum ErrorType {
     SERVICE_NOT_FOUND = "SERVICE_NOT_FOUND",
     INVALID_FORMAT = "INVALID_FORMAT",
@@ -22,15 +16,6 @@ export enum ErrorType {
     API_ERROR = "API_ERROR",
 }
 
-/**
- * Send ephemeral error message (only visible to user, auto-deletes)
- *
- * @param message - Discord message object
- * @param title - Error title
- * @param description - Error description
- * @param suggestions - Optional array of suggestion strings
- * @param deleteAfter - Time in ms before auto-delete (default: 15000)
- */
 export async function sendEphemeralError(
     message: Message,
     title: string,
@@ -40,7 +25,7 @@ export async function sendEphemeralError(
 ): Promise<void> {
     try {
         const errorEmbed = new EmbedBuilder()
-            .setColor("#FF4444") // Red color
+            .setColor("#FF4444") 
             .setTitle(`L ${title}`)
             .setDescription(description)
             .setTimestamp();
@@ -52,44 +37,36 @@ export async function sendEphemeralError(
             });
         }
 
-        // Send error message
         const reply = await message.reply({
             embeds: [errorEmbed.toJSON() as any],
         });
 
-        // Auto-delete error message after specified time
-        setTimeout(async () => {
-            try {
-                await reply.delete();
-                logger.debug(`[MessageHelper] Auto-deleted error message after ${deleteAfter}ms`);
-            } catch (error) {
-                logger.debug(`[MessageHelper] Could not delete error message: ${error}`);
-            }
-        }, deleteAfter);
+        // TODO: Uncomment to re-enable auto-delete of error messages after 15 seconds
+        // setTimeout(async () => {
+        //     try {
+        //         await reply.delete();
+        //         logger.debug(`[MessageHelper] Auto-deleted error message after ${deleteAfter}ms`);
+        //     } catch (error) {
+        //         logger.debug(`[MessageHelper] Could not delete error message: ${error}`);
+        //     }
+        // }, deleteAfter);
 
-        // Optionally delete user's command message
-        if (MESSAGE_CONFIG.DELETE_USER_COMMAND) {
-            setTimeout(async () => {
-                try {
-                    await message.delete();
-                    logger.debug(`[MessageHelper] Auto-deleted user command message`);
-                } catch (error) {
-                    logger.debug(`[MessageHelper] Could not delete user command: ${error}`);
-                }
-            }, deleteAfter);
-        }
+        // TODO: Uncomment to re-enable auto-delete of user command messages
+        // if (MESSAGE_CONFIG.DELETE_USER_COMMAND) {
+        //     setTimeout(async () => {
+        //         try {
+        //             await message.delete();
+        //             logger.debug(`[MessageHelper] Auto-deleted user command message`);
+        //         } catch (error) {
+        //             logger.debug(`[MessageHelper] Could not delete user command: ${error}`);
+        //         }
+        //     }, deleteAfter);
+        // }
     } catch (error) {
         logger.error(`[MessageHelper] Error sending ephemeral error:`, error);
     }
 }
 
-/**
- * Send validation error (invalid format, missing parameters)
- *
- * @param message - Discord message object
- * @param commandExample - Example of correct command usage
- * @param issue - What's wrong with the command
- */
 export async function sendValidationError(
     message: Message,
     commandExample: string,
@@ -108,14 +85,6 @@ export async function sendValidationError(
     );
 }
 
-/**
- * Send "service not found" error with suggestions
- *
- * @param message - Discord message object
- * @param serviceName - The service name that wasn't found
- * @param commandType - Type of command (PvM, Skills, Minigames, etc.)
- * @param examples - Array of example commands
- */
 export async function sendServiceNotFoundError(
     message: Message,
     serviceName: string,
@@ -184,11 +153,6 @@ export async function sendCalculationError(
     );
 }
 
-/**
- * Delete a "thinking" message safely
- *
- * @param thinkingMsg - The thinking message to delete
- */
 export async function deleteThinkingMessage(thinkingMsg: Message): Promise<void> {
     try {
         await thinkingMsg.delete();
@@ -198,12 +162,6 @@ export async function deleteThinkingMessage(thinkingMsg: Message): Promise<void>
     }
 }
 
-/**
- * Update thinking message to show an error (for backwards compatibility)
- * Use sendEphemeralError instead for new implementations
- *
- * @deprecated Use sendEphemeralError instead
- */
 export async function updateThinkingToError(
     thinkingMsg: Message,
     message: Message,
@@ -211,9 +169,8 @@ export async function updateThinkingToError(
     description: string,
     suggestions?: string[]
 ): Promise<void> {
-    // Delete thinking message
+    
     await deleteThinkingMessage(thinkingMsg);
 
-    // Send ephemeral error
     await sendEphemeralError(message, title, description, suggestions);
 }

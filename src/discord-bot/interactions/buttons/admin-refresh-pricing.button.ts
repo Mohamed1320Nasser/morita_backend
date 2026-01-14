@@ -1,14 +1,11 @@
 import { ButtonInteraction, PermissionFlagsBits } from "discord.js";
 import logger from "../../../common/loggers";
 
-/**
- * Admin button to manually refresh pricing channel
- */
 export async function handleAdminRefreshPricing(
     interaction: ButtonInteraction
 ): Promise<void> {
     try {
-        // Check admin permissions
+        
         if (
             !interaction.memberPermissions?.has(
                 PermissionFlagsBits.Administrator
@@ -21,10 +18,8 @@ export async function handleAdminRefreshPricing(
             return;
         }
 
-        // Defer reply to prevent timeout
         await interaction.deferReply({ ephemeral: true });
 
-        // Get improved channel manager
         const channelManager = interaction.client.improvedChannelManager;
 
         if (!channelManager) {
@@ -34,7 +29,6 @@ export async function handleAdminRefreshPricing(
             return;
         }
 
-        // Trigger manual refresh
         await channelManager.manualRefresh();
 
         await interaction.editReply({

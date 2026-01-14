@@ -13,7 +13,6 @@ export default {
         try {
             await interaction.deferReply();
 
-            // Fetch categories from API
             const categories =
                 await interaction.client.apiService.getCategories();
 
@@ -25,7 +24,6 @@ export default {
                 return;
             }
 
-            // Create embed and components
             const embed = EmbedBuilder.createServicesEmbed(categories);
             const categorySelectMenu =
                 ComponentBuilder.createCategorySelectMenu(categories);

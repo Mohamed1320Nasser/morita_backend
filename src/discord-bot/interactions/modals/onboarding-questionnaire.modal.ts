@@ -6,36 +6,31 @@ import axios from "axios";
 import logger from "../../../common/loggers";
 import { getRedisService } from "../../../common/services/redis.service";
 
-// Use Redis for storing user answers
 const redis = getRedisService();
 const ONBOARDING_ANSWERS_PREFIX = "onboarding:answers:";
-const ONBOARDING_ANSWERS_TTL = 24 * 60 * 60; // 24 hours
+const ONBOARDING_ANSWERS_TTL = 24 * 60 * 60; 
 
 export default {
     customId: /^onboarding_questionnaire_\d+$/,
 
     async execute(interaction: ModalSubmitInteraction) {
         try {
-            // Defer reply immediately to prevent timeout
+            
             await interaction.deferReply({ ephemeral: true });
 
             const discordId = interaction.user.id;
             const member = interaction.member as GuildMember;
 
-            // Extract batch number from modal ID
             const batchNumber = parseInt(interaction.customId.split("_")[2]);
 
-            // Get all active questions
             const questionsResponse = await axios.get(`${discordConfig.apiBaseUrl}/onboarding/questions/active`);
             const allQuestions = questionsResponse.data.data;
 
-            // Extract answers from this batch
             const batchAnswers: any[] = [];
             interaction.fields.fields.forEach((field, key) => {
                 const questionId = key.replace("question_", "");
                 const answer = field.value.trim();
 
-                // Validate email if this is an email question
                 const question = allQuestions.find((q: any) => q.id === questionId);
                 if (question?.question.toLowerCase().includes("email")) {
                     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -54,24 +49,20 @@ export default {
                 });
             });
 
-            // Get or initialize user's answers from Redis
             const cacheKey = `${ONBOARDING_ANSWERS_PREFIX}${discordId}`;
             let userAnswers = await redis.get<any[]>(cacheKey) || [];
             userAnswers = [...userAnswers, ...batchAnswers];
 
-            // Save to Redis with TTL
             await redis.set(cacheKey, userAnswers, ONBOARDING_ANSWERS_TTL);
 
-            // Calculate remaining questions
             const answeredCount = userAnswers.length;
             const totalQuestions = allQuestions.length;
             const remainingQuestions = allQuestions.slice(answeredCount);
 
             logger.info(`[Onboarding] User ${interaction.user.username} answered ${answeredCount}/${totalQuestions} questions`);
 
-            // Check if more questions remain
             if (remainingQuestions.length > 0) {
-                // Show button to continue to next batch
+                
                 const continueButton = new ButtonBuilder()
                     .setCustomId(`continue_onboarding_${batchNumber + 1}`)
                     .setLabel(`Continue Registration (${remainingQuestions.length} questions remaining)`)
@@ -92,11 +83,8 @@ export default {
                 return;
             }
 
-            // All questions answered - complete onboarding
-
             logger.info(`[Onboarding] ${interaction.user.username} completed all questions, starting registration...`);
 
-            // Extract user data from answers
             const userData = {
                 fullname: userAnswers.find(a => {
                     const q = allQuestions.find((q: any) => q.id === a.questionId);
@@ -114,7 +102,6 @@ export default {
                 })?.answer || null
             };
 
-            // Submit all answers to backend first
             try {
                 await axios.post(`${discordConfig.apiBaseUrl}/onboarding/answers`, {
                     discordId,
@@ -122,10 +109,9 @@ export default {
                 });
             } catch (apiError: any) {
                 logger.error("[Onboarding] Failed to submit answers:", apiError.message);
-                // Continue anyway - answers are already in database from previous steps
+                
             }
 
-            // Complete onboarding (create user, assign role)
             const onboardingManager = new OnboardingManagerService(interaction.client);
 
             try {
@@ -133,7 +119,6 @@ export default {
             } catch (completionError: any) {
                 logger.error("[Onboarding] Failed to complete onboarding:", completionError.message);
 
-                // Show retry button
                 const retryButton = new ButtonBuilder()
                     .setCustomId(`retry_onboarding`)
                     .setLabel("Retry Registration")
@@ -154,10 +139,8 @@ export default {
                 return;
             }
 
-            // Clear Redis cache after successful completion
             await redis.delete(cacheKey);
 
-            // Send success message
             const successEmbed = new EmbedBuilder()
                 .setTitle("✅ Welcome Aboard!")
                 .setDescription(
@@ -182,7 +165,6 @@ export default {
 
             const errorMessage = error instanceof Error ? error.message : "Unknown error";
 
-            // Show retry button on error
             const retryButton = new ButtonBuilder()
                 .setCustomId(`retry_onboarding`)
                 .setLabel("Retry Registration")

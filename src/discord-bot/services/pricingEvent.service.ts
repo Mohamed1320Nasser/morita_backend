@@ -1,9 +1,6 @@
 import * as events from "node:events";
 import logger from "../../common/loggers";
 
-/**
- * Event types for pricing system updates
- */
 export enum PricingEventType {
     CATEGORY_CREATED = "category:created",
     CATEGORY_UPDATED = "category:updated",
@@ -19,9 +16,6 @@ export enum PricingEventType {
     PRICING_MODIFIER_DELETED = "pricing_modifier:deleted",
 }
 
-/**
- * Event data interface
- */
 export interface PricingEventData {
     type: PricingEventType;
     entityId: string;
@@ -30,23 +24,15 @@ export interface PricingEventData {
     data?: any;
 }
 
-/**
- * Pricing Event Service
- * Handles real-time events for pricing system changes
- * Uses composition instead of inheritance for better TypeScript compatibility
- */
 export class PricingEventService {
     private static instance: PricingEventService;
     private eventEmitter: any;
 
     private constructor() {
         this.eventEmitter = new events.EventEmitter();
-        this.eventEmitter.setMaxListeners(20); // Increase for multiple listeners
+        this.eventEmitter.setMaxListeners(20); 
     }
 
-    /**
-     * Get singleton instance
-     */
     static getInstance(): PricingEventService {
         if (!PricingEventService.instance) {
             PricingEventService.instance = new PricingEventService();
@@ -54,20 +40,14 @@ export class PricingEventService {
         return PricingEventService.instance;
     }
 
-    /**
-     * Emit a pricing event
-     */
     emitPricingEvent(eventData: PricingEventData): void {
         logger.info(
             `[PricingEvent] Emitting: ${eventData.type} for ${eventData.entityType} ${eventData.entityId}`
         );
         this.eventEmitter.emit(eventData.type, eventData);
-        this.eventEmitter.emit("pricing:change", eventData); // Generic change event
+        this.eventEmitter.emit("pricing:change", eventData); 
     }
 
-    /**
-     * Subscribe to specific event type
-     */
     onPricingEvent(
         eventType: PricingEventType | "pricing:change",
         handler: (eventData: PricingEventData) => void | Promise<void>
@@ -84,9 +64,6 @@ export class PricingEventService {
         });
     }
 
-    /**
-     * Unsubscribe from event
-     */
     offPricingEvent(
         eventType: PricingEventType | "pricing:change",
         handler: (eventData: PricingEventData) => void | Promise<void>
@@ -94,9 +71,6 @@ export class PricingEventService {
         this.eventEmitter.off(eventType, handler);
     }
 
-    /**
-     * Helper: Emit category event
-     */
     emitCategoryEvent(
         action: "created" | "updated" | "deleted",
         categoryId: string,
@@ -118,9 +92,6 @@ export class PricingEventService {
         });
     }
 
-    /**
-     * Helper: Emit service event
-     */
     emitServiceEvent(
         action: "created" | "updated" | "deleted",
         serviceId: string,
@@ -143,9 +114,6 @@ export class PricingEventService {
         });
     }
 
-    /**
-     * Helper: Emit pricing method event
-     */
     emitPricingMethodEvent(
         action: "created" | "updated" | "deleted",
         methodId: string,
@@ -168,9 +136,6 @@ export class PricingEventService {
         });
     }
 
-    /**
-     * Helper: Emit pricing modifier event
-     */
     emitPricingModifierEvent(
         action: "created" | "updated" | "deleted",
         modifierId: string,
@@ -194,5 +159,4 @@ export class PricingEventService {
     }
 }
 
-// Export singleton instance
 export const pricingEventService = PricingEventService.getInstance();

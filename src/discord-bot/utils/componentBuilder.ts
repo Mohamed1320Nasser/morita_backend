@@ -18,7 +18,7 @@ import {
 } from "../types/discord.types";
 
 export class ComponentBuilder {
-    // Category selection menu
+    
     static createCategorySelectMenu(
         categories: ServiceCategory[]
     ): ActionRowBuilder<StringSelectMenuBuilder> {
@@ -28,11 +28,10 @@ export class ComponentBuilder {
             .setMinValues(1)
             .setMaxValues(1);
 
-        // Discord limit: max 25 options
         const limitedCategories = categories.slice(0, 25);
 
         limitedCategories.forEach(category => {
-            // Discord limits: label 100 chars, description 100 chars, value 100 chars
+            
             const label = category.name.length > 100
                 ? category.name.substring(0, 97) + "..."
                 : category.name;
@@ -61,7 +60,6 @@ export class ComponentBuilder {
         );
     }
 
-    // Service selection menu
     static createServiceSelectMenu(
         services: Service[]
     ): ActionRowBuilder<StringSelectMenuBuilder> {
@@ -71,11 +69,10 @@ export class ComponentBuilder {
             .setMinValues(1)
             .setMaxValues(1);
 
-        // Discord limit: max 25 options
         const limitedServices = services.slice(0, 25);
 
         limitedServices.forEach(service => {
-            // Discord limits: label 100 chars, description 100 chars, value 100 chars
+            
             const label = service.name.length > 100
                 ? service.name.substring(0, 97) + "..."
                 : service.name;
@@ -104,7 +101,6 @@ export class ComponentBuilder {
         );
     }
 
-    // Pricing method selection menu
     static createMethodSelectMenu(
         methods: PricingMethod[]
     ): ActionRowBuilder<StringSelectMenuBuilder> {
@@ -114,7 +110,6 @@ export class ComponentBuilder {
             .setMinValues(1)
             .setMaxValues(1);
 
-        // Discord limit: max 25 options
         const limitedMethods = methods.slice(0, 25);
 
         limitedMethods.forEach(method => {
@@ -123,7 +118,6 @@ export class ComponentBuilder {
                     ? ""
                     : ` (${method.pricingUnit})`;
 
-            // Discord limits: label 100 chars, description 100 chars, value 100 chars
             const labelText = `${method.name} - $${method.basePrice}${unitText}`;
             const label = labelText.length > 100
                 ? labelText.substring(0, 97) + "..."
@@ -153,7 +147,6 @@ export class ComponentBuilder {
         );
     }
 
-    // Payment method selection menu
     static createPaymentSelectMenu(
         paymentMethods: PaymentMethod[]
     ): ActionRowBuilder<StringSelectMenuBuilder> {
@@ -163,14 +156,12 @@ export class ComponentBuilder {
             .setMinValues(1)
             .setMaxValues(1);
 
-        // Discord limit: max 25 options
         const limitedPaymentMethods = paymentMethods.slice(0, 25);
 
         limitedPaymentMethods.forEach(method => {
             const emoji =
                 method.type === "CRYPTO" ? EMOJIS.CRYPTO : EMOJIS.CREDIT_CARD;
 
-            // Discord limits: label 100 chars, description 100 chars, value 100 chars
             const label = method.name.length > 100
                 ? method.name.substring(0, 97) + "..."
                 : method.name;
@@ -198,7 +189,6 @@ export class ComponentBuilder {
         );
     }
 
-    // Service action buttons
     static createServiceActionButtons(): ActionRowBuilder<ButtonBuilder> {
         return new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
@@ -219,7 +209,6 @@ export class ComponentBuilder {
         );
     }
 
-    // Pricing calculator buttons
     static createPricingButtons(): ActionRowBuilder<ButtonBuilder> {
         return new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
@@ -235,7 +224,6 @@ export class ComponentBuilder {
         );
     }
 
-    // Price breakdown buttons
     static createPriceBreakdownButtons(): ActionRowBuilder<ButtonBuilder> {
         return new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
@@ -251,7 +239,6 @@ export class ComponentBuilder {
         );
     }
 
-    // Order confirmation buttons
     static createOrderConfirmationButtons(): ActionRowBuilder<ButtonBuilder> {
         return new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
@@ -267,7 +254,6 @@ export class ComponentBuilder {
         );
     }
 
-    // Ticket action buttons
     static createTicketActionButtons(): ActionRowBuilder<ButtonBuilder> {
         return new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
@@ -293,7 +279,6 @@ export class ComponentBuilder {
         );
     }
 
-    // Navigation buttons
     static createNavigationButtons(): ActionRowBuilder<ButtonBuilder> {
         return new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
@@ -309,13 +294,11 @@ export class ComponentBuilder {
         );
     }
 
-    // Order details modal
     static createOrderDetailsModal(): ModalBuilder {
         const modal = new ModalBuilder()
             .setCustomId("order_details_modal")
             .setTitle(MESSAGES.ORDER_TITLE);
 
-        // OSRS Username input
         const osrsUsernameInput = new TextInputBuilder()
             .setCustomId("osrs_username")
             .setLabel(MESSAGES.OSRS_USERNAME)
@@ -324,7 +307,6 @@ export class ComponentBuilder {
             .setMaxLength(50)
             .setPlaceholder("Enter your OSRS username");
 
-        // Discord Tag input
         const discordTagInput = new TextInputBuilder()
             .setCustomId("discord_tag")
             .setLabel(MESSAGES.DISCORD_TAG)
@@ -333,7 +315,6 @@ export class ComponentBuilder {
             .setMaxLength(50)
             .setPlaceholder("Your Discord username#1234");
 
-        // Special Notes input
         const specialNotesInput = new TextInputBuilder()
             .setCustomId("special_notes")
             .setLabel(MESSAGES.SPECIAL_NOTES)
@@ -342,7 +323,6 @@ export class ComponentBuilder {
             .setMaxLength(500)
             .setPlaceholder("Any special requirements or notes...");
 
-        // Add inputs to modal
         modal.addComponents(
             new ActionRowBuilder<TextInputBuilder>().addComponents(
                 osrsUsernameInput
@@ -358,7 +338,6 @@ export class ComponentBuilder {
         return modal;
     }
 
-    // Modifier toggle buttons (for pricing calculator)
     static createModifierButtons(
         modifiers: any[]
     ): ActionRowBuilder<ButtonBuilder>[] {
@@ -391,7 +370,6 @@ export class ComponentBuilder {
         return rows;
     }
 
-    // Help buttons
     static createHelpButtons(): ActionRowBuilder<ButtonBuilder> {
         return new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()

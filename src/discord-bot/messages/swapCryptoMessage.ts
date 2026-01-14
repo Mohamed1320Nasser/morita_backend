@@ -5,11 +5,11 @@ import {
 } from "../utils/ticketTypeHelper";
 
 export async function buildSwapCryptoMessage() {
-    // Fetch active ticket types for the crypto-swap group
+    
     const activeTypes = await getActiveTicketTypesForGroup("crypto-swap");
 
     const embed = new EmbedBuilder()
-        .setColor(0x9B59B6) // Purple color
+        .setColor(0x9B59B6) 
         .setTitle("🔄 Swap Cryptocurrency")
         .setDescription(
             "**Ready to Swap Your Crypto?**\n\n" +
@@ -29,7 +29,6 @@ export async function buildSwapCryptoMessage() {
         })
         .setTimestamp();
 
-    // Build buttons dynamically
     const buttons = buildButtonsFromTicketTypes(activeTypes);
 
     if (buttons.length === 0) {

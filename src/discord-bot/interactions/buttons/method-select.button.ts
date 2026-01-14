@@ -9,7 +9,6 @@ export async function handleMethodSelect(
     try {
         await interaction.deferReply();
 
-        // Get method ID from button custom ID
         const methodId = interaction.customId.replace("method_select_", "");
 
         if (!methodId) {
@@ -19,7 +18,6 @@ export async function handleMethodSelect(
             return;
         }
 
-        // Fetch payment methods
         const paymentMethods =
             await interaction.client.apiService.getPaymentMethods();
 
@@ -30,7 +28,6 @@ export async function handleMethodSelect(
             return;
         }
 
-        // Create payment selection embed
         const embed = EmbedBuilder.createPricingCalculatorEmbed({} as any);
         embed.setDescription("Select a payment method to continue:");
 

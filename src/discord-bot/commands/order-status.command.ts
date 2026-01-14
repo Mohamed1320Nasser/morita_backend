@@ -60,7 +60,6 @@ async function execute(interaction: ChatInputCommandInteraction) {
             `[OrderStatus] User ${interaction.user.tag} changing order #${orderNumber} status to ${newStatus}`
         );
 
-        // Check if user has admin/support role (runtime check as additional security layer)
         const member = interaction.member as GuildMember | null;
         if (!hasSupportOrAdminRole(member)) {
             await interaction.editReply({
@@ -69,7 +68,6 @@ async function execute(interaction: ChatInputCommandInteraction) {
             return;
         }
 
-        // Find order by order number
         const result = await findOrderByNumber(orderNumber);
 
         if (!result) {
@@ -81,23 +79,19 @@ async function execute(interaction: ChatInputCommandInteraction) {
 
         const { orderId } = result;
 
-        // Get order details before updating
         const orderResponse: any = await discordApiClient.get(`/discord/orders/${orderId}`);
         const order = orderResponse.data || orderResponse;
 
-        // Update status (server will check if user is admin based on their role in database)
         await discordApiClient.put(`/discord/orders/${orderId}/status`, {
             status: newStatus,
             workerDiscordId: interaction.user.id,
             reason: reason || `Status changed by ${interaction.user.tag}`,
         });
 
-        // Format status display
         const formatStatus = (status: string) => {
             return status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
         };
 
-        // Create success embed with improved formatting
         const successEmbed = new EmbedBuilder()
             .setTitle("✅ Order Status Updated")
             .setDescription(

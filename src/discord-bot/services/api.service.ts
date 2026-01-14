@@ -14,10 +14,9 @@ export class ApiService {
     private client: AxiosInstance;
     private redis = getRedisService();
 
-    // Cache TTL constants (in seconds)
     private readonly CACHE_TTL = {
-        SERVICES: 5 * 60,        // 5 minutes
-        PAYMENT_METHODS: 60 * 60, // 1 hour
+        SERVICES: 5 * 60,        
+        PAYMENT_METHODS: 60 * 60, 
     };
 
     constructor(baseURL: string) {
@@ -51,7 +50,6 @@ export class ApiService {
         );
     }
 
-    // Service Categories
     async getCategories(): Promise<ServiceCategory[]> {
         try {
             const response: AxiosResponse<{
@@ -96,7 +94,6 @@ export class ApiService {
         }
     }
 
-    // Services
     async getServices(categoryId?: string): Promise<Service[]> {
         try {
             const params = categoryId ? { categoryId } : {};
@@ -135,7 +132,6 @@ export class ApiService {
         }
     }
 
-    // Pricing Methods
     async getPricingMethods(serviceId: string): Promise<PricingMethod[]> {
         try {
             const response: AxiosResponse<{
@@ -155,11 +151,9 @@ export class ApiService {
         }
     }
 
-    // Payment Methods
     async getPaymentMethods(): Promise<PaymentMethod[]> {
         const cacheKey = 'api:payment-methods:all';
 
-        // Try to get from cache
         try {
             const cached = await this.redis.get<PaymentMethod[]>(cacheKey);
             if (cached) {
@@ -185,7 +179,6 @@ export class ApiService {
             if (response.data.data.success) {
                 const paymentMethods = response.data.data.data;
 
-                // Cache the result
                 try {
                     await this.redis.set(cacheKey, paymentMethods, this.CACHE_TTL.PAYMENT_METHODS);
                     logger.debug('[ApiService] 💾 Cached payment methods');
@@ -202,7 +195,6 @@ export class ApiService {
         }
     }
 
-    // Price Calculation
     async calculatePrice(
         request: PriceCalculationRequest
     ): Promise<PriceCalculationResult> {
@@ -276,7 +268,6 @@ export class ApiService {
     async getAllServicesWithPricing(): Promise<Service[]> {
         const cacheKey = 'api:services:all-with-pricing';
 
-        // Try to get from cache
         try {
             const cached = await this.redis.get<Service[]>(cacheKey);
             if (cached) {
@@ -294,7 +285,7 @@ export class ApiService {
 
             for (const category of categories) {
                 if (category.services && Array.isArray(category.services)) {
-                    // Attach category reference to each service
+                    
                     const servicesWithCategory = category.services.map(service => ({
                         ...service,
                         category: {
@@ -311,7 +302,6 @@ export class ApiService {
                 }
             }
 
-            // Cache the result
             try {
                 await this.redis.set(cacheKey, services, this.CACHE_TTL.SERVICES);
                 logger.debug('[ApiService] 💾 Cached all services with pricing');
@@ -326,7 +316,6 @@ export class ApiService {
         }
     }
 
-    // Health check
     async healthCheck(): Promise<boolean> {
         try {
             const response = await this.client.get("/health");
@@ -337,13 +326,11 @@ export class ApiService {
         }
     }
 
-    // Set auth token
     setAuthToken(token: string): void {
         this.client.defaults.headers.common["Authorization"] =
             `Bearer ${token}`;
     }
 
-    // Remove auth token
     removeAuthToken(): void {
         delete this.client.defaults.headers.common["Authorization"];
     }

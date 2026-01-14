@@ -26,7 +26,6 @@ export async function handleServiceDetails(
             .replace("pricing_service_", "")
             .replace("_details", "");
 
-        // Fetch service details with pricing
         const apiService = new ApiService(discordConfig.apiBaseUrl);
         const service = await apiService.getServiceWithPricing(serviceId);
 
@@ -37,10 +36,8 @@ export async function handleServiceDetails(
             return;
         }
 
-        // Build beautiful embed
         const embed = buildServiceDetailsEmbed(service);
 
-        // Create professional action buttons
         const openTicketButton = new ButtonBuilder()
             .setCustomId(`open_ticket_${serviceId}_${service.category?.id || "general"}_0`)
             .setLabel("🎫 Open Ticket")
@@ -69,14 +66,12 @@ export async function handleServiceDetails(
             new ActionRowBuilder<ButtonBuilder>().addComponents(backButton),
         ];
 
-        // Send ephemeral response
         const reply = await interaction.editReply({
             embeds: [embed as any],
             components: components as any,
         });
 
-        // Track message for auto-delete after 10 minutes
-        const messageId = `${interaction.id}`; // Use interaction ID as unique identifier
+        const messageId = `${interaction.id}`; 
         pricingMessageTracker.trackMessage(messageId, async () => {
             try {
                 await interaction.deleteReply();
@@ -96,26 +91,20 @@ export async function handleServiceDetails(
     }
 }
 
-/**
- * Build beautiful embed for service details
- */
 function buildServiceDetailsEmbed(service: any): EmbedBuilder {
     const categoryName = service.category?.name || "Gaming Service";
     const serviceName = service.name;
     const emoji = service.emoji || "🔹";
-    const imageUrl = service.imageUrl; // OSRS Wiki image URL
+    const imageUrl = service.imageUrl; 
 
-    // Create professional header with breadcrumb
-    // If imageUrl exists, don't use emoji in title
     const title = imageUrl ? serviceName : `${emoji} ${serviceName}`;
     const description = `**${categoryName}** • Professional Gaming Service\n\n${service.description || "High-quality gaming service with 24/7 support and guaranteed delivery."}`;
 
     const embed = new EmbedBuilder()
         .setTitle(title)
         .setDescription(description)
-        .setColor(COLORS.PRIMARY); // Morita bronze color
+        .setColor(COLORS.PRIMARY); 
 
-    // Use service image as thumbnail if available, otherwise use Morita logo
     if (imageUrl) {
         embed.setThumbnail(imageUrl);
     } else {
@@ -132,7 +121,6 @@ function buildServiceDetailsEmbed(service: any): EmbedBuilder {
                 "https://cdn.discordapp.com/avatars/1431962373719326781/542747abb0a2222bc5d5b66346d01665.webp",
         });
 
-    // Add pricing methods in a professional table format
     if (service.pricingMethods && service.pricingMethods.length > 0) {
         const pricingLines = service.pricingMethods
             .map((method: any, index: number) => {
@@ -143,19 +131,18 @@ function buildServiceDetailsEmbed(service: any): EmbedBuilder {
                 return `\`${connector}\` **${tier}** → \`${price}\``;
             });
 
-        // Check if single field would exceed limit
         const fullTable = pricingLines.join("\n");
         const wrappedTable = `\`\`\`ansi\n${fullTable}\n\`\`\``;
 
         if (wrappedTable.length <= DISCORD_LIMITS.EMBED_FIELD_VALUE) {
-            // Fits in one field
+            
             embed.addFields({
                 name: "📊 PRICING TIERS",
                 value: wrappedTable,
                 inline: false,
             });
         } else {
-            // Split into multiple fields (max 25 fields per embed)
+            
             const itemsPerField = Math.ceil(pricingLines.length / Math.min(Math.ceil(pricingLines.length / 10), 3));
             let fieldNumber = 1;
 
@@ -173,7 +160,6 @@ function buildServiceDetailsEmbed(service: any): EmbedBuilder {
         }
     }
 
-    // Add service information
     const serviceInfo = [
         "⏱️ **Estimated Time:** 3-7 days",
         "🛡️ **Guarantee:** 100% completion",
@@ -187,7 +173,6 @@ function buildServiceDetailsEmbed(service: any): EmbedBuilder {
         inline: true,
     });
 
-    // Add payment methods
     if (service.paymentMethods && service.paymentMethods.length > 0) {
         const paymentMethods = service.paymentMethods
             .map((method: any) => `• ${method.name}`)
@@ -200,7 +185,6 @@ function buildServiceDetailsEmbed(service: any): EmbedBuilder {
         });
     }
 
-    // Add service notes
     embed.addFields({
         name: "📋 SERVICE NOTES",
         value: `• Service completed via **PARSEC** if connection is good
@@ -210,14 +194,12 @@ function buildServiceDetailsEmbed(service: any): EmbedBuilder {
         inline: false,
     });
 
-    // Add status indicator
     embed.addFields({
         name: "✅ STATUS",
         value: "🟢 **Available** • Ready to order",
         inline: false,
     });
 
-    // Add full service image at bottom if available
     if (imageUrl) {
         embed.setImage(imageUrl);
     }
@@ -225,14 +207,10 @@ function buildServiceDetailsEmbed(service: any): EmbedBuilder {
     return embed;
 }
 
-/**
- * Format price based on pricing unit
- */
 function formatPrice(basePrice: any, pricingUnit: string): string {
-    // Use centralized utility for Decimal handling
+    
     const price = toNumber(basePrice);
 
-    // Format price with unit
     const formattedPrice = `$${price.toFixed(2)}`;
 
     switch (pricingUnit) {

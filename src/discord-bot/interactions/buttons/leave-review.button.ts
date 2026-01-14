@@ -2,21 +2,16 @@ import { ButtonInteraction, ModalBuilder, TextInputBuilder, TextInputStyle, Acti
 import logger from "../../../common/loggers";
 import { discordApiClient } from "../../clients/DiscordApiClient";
 
-/**
- * Handle "Leave Review" button click - shows review modal
- */
 export async function handleLeaveReviewButton(interaction: ButtonInteraction): Promise<void> {
     try {
-        // Extract orderId from button customId: leave_review_{orderId}
+        
         const orderId = interaction.customId.replace("leave_review_", "");
 
         logger.info(`[LeaveReview] Customer ${interaction.user.id} requesting review modal for order ${orderId}`);
 
-        // Get order details to show in modal title
         const orderResponse: any = await discordApiClient.get(`/discord/orders/${orderId}`);
         const orderData = orderResponse.data || orderResponse;
 
-        // Validate customer
         if (!orderData.customer || orderData.customer.discordId !== interaction.user.id) {
             await interaction.reply({
                 content: "❌ You are not the customer for this order.",
@@ -25,7 +20,6 @@ export async function handleLeaveReviewButton(interaction: ButtonInteraction): P
             return;
         }
 
-        // Check if already reviewed
         if (orderData.rating || orderData.review) {
             await interaction.reply({
                 content: `ℹ️ You already reviewed this order!\n\n` +
@@ -36,7 +30,6 @@ export async function handleLeaveReviewButton(interaction: ButtonInteraction): P
             return;
         }
 
-        // Create review modal
         const reviewModal = new ModalBuilder()
             .setCustomId(`order_review_${orderId}`)
             .setTitle(`Review Order #${orderData.orderNumber}`);
@@ -63,7 +56,6 @@ export async function handleLeaveReviewButton(interaction: ButtonInteraction): P
 
         reviewModal.addComponents(ratingRow, reviewRow);
 
-        // Show modal
         await interaction.showModal(reviewModal.toJSON() as any);
 
         logger.info(`[LeaveReview] Showed review modal to customer for order ${orderId}`);

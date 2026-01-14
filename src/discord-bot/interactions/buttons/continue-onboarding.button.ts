@@ -15,21 +15,17 @@ export default {
         try {
             const discordId = interaction.user.id;
 
-            // Extract batch number from button ID
             const batchNumber = parseInt(interaction.customId.split("_")[2]);
 
             logger.info(`[Onboarding] ${interaction.user.username} continuing onboarding (batch ${batchNumber})`);
 
-            // Get all active questions
             const questionsResponse = await axios.get(`${discordConfig.apiBaseUrl}/onboarding/questions/active`);
             const allQuestions = questionsResponse.data.data;
 
-            // Get user's already answered questions from Redis
             const cacheKey = `${ONBOARDING_ANSWERS_PREFIX}${discordId}`;
             const userAnswers = await redis.get<any[]>(cacheKey) || [];
             const answeredCount = userAnswers.length;
 
-            // Get remaining questions
             const remainingQuestions = allQuestions.slice(answeredCount);
 
             if (remainingQuestions.length === 0) {
@@ -40,10 +36,8 @@ export default {
                 return;
             }
 
-            // Get next batch of questions (max 5 per modal)
             const nextBatch = remainingQuestions.slice(0, onboardingConfig.maxQuestionsPerModal);
 
-            // Build modal with next batch of questions
             const modal = new ModalBuilder()
                 .setCustomId(`${onboardingConfig.questionnaireModalPrefix}${batchNumber}`)
                 .setTitle(`Registration (${answeredCount + 1}-${answeredCount + nextBatch.length}/${allQuestions.length})`);
@@ -51,7 +45,7 @@ export default {
             nextBatch.forEach((q: any) => {
                 const input = new TextInputBuilder()
                     .setCustomId(`question_${q.id}`)
-                    .setLabel(q.question.substring(0, 45)) // Discord label max 45 chars
+                    .setLabel(q.question.substring(0, 45)) 
                     .setStyle(q.fieldType === "TEXTAREA" ? TextInputStyle.Paragraph : TextInputStyle.Short)
                     .setRequired(q.required);
 

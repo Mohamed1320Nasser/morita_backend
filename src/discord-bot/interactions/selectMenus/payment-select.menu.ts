@@ -18,8 +18,6 @@ export async function handlePaymentSelect(
             return;
         }
 
-        // For now, show a placeholder message
-        // In a real implementation, this would calculate the price and show the breakdown
         const embed = EmbedBuilder.createSuccessEmbed(
             "Payment method selected! Click Calculate to see the price breakdown.",
             "Payment Method Selected"

@@ -1,11 +1,10 @@
-// Custom emojis and Unicode emojis
+
 export const EMOJIS = {
-    // Brand emojis
+    
     BRAND: "🎮",
     LOGO: "🪙",
     GOLD: "💰",
 
-    // Service category emojis
     MEGASCALE: "🌟",
     CAPES: "🏹",
     BLOOD_TORVA: "🩸",
@@ -18,7 +17,6 @@ export const EMOJIS = {
     IRONMAN: "⛓️",
     SKILLS: "📊",
 
-    // Action emojis
     CALCULATE: "🧮",
     ORDER: "📦",
     TICKET: "🎫",
@@ -34,7 +32,6 @@ export const EMOJIS = {
     FILTER: "🔽",
     SORT: "📊",
 
-    // Status emojis
     PENDING: "⏳",
     IN_PROGRESS: "🔄",
     COMPLETED: "✅",
@@ -44,7 +41,6 @@ export const EMOJIS = {
     WARNING: "⚠️",
     INFO: "ℹ️",
 
-    // Payment emojis
     CRYPTO: "💎",
     BITCOIN: "₿",
     ETHEREUM: "Ξ",
@@ -52,7 +48,6 @@ export const EMOJIS = {
     BANK: "🏦",
     CASH: "💵",
 
-    // Pricing emojis
     PRICE: "💰",
     DISCOUNT: "🏷️",
     PERCENTAGE: "📊",
@@ -62,14 +57,12 @@ export const EMOJIS = {
     PER_ITEM: "📦",
     PER_HOUR: "⏰",
 
-    // User emojis
     USER: "👤",
     CUSTOMER: "🛒",
     WORKER: "👷",
     ADMIN: "👑",
     SUPPORT: "🆘",
 
-    // Service emojis
     SERVICE: "🛠️",
     ACCOUNT: "🔐",
     SECURITY: "🔒",
@@ -78,7 +71,6 @@ export const EMOJIS = {
     EMAIL: "📧",
     PHONE: "📞",
 
-    // Navigation emojis
     HOME: "🏠",
     MENU: "📋",
     LIST: "📝",
@@ -87,7 +79,6 @@ export const EMOJIS = {
     SETTINGS: "⚙️",
     CONFIG: "🔧",
 
-    // Special emojis
     FIRE: "🔥",
     STAR: "⭐",
     HEART: "❤️",
@@ -116,13 +107,11 @@ export const EMOJIS = {
     FIREWORKS: "🎆",
     CONFETTI: "🎊",
 
-    // Loading emojis
     LOADING: "⏳",
     SPINNER: "🔄",
     HOURGLASS: "⏰",
     CLOCK: "🕐",
 
-    // Arrow emojis
     UP: "⬆️",
     DOWN: "⬇️",
     LEFT: "⬅️",
@@ -132,7 +121,6 @@ export const EMOJIS = {
     DOWN_LEFT: "↙️",
     DOWN_RIGHT: "↘️",
 
-    // Number emojis
     ONE: "1️⃣",
     TWO: "2️⃣",
     THREE: "3️⃣",
@@ -144,20 +132,17 @@ export const EMOJIS = {
     NINE: "9️⃣",
     TEN: "🔟",
 
-    // Checkbox emojis
     CHECKBOX_EMPTY: "☐",
     CHECKBOX_CHECKED: "☑️",
     RADIO_EMPTY: "⚪",
     RADIO_CHECKED: "🔘",
 
-    // Weather emojis
     SUNNY: "☀️",
     CLOUDY: "☁️",
     RAINY: "🌧️",
     STORMY: "⛈️",
     SNOWY: "❄️",
 
-    // Food emojis
     PIZZA: "🍕",
     BURGER: "🍔",
     COFFEE: "☕",
@@ -165,7 +150,6 @@ export const EMOJIS = {
     BEER: "🍺",
     WINE: "🍷",
 
-    // Animal emojis
     DOG: "🐕",
     CAT: "🐱",
     BIRD: "🐦",
@@ -173,10 +157,9 @@ export const EMOJIS = {
     BUG: "🐛",
     SPIDER: "🕷️",
 
-    // Object emojis
     BOOK: "📚",
     COMPUTER: "💻",
-    // PHONE: "📱",
+    
     WATCH: "⌚",
     CAMERA: "📷",
     VIDEO: "📹",
@@ -224,22 +207,22 @@ export const EMOJIS = {
     BOOKMARK: "🔖",
     LABEL: "🏷️",
     MONEY_BAG: "💰",
-    // COIN: "🪙",
+    
     YEN: "💴",
     DOLLAR: "💵",
     EURO: "💶",
     POUND: "💷",
     MONEY_WITH_WINGS: "💸",
     CREDIT_CARD: "💳",
-    // RECEIPT: "🧾",
+    
     CHART: "💹",
     ENVELOPE: "✉️",
-    // EMAIL: "📧",
+    
     INCOMING_ENVELOPE: "📨",
     ENVELOPE_WITH_ARROW: "📩",
     OUTBOX_TRAY: "📤",
     INBOX_TRAY: "📥",
-    // PACKAGE: "📦",
+    
     CLOSED_MAILBOX: "📫",
     OPEN_MAILBOX: "📪",
     MAILBOX_WITH_MAIL: "📬",

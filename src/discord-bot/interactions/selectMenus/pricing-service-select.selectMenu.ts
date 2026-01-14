@@ -11,14 +11,13 @@ export async function handlePricingServiceSelect(
     interaction: StringSelectMenuInteraction
 ): Promise<void> {
     try {
-        // Defer reply to prevent timeout
+        
         await interaction.deferReply({ ephemeral: true });
 
         const customId = interaction.customId;
         const categoryId = customId.replace("pricing_service_select_", "");
         const serviceId = interaction.values[0];
 
-        // Handle "Show More" option
         if (serviceId.startsWith("show_more_")) {
             await interaction.editReply({
                 content:
@@ -27,7 +26,6 @@ export async function handlePricingServiceSelect(
             return;
         }
 
-        // Get service data with full pricing details
         const service = await apiService.getServiceWithPricing(serviceId);
 
         if (!service) {
@@ -37,11 +35,9 @@ export async function handlePricingServiceSelect(
             return;
         }
 
-        // Build professional embed with ANSI pricing table
         const embed =
             SelectMenuPricingBuilder.buildServiceDetailsEmbed(service);
 
-        // Add action buttons
         const {
             ActionRowBuilder,
             ButtonBuilder,
@@ -62,14 +58,12 @@ export async function handlePricingServiceSelect(
                 .setStyle(ButtonStyle.Secondary)
         );
 
-        // Send ephemeral reply (only user sees it)
         await interaction.editReply({
             embeds: [embed],
             components: [actionButtons],
         });
 
-        // Track message for auto-delete after 10 minutes
-        const messageId = `${interaction.id}`; // Use interaction ID as unique identifier
+        const messageId = `${interaction.id}`; 
         pricingMessageTracker.trackMessage(messageId, async () => {
             try {
                 await interaction.deleteReply();
@@ -86,7 +80,6 @@ export async function handlePricingServiceSelect(
     } catch (error) {
         logger.error("Error handling pricing service select:", error);
 
-        // Send error message
         try {
             if (interaction.deferred || interaction.replied) {
                 await interaction.editReply({

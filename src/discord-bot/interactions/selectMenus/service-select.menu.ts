@@ -18,7 +18,6 @@ export async function handleServiceSelect(
             return;
         }
 
-        // Fetch service details
         const service =
             await interaction.client.apiService.getServiceById(serviceId);
 
@@ -29,7 +28,6 @@ export async function handleServiceSelect(
             return;
         }
 
-        // Create service details embed
         const embed = EmbedBuilder.createServiceDetailsEmbed(service);
         const actionButtons = ComponentBuilder.createServiceActionButtons();
 

@@ -7,15 +7,11 @@ import logger from "../../common/loggers";
 let cleanupInterval: NodeJS.Timeout | null = null;
 let archiveInterval: NodeJS.Timeout | null = null;
 
-/**
- * Start cleanup job for expired messages
- */
 export function startCleanupJob(client: Client): void {
     if (cleanupInterval) {
         clearInterval(cleanupInterval);
     }
 
-    // Run cleanup every 2 minutes
     const cleanupIntervalMs = 2 * 60 * 1000;
     logger.info(`Starting cleanup job (interval: ${cleanupIntervalMs}ms)`);
 
@@ -27,19 +23,14 @@ export function startCleanupJob(client: Client): void {
         }
     }, cleanupIntervalMs);
 
-    // Start archive job for old closed tickets
     startArchiveJob(client);
 }
 
-/**
- * Start archive job for old closed tickets
- */
 function startArchiveJob(client: Client): void {
     if (archiveInterval) {
         clearInterval(archiveInterval);
     }
 
-    // Run archive check every 1 hour
     const archiveIntervalMs = 60 * 60 * 1000;
     logger.info(`Starting archive job for closed tickets (interval: ${archiveIntervalMs}ms)`);
 
@@ -51,7 +42,6 @@ function startArchiveJob(client: Client): void {
         }
     }, archiveIntervalMs);
 
-    // Also run once immediately after 5 minutes of startup
     setTimeout(async () => {
         try {
             await performArchive(client);
@@ -61,9 +51,6 @@ function startArchiveJob(client: Client): void {
     }, 5 * 60 * 1000);
 }
 
-/**
- * Stop cleanup job
- */
 export function stopCleanupJob(): void {
     if (cleanupInterval) {
         clearInterval(cleanupInterval);
@@ -78,9 +65,6 @@ export function stopCleanupJob(): void {
     }
 }
 
-/**
- * Perform cleanup of expired messages
- */
 async function performCleanup(client: Client): Promise<void> {
     try {
         await client.channelManager.cleanupExpiredMessages();
@@ -89,9 +73,6 @@ async function performCleanup(client: Client): Promise<void> {
     }
 }
 
-/**
- * Perform archive of old closed tickets
- */
 async function performArchive(client: Client): Promise<void> {
     try {
         const guild = client.guilds.cache.get(discordConfig.guildId);

@@ -14,7 +14,7 @@ export class TicketChannelMoverService {
     private pendingMoves: Map<string, PendingMove> = new Map();
     private moveInterval: NodeJS.Timeout | null = null;
     private readonly MAX_RETRIES = 5;
-    private readonly RETRY_DELAY = 10000; // 10 seconds
+    private readonly RETRY_DELAY = 10000; 
 
     constructor(client: Client) {
         this.client = client;
@@ -26,7 +26,7 @@ export class TicketChannelMoverService {
             channelId,
             ticketId,
             retryCount: 0,
-            scheduledAt: Date.now() + 5000, // Move after 5 seconds
+            scheduledAt: Date.now() + 5000, 
         });
 
         logger.info(`[TicketMover] Queued channel ${channelId} for move`);

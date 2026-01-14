@@ -9,18 +9,16 @@ export async function handleOrderDetailsModal(
     try {
         await interaction.deferReply();
 
-        // Extract form data
         const osrsUsername =
             interaction.fields.getTextInputValue("osrs_username");
         const discordTag = interaction.fields.getTextInputValue("discord_tag");
         const specialNotes =
             interaction.fields.getTextInputValue("special_notes");
 
-        // Check if this is a ticket request (no service ID in custom ID)
         const isTicket = interaction.customId === "order_details_modal_ticket";
 
         if (isTicket) {
-            // Handle ticket creation
+            
             const embed = EmbedBuilder.createSuccessEmbed(
                 "Support ticket created successfully! A staff member will contact you soon.",
                 "Ticket Created"
@@ -36,7 +34,6 @@ export async function handleOrderDetailsModal(
             return;
         }
 
-        // Extract service ID from custom ID (format: order_details_modal_<serviceId>)
         const serviceId = interaction.customId.replace(
             "order_details_modal_",
             ""
@@ -49,7 +46,6 @@ export async function handleOrderDetailsModal(
             return;
         }
 
-        // Fetch service details
         const service =
             await interaction.client.apiService.getServiceById(serviceId);
 
@@ -60,15 +56,14 @@ export async function handleOrderDetailsModal(
             return;
         }
 
-        // Create order confirmation embed
         const orderData = {
             osrsUsername,
             discordTag,
             specialNotes,
             serviceName: service.name,
-            methodName: "Default Method", // This would come from the pricing flow
-            paymentMethod: "Crypto", // This would come from the pricing flow
-            totalPrice: 0, // This would be calculated from the pricing flow
+            methodName: "Default Method", 
+            paymentMethod: "Crypto", 
+            totalPrice: 0, 
         };
 
         const embed = EmbedBuilder.createOrderConfirmationEmbed(orderData);

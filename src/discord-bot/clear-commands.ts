@@ -3,11 +3,6 @@ import { discordConfig } from "./config/discord.config";
 import logger from "../common/loggers";
 import Environment from "../common/config/environment";
 
-/**
- * Script to clear all Discord slash commands (both global and guild)
- * Run this to remove duplicate commands
- */
-
 const clearCommands = async () => {
     try {
         if (!discordConfig.token) {
@@ -22,14 +17,12 @@ const clearCommands = async () => {
 
         logger.info("🧹 Starting command cleanup...");
 
-        // Clear global commands
         logger.info("Clearing global commands...");
         await rest.put(Routes.applicationCommands(discordConfig.clientId), {
             body: [],
         });
         logger.info("✅ Global commands cleared");
 
-        // Clear guild commands if guild ID is configured
         if (discordConfig.guildId) {
             logger.info(`Clearing guild commands for guild ${discordConfig.guildId}...`);
             await rest.put(

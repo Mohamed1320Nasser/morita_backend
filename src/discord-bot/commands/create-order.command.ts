@@ -66,7 +66,6 @@ export default {
                 `[create-order] Command executed by ${supportUser.tag} in channel ${channel?.id}`
             );
 
-            // Get command options first (synchronous - no timeout risk)
             const customerUser = interaction.options.get("customer")?.user;
             const orderValue = interaction.options.get("value")?.value as number;
             const deposit = interaction.options.get("deposit")?.value as number;
@@ -87,20 +86,14 @@ export default {
                 return;
             }
 
-            // CRITICAL: Don't fetch ticket here - it causes timeout!
-            // The modal handler will fetch the ticket after deferring.
-            // We only store the channelId here for the modal handler to use.
-
-            // Generate unique key for this order
             const orderKey = `order_${customerUser.id}_${Date.now()}`;
 
-            // Store order data temporarily (ticketId will be fetched in modal handler)
             const orderData = {
                 customerDiscordId: customerUser.id,
                 workerDiscordId: workerUser?.id || null,
                 supportDiscordId: supportUser.id,
                 channelId: channel?.id,
-                ticketId: null, // Will be fetched in modal handler after deferring
+                ticketId: null, 
                 orderValue,
                 deposit,
                 currency,
@@ -108,7 +101,6 @@ export default {
 
             await storeOrderData(orderKey, orderData);
 
-            // Show job details modal IMMEDIATELY (before any async operations)
             const modal = new ModalBuilder()
                 .setCustomId(`create_order_job_${orderKey}`)
                 .setTitle("📋 Job Description");
@@ -125,19 +117,15 @@ export default {
 
             modal.addComponents(detailsRow);
 
-            // Show the modal
             await interaction.showModal(modal as any);
 
             logger.info(`[create-order] Showing job details modal for order key: ${orderKey}`);
         } catch (error) {
             logger.error("Error executing create-order command:", error);
 
-            // CRITICAL: If modal was already shown, we can't reply/defer anymore
-            // showModal() acknowledges the interaction in a special way
-            // Only try to send error if interaction hasn't been acknowledged yet
             try {
                 if (interaction.replied || interaction.deferred) {
-                    // Already replied or deferred - try to edit
+                    
                     const embed = new EmbedBuilder()
                         .setTitle("❌ Error")
                         .setDescription(
@@ -152,9 +140,7 @@ export default {
                         embeds: [embed.toJSON() as any],
                     });
                 } else if (!interaction.isModalSubmit()) {
-                    // Not yet replied and not a modal - safe to reply
-                    // Note: showModal() counts as "acknowledged" but not "replied"
-                    // We can check if this is a command interaction that hasn't shown a modal yet
+
                     const embed = new EmbedBuilder()
                         .setTitle("❌ Error")
                         .setDescription(
@@ -170,12 +156,12 @@ export default {
                         ephemeral: true,
                     });
                 } else {
-                    // Modal was already shown - can't reply
+                    
                     logger.warn("[create-order] Modal already shown, cannot send error message to user");
                 }
             } catch (replyError) {
                 logger.error("[create-order] Failed to send error message:", replyError);
-                // Don't rethrow - error is already logged
+                
             }
         }
     },

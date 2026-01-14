@@ -38,11 +38,9 @@ export default {
 
             const action = (interaction.options.get("action")?.value as string) || "balance";
 
-            // Get target user (admin feature)
             const specifiedUser = interaction.options.get("user")?.user as User | undefined;
             const targetUserInfo = await getTargetUser(interaction, specifiedUser);
 
-            // Permission check: If checking someone else's wallet, must be Support/Admin
             const isCheckingOtherUser = targetUserInfo.discordId !== interaction.user.id;
             if (isCheckingOtherUser && !hasAdminPermission(interaction)) {
                 await interaction.editReply({
@@ -54,15 +52,13 @@ export default {
             const discordId = targetUserInfo.discordId;
 
             if (action === "balance") {
-                // Get wallet balance
+                
                 const response: any = await discordApiClient.get(
                     `/discord/wallets/balance/${discordId}`
                 );
 
                 logger.info(`[Wallet Command] Raw response: ${JSON.stringify(response)}`);
 
-                // Extract the actual wallet data from the nested response structure
-                // HttpClient interceptor already unwrapped one level
                 const responseData = response.data || response;
                 const data = responseData.data || responseData;
 
@@ -112,7 +108,6 @@ export default {
                     .setTimestamp()
                     .setFooter({ text: `Wallet ID: ${data.walletId} • Type: ${data.walletType || 'CUSTOMER'}` });
 
-                // Add user info if admin is checking someone else's wallet
                 if (isCheckingOtherUser && targetUserInfo.user) {
                     embed.setThumbnail(targetUserInfo.user.displayAvatarURL());
                     embed.setDescription(`Viewing wallet for <@${targetUserInfo.discordId}>`);
@@ -123,7 +118,6 @@ export default {
                     });
                 }
 
-                // Balance breakdown
                 let balanceText = `\`\`\`yml\n`;
                 balanceText += `Balance:           $${balance} ${data.currency}\n`;
                 if (parseFloat(data.pendingBalance) > 0) {
@@ -137,7 +131,6 @@ export default {
                     inline: false,
                 });
 
-                // Add worker deposit info if applicable
                 if (isWorker) {
                     let depositText = `\`\`\`yml\n`;
                     depositText += `Worker Deposit:    $${deposit} ${data.currency}\n`;
@@ -158,7 +151,7 @@ export default {
                         inline: false,
                     });
                 } else {
-                    // Add info about pending balance for non-workers
+                    
                     if (parseFloat(data.pendingBalance) > 0) {
                         embed.addFields({
                             name: "ℹ️ Pending Balance",
@@ -172,14 +165,12 @@ export default {
                     embeds: [embed.toJSON() as any],
                 });
             } else if (action === "transactions") {
-                // Get recent transactions
+                
                 const response: any = await discordApiClient.get(
                     `/discord/wallets/transactions/${discordId}`,
                     { params: { limit: 10 } }
                 );
 
-                // Extract the actual transaction data from the nested response structure
-                // HttpClient interceptor already unwrapped one level
                 const responseData = response.data || response;
                 const data = responseData.data || responseData;
                 const transactions = data.list || [];
@@ -215,7 +206,6 @@ export default {
                     .setColor(0x5865f2)
                     .setTimestamp();
 
-                // Add user info if admin is checking someone else's transactions
                 if (isCheckingOtherUser && targetUserInfo.user) {
                     embed.setThumbnail(targetUserInfo.user.displayAvatarURL());
                     embed.addFields({
@@ -225,14 +215,12 @@ export default {
                     });
                 }
 
-                // Build transaction list with clean formatting
                 for (let i = 0; i < Math.min(transactions.length, 10); i++) {
                     const tx = transactions[i];
                     const amount = parseFloat(tx.amount);
                     const sign = amount >= 0 ? "+" : "-";
                     const date = new Date(tx.createdAt);
 
-                    // Format date and time
                     const dateStr = date.toLocaleDateString('en-US', {
                         month: 'short',
                         day: 'numeric',
@@ -243,10 +231,8 @@ export default {
                         minute: '2-digit'
                     });
 
-                    // Format transaction type
                     const typeFormatted = tx.type.replace(/_/g, ' ');
 
-                    // Build clean transaction details using code block
                     let txDetails = `\`\`\`yml\n`;
                     txDetails += `Amount:        ${sign}$${Math.abs(amount).toFixed(2)} USD\n`;
                     txDetails += `Type:          ${typeFormatted}\n`;
@@ -303,9 +289,6 @@ export default {
     },
 } as Command;
 
-/**
- * Check if user has Support or Admin role
- */
 function hasAdminPermission(interaction: CommandInteraction): boolean {
     const member = interaction.member;
     if (!member || !("roles" in member)) return false;
@@ -317,15 +300,11 @@ function hasAdminPermission(interaction: CommandInteraction): boolean {
     return isSupport || isAdmin;
 }
 
-/**
- * Get target user for wallet check
- * Priority: 1) Specified user, 2) Ticket customer, 3) Command user
- */
 async function getTargetUser(
     interaction: CommandInteraction,
     specifiedUser: User | undefined
 ): Promise<{ user: User | null; discordId: string }> {
-    // If user was specified, use that
+    
     if (specifiedUser) {
         return {
             user: specifiedUser,
@@ -333,7 +312,6 @@ async function getTargetUser(
         };
     }
 
-    // Check if in ticket channel and user has admin permissions
     const channel = interaction.channel;
     const isTicketChannel = channel instanceof TextChannel &&
         (channel.name.startsWith(discordConfig.ticketChannelPrefix) || channel.name.startsWith("closed-"));
@@ -357,7 +335,6 @@ async function getTargetUser(
         }
     }
 
-    // Default: return the command user
     return {
         user: interaction.user,
         discordId: interaction.user.id,

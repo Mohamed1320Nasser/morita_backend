@@ -1,33 +1,22 @@
-/**
- * Pricing Pagination Utility
- *
- * Handles pagination for services with many pricing methods
- */
+
 
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
 import { PricingMethod } from '../types/discord.types';
 import logger from '../../common/loggers';
 
 export interface PaginationOptions {
-  /** Current page number (0-indexed) */
+  
   currentPage: number;
 
-  /** Items per page */
   itemsPerPage: number;
 
-  /** Total items */
   totalItems: number;
 
-  /** Service ID */
   serviceId: string;
 
-  /** Category ID */
   categoryId: string;
 }
 
-/**
- * Create pagination buttons for pricing
- */
 export function createPricingPaginationButtons(options: PaginationOptions): ActionRowBuilder<ButtonBuilder> {
   const { currentPage, itemsPerPage, totalItems, serviceId, categoryId } = options;
 
@@ -37,7 +26,6 @@ export function createPricingPaginationButtons(options: PaginationOptions): Acti
 
   const row = new ActionRowBuilder<ButtonBuilder>();
 
-  // Previous button
   row.addComponents(
     new ButtonBuilder()
       .setCustomId(`pricing_prev_${serviceId}_${categoryId}_${currentPage}`)
@@ -46,7 +34,6 @@ export function createPricingPaginationButtons(options: PaginationOptions): Acti
       .setDisabled(!hasPrevious)
   );
 
-  // Page indicator (disabled button showing current page)
   row.addComponents(
     new ButtonBuilder()
       .setCustomId(`pricing_page_indicator_${currentPage}`)
@@ -55,7 +42,6 @@ export function createPricingPaginationButtons(options: PaginationOptions): Acti
       .setDisabled(true)
   );
 
-  // Next button
   row.addComponents(
     new ButtonBuilder()
       .setCustomId(`pricing_next_${serviceId}_${categoryId}_${currentPage}`)
@@ -67,9 +53,6 @@ export function createPricingPaginationButtons(options: PaginationOptions): Acti
   return row;
 }
 
-/**
- * Create action buttons with pagination
- */
 export function createServiceActionButtonsWithPagination(
   serviceId: string,
   categoryId: string,
@@ -77,7 +60,6 @@ export function createServiceActionButtonsWithPagination(
 ): ActionRowBuilder<ButtonBuilder>[] {
   const rows: ActionRowBuilder<ButtonBuilder>[] = [];
 
-  // First row: Main action buttons
   const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(`open_ticket_${serviceId}_${categoryId}_0`)
@@ -94,7 +76,6 @@ export function createServiceActionButtonsWithPagination(
   );
   rows.push(actionRow);
 
-  // Second row: Pagination buttons (if needed)
   if (paginationOptions && paginationOptions.totalItems > paginationOptions.itemsPerPage) {
     rows.push(createPricingPaginationButtons(paginationOptions));
   }
@@ -102,9 +83,6 @@ export function createServiceActionButtonsWithPagination(
   return rows;
 }
 
-/**
- * Get paginated pricing methods
- */
 export function getPaginatedPricingMethods(
   pricingMethods: PricingMethod[],
   page: number,
@@ -115,9 +93,6 @@ export function getPaginatedPricingMethods(
   return pricingMethods.slice(startIndex, endIndex);
 }
 
-/**
- * Add pagination info to embed footer
- */
 export function addPaginationFooter(
   embed: EmbedBuilder,
   currentPage: number,
@@ -131,17 +106,13 @@ export function addPaginationFooter(
   });
 }
 
-/**
- * Parse pagination info from button customId
- */
 export function parsePaginationButtonId(customId: string): {
   action: 'prev' | 'next';
   serviceId: string;
   categoryId: string;
   currentPage: number;
 } | null {
-  // Format: pricing_prev_serviceId_categoryId_currentPage
-  // or: pricing_next_serviceId_categoryId_currentPage
+
   const match = customId.match(/^pricing_(prev|next)_([^_]+)_([^_]+)_(\d+)$/);
 
   if (!match) {
@@ -156,9 +127,6 @@ export function parsePaginationButtonId(customId: string): {
   };
 }
 
-/**
- * Calculate new page number based on action
- */
 export function calculateNewPage(
   action: 'prev' | 'next',
   currentPage: number,

@@ -2,7 +2,7 @@ import { Events, Client } from "discord.js";
 import { ChannelManagerService } from "../services/channelManager.service";
 import { startPricingSyncJob } from "../jobs/pricingSync.job";
 import { startCleanupJob } from "../jobs/cleanup.job";
-// Note: ResetManagerMonitor removed - no longer needed with ephemeral reply pattern
+
 import logger from "../../common/loggers";
 
 export default {
@@ -16,7 +16,6 @@ export default {
         const guilds = client.guilds.cache;
         logger.info(`Connected to ${guilds.size} guild(s)`);
 
-        // Health check
         try {
             const isHealthy = await client.apiService.healthCheck();
             if (isHealthy) {
@@ -28,29 +27,5 @@ export default {
             logger.error("❌ Backend API health check error:", error);
         }
 
-        // Note: SelectMenuResetManager monitoring removed.
-        // Using ephemeral reply pattern instead - industry standard approach.
-        // Benefits: Zero message edits, no race conditions, no API rate limits.
-
-        // Initialize pricing channel - OLD SYSTEM DISABLED
-        // The old channelManager has been replaced by improvedChannelManager
-        // Initialization now happens in index.ts
-        // try {
-        //     await client.channelManager.initializePricingChannel();
-        //     logger.info("✅ Pricing channel initialized");
-        // } catch (error) {
-        //     logger.error("❌ Error initializing pricing channel:", error);
-        // }
-
-        // Start background jobs - DISABLED (old system)
-        // Background sync is no longer needed - the improved channel manager
-        // uses real-time event-driven updates instead of periodic polling
-        // try {
-        //     startPricingSyncJob(client);
-        //     startCleanupJob(client);
-        //     logger.info("✅ Background jobs started");
-        // } catch (error) {
-        //     logger.error("❌ Error starting background jobs:", error);
-        // }
     },
 };

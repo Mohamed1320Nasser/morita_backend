@@ -6,7 +6,7 @@ export async function handleOrderFromPrice(
     interaction: ButtonInteraction
 ): Promise<void> {
     try {
-        // Extract service ID from button custom ID (assuming it's in the format 'order_from_price_<id>')
+        
         const serviceId = interaction.customId.replace("order_from_price_", "");
 
         if (!serviceId) {
@@ -17,7 +17,6 @@ export async function handleOrderFromPrice(
             return;
         }
 
-        // Create order details modal
         const modal = ComponentBuilder.createOrderDetailsModal();
         modal.setCustomId(`order_details_modal_${serviceId}`);
 

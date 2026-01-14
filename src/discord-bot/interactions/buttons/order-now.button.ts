@@ -6,7 +6,7 @@ export async function handleOrderNow(
     interaction: ButtonInteraction
 ): Promise<void> {
     try {
-        // Get service ID from button custom ID (assuming it's in the format 'order_now_<id>')
+        
         const serviceId = interaction.customId.replace("order_now_", "");
 
         if (!serviceId) {
@@ -17,10 +17,8 @@ export async function handleOrderNow(
             return;
         }
 
-        // Create order details modal
         const modal = ComponentBuilder.createOrderDetailsModal();
 
-        // Add service ID to modal custom ID for later reference
         modal.setCustomId(`order_details_modal_${serviceId}`);
 
         await interaction.showModal(modal as any);

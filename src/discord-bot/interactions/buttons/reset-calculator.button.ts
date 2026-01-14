@@ -9,7 +9,6 @@ export async function handleResetCalculator(
     try {
         await interaction.deferReply();
 
-        // Reset the pricing calculator to initial state
         const embed = EmbedBuilder.createPricingCalculatorEmbed({} as any);
         embed.setDescription(
             "Select your options to calculate the final price"

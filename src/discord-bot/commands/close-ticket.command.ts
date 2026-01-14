@@ -40,7 +40,6 @@ export default {
 
             const ticketService = getTicketService(interaction.client);
 
-            // Get ticket by channel ID
             const ticket = await ticketService.getTicketByChannelId(channel.id);
 
             if (!ticket) {
@@ -51,7 +50,6 @@ export default {
                 return;
             }
 
-            // Check permissions - customer, support, or admin can close
             const member = interaction.member;
             const isCustomer = ticket.customerDiscordId === interaction.user.id;
             const isSupport =
@@ -70,31 +68,28 @@ export default {
                 return;
             }
 
-            // Get the reason if provided
             const reason = interaction.options.get("reason")?.value as
                 | string
                 | undefined;
 
-            // Check if ticket has an associated order
             let associatedOrder = null;
             if (ticket.id) {
                 try {
-                    // Fetch order by ticketId
+                    
                     const orderResponse = await discordApiClient.get(
                         `/discord/orders/by-ticket/${ticket.id}`
                     );
                     associatedOrder = orderResponse.data?.data || orderResponse.data;
                 } catch (error: any) {
-                    // No order found - that's okay
+                    
                     if (error?.response?.status !== 404) {
                         logger.warn(`Error fetching order for ticket ${ticket.id}:`, error);
                     }
                 }
             }
 
-            // CUSTOMER RESTRICTIONS
             if (isCustomer && !isSupport && !isAdmin) {
-                // Customer can ONLY close if NO order exists
+                
                 if (associatedOrder) {
                     const orderStatus = associatedOrder.status;
 
@@ -114,12 +109,10 @@ export default {
                 }
             }
 
-            // SUPPORT/ADMIN WARNING - Show confirmation if order exists
             if ((isSupport || isAdmin) && associatedOrder) {
                 const orderStatus = associatedOrder.status;
                 const riskyStatuses = ['IN_PROGRESS', 'COMPLETED', 'READY_FOR_REVIEW'];
 
-                // If order is in a risky state, require confirmation
                 if (riskyStatuses.includes(orderStatus)) {
                     let warningTitle = "⚠️ Confirm Ticket Closure";
                     let warningDescription =
@@ -149,7 +142,6 @@ export default {
                         warningTitle
                     );
 
-                    // Create confirmation button with ticket ID and reason encoded
                     const confirmButton = new ButtonBuilder()
                         .setCustomId(`confirm_close_ticket_${ticket.id}_${reason || 'none'}`)
                         .setLabel("Confirm Close Ticket")
@@ -173,7 +165,6 @@ export default {
                 }
             }
 
-            // Close the ticket (no confirmation needed - safe to close)
             await ticketService.closeTicket(ticket.id, interaction.user, reason);
 
             await interaction.deleteReply();

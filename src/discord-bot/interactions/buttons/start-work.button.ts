@@ -13,7 +13,6 @@ export async function handleStartWork(interaction: ButtonInteraction): Promise<v
         const orderResponse: any = await discordApiClient.get(`/discord/orders/${orderId}`);
         const orderData = orderResponse.data || orderResponse;
 
-        // Validate worker
         if (!orderData.worker || orderData.worker.discordId !== workerDiscordId) {
             await interaction.editReply({
                 content: "❌ You are not the assigned worker for this order.",
@@ -21,7 +20,6 @@ export async function handleStartWork(interaction: ButtonInteraction): Promise<v
             return;
         }
 
-        // Validate status
         if (orderData.status !== "ASSIGNED") {
             await interaction.editReply({
                 content: `❌ Cannot start work. Order status is already: ${orderData.status}`,
@@ -29,7 +27,6 @@ export async function handleStartWork(interaction: ButtonInteraction): Promise<v
             return;
         }
 
-        // Use shared utility function
         const result = await startWorkOnOrder(
             interaction.client,
             orderId,
@@ -37,7 +34,6 @@ export async function handleStartWork(interaction: ButtonInteraction): Promise<v
             workerDiscordId
         );
 
-        // Send ephemeral response to worker
         await interaction.editReply({
             embeds: [result.ephemeralEmbed.toJSON() as any],
             components: [result.completeButton.toJSON() as any],

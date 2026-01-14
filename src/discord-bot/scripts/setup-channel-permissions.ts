@@ -4,9 +4,8 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-// Permission templates for different channel types
 const PERMISSION_TEMPLATES = {
-    // Everyone can see, Customer+ can chat
+    
     PUBLIC_CUSTOMER: {
         "@everyone": {
             ViewChannel: true,
@@ -23,7 +22,6 @@ const PERMISSION_TEMPLATES = {
         },
     },
 
-    // Everyone can see, no one can chat (read-only)
     PUBLIC_READONLY: {
         "@everyone": {
             ViewChannel: true,
@@ -32,7 +30,6 @@ const PERMISSION_TEMPLATES = {
         },
     },
 
-    // Customers + Workers can see and interact (Workers have higher hierarchy)
     CUSTOMER_ONLY: {
         "@everyone": {
             ViewChannel: false,
@@ -55,7 +52,6 @@ const PERMISSION_TEMPLATES = {
         },
     },
 
-    // Only Workers can see and interact
     WORKER_ONLY: {
         "@everyone": {
             ViewChannel: false,
@@ -70,7 +66,6 @@ const PERMISSION_TEMPLATES = {
         },
     },
 
-    // Only Support + Admin can see
     STAFF_ONLY: {
         "@everyone": {
             ViewChannel: false,
@@ -97,7 +92,6 @@ const PERMISSION_TEMPLATES = {
     },
 };
 
-// Channel configuration mapping
 interface ChannelConfig {
     envKey: string;
     name: string;
@@ -168,7 +162,6 @@ const CHANNEL_CONFIGS: ChannelConfig[] = [
     },
 ];
 
-// Convert permission name to Discord PermissionsBitField
 function getPermissionFlag(permName: string): bigint {
     const permMap: { [key: string]: bigint } = {
         ViewChannel: PermissionsBitField.Flags.ViewChannel,
@@ -184,30 +177,11 @@ function getPermissionFlag(permName: string): bigint {
     return permMap[permName] || 0n;
 }
 
-// Preview permissions without applying
 function previewPermissions(dryRun: boolean = true) {
-    console.log("\n" + "=".repeat(80));
-    console.log("📋 CHANNEL PERMISSION CONFIGURATION PREVIEW");
-    console.log("=".repeat(80) + "\n");
-
-    console.log("🔑 Roles from .env:");
-    console.log(`  • Customer Role: ${process.env.DISCORD_CUSTOMER_ROLE_ID || "NOT SET"}`);
-    console.log(`  • Worker Role: ${process.env.DISCORD_WORKERS_ROLE_ID || "NOT SET"}`);
-    console.log(`  • Support Role: ${process.env.DISCORD_SUPPORT_ROLE_ID || "NOT SET"}`);
-    console.log(`  • Admin Role: ${process.env.DISCORD_ADMIN_ROLE_ID || "NOT SET"}`);
-    console.log();
-
-    console.log("📺 Channels to Configure:\n");
 
     CHANNEL_CONFIGS.forEach((config, index) => {
         const channelId = process.env[config.envKey];
         const template = PERMISSION_TEMPLATES[config.template];
-
-        console.log(`${index + 1}. #${config.name}`);
-        console.log(`   Channel ID: ${channelId || "⚠️  NOT SET IN .ENV"}`);
-        console.log(`   Type: ${config.template}`);
-        console.log(`   Description: ${config.description}`);
-        console.log(`   Permissions:`);
 
         Object.entries(template).forEach(([roleKey, perms]) => {
             let roleName = roleKey;
@@ -216,26 +190,17 @@ function previewPermissions(dryRun: boolean = true) {
             if (roleKey === "SUPPORT") roleName = "Support Role";
             if (roleKey === "ADMIN") roleName = "Admin Role";
 
-            console.log(`     ${roleName}:`);
             Object.entries(perms).forEach(([perm, value]) => {
                 const icon = value ? "✅" : "❌";
-                console.log(`       ${icon} ${perm}`);
             });
         });
-        console.log();
     });
 
-    console.log("=".repeat(80));
-
     if (dryRun) {
-        console.log("\n⚠️  DRY RUN MODE - No changes will be made");
-        console.log("To apply these permissions, run: npm run setup:permissions -- --apply\n");
     } else {
-        console.log("\n✅ Ready to apply permissions to all channels\n");
     }
 }
 
-// Apply permissions to channels
 async function applyPermissions(client: Client) {
     const guild = client.guilds.cache.first();
     if (!guild) {
@@ -313,7 +278,6 @@ async function applyPermissions(client: Client) {
                 });
             }
 
-            // Apply permission overwrites
             await channel.permissionOverwrites.set(overwrites);
 
             logger.info(`[Permissions] ✅ Successfully configured #${config.name}`);
@@ -327,21 +291,17 @@ async function applyPermissions(client: Client) {
     logger.info(`\n[Permissions] Configuration complete: ${successCount} successful, ${errorCount} failed`);
 }
 
-// Main execution
 async function main() {
     const args = process.argv.slice(2);
     const applyMode = args.includes("--apply");
 
     if (!applyMode) {
-        // Preview mode - just show what will be done
+        
         previewPermissions(true);
         return;
     }
 
-    // Apply mode - actually configure permissions
     previewPermissions(false);
-
-    console.log("⏳ Connecting to Discord...\n");
 
     const client = new Client({
         intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
@@ -363,7 +323,6 @@ async function main() {
     await client.login(process.env.DISCORD_BOT_TOKEN);
 }
 
-// Run script
 main().catch((error) => {
     console.error("Fatal error:", error);
     process.exit(1);

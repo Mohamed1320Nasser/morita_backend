@@ -10,43 +10,30 @@ import { TicketType } from "../../types/discord.types";
 import { discordApiClient } from "../../clients/DiscordApiClient";
 import { CustomFieldDefinition } from "../../../api/ticketTypeSettings/dtos";
 
-// Cache for modal building to prevent duplicate API calls
 const modalCache = new Map<string, { modal: ModalBuilder; timestamp: number }>();
-const CACHE_TTL = 30000; // 30 seconds
+const CACHE_TTL = 30000; 
 
-/**
- * Handle Create Ticket button clicks
- * Supports all ticket types:
- * - PURCHASE_SERVICES_OSRS, PURCHASE_SERVICES_RS3
- * - BUY_GOLD_OSRS, BUY_GOLD_RS3
- * - SELL_GOLD_OSRS, SELL_GOLD_RS3
- * - SWAP_CRYPTO
- */
 export async function handleCreateTicket(
     interaction: ButtonInteraction
 ): Promise<void> {
     try {
-        // Extract ticket type from customId
-        // Format: create_ticket_PURCHASE_SERVICES_OSRS
+
         const ticketType = interaction.customId.replace("create_ticket_", "") as TicketType;
 
         logger.info(`[CreateTicket] Opening modal for ${ticketType} by ${interaction.user.tag}`);
 
-        // Build modal based on ticket type (use cache to avoid duplicate API calls)
         const modal = await buildModalForTicketTypeCached(ticketType);
 
         await interaction.showModal(modal as any);
     } catch (error: any) {
         logger.error("[CreateTicket] Error showing modal:", error);
 
-        // Check if error is due to interaction timeout
         if (error.message?.includes('Unknown interaction') || error.code === 10062) {
             logger.warn("[CreateTicket] Interaction expired - user may need to click button again");
-            // Can't reply - interaction is expired
+            
             return;
         }
 
-        // Only try to reply if interaction wasn't acknowledged yet
         if (!interaction.replied && !interaction.deferred) {
             try {
                 await interaction.reply({
@@ -60,38 +47,28 @@ export async function handleCreateTicket(
     }
 }
 
-/**
- * Build modal with caching to prevent duplicate API calls
- */
 async function buildModalForTicketTypeCached(ticketType: TicketType): Promise<ModalBuilder> {
     const now = Date.now();
     const cached = modalCache.get(ticketType);
 
-    // Check cache
     if (cached && (now - cached.timestamp) < CACHE_TTL) {
         logger.info(`[CreateTicket] Using cached modal for ${ticketType}`);
-        // Return a NEW instance with same structure but different ID
+        
         return cloneModal(cached.modal, ticketType);
     }
 
-    // Build fresh modal
     const modal = await buildModalForTicketType(ticketType);
 
-    // Cache it
     modalCache.set(ticketType, { modal, timestamp: now });
 
     return modal;
 }
 
-/**
- * Clone modal with new ID (Discord requires unique modal IDs per interaction)
- */
 function cloneModal(originalModal: ModalBuilder, ticketType: TicketType): ModalBuilder {
     const modal = new ModalBuilder()
         .setCustomId(`ticket_modal_${ticketType}`)
         .setTitle(originalModal.data.title || getModalTitle(ticketType));
 
-    // Copy all components
     if (originalModal.data.components) {
         modal.addComponents(...(originalModal.data.components as any));
     }
@@ -99,35 +76,31 @@ function cloneModal(originalModal: ModalBuilder, ticketType: TicketType): ModalB
     return modal;
 }
 
-/**
- * Build modal based on ticket type (fetch custom fields from API)
- */
 async function buildModalForTicketType(ticketType: TicketType): Promise<ModalBuilder> {
     const modal = new ModalBuilder()
         .setCustomId(`ticket_modal_${ticketType}`)
         .setTitle(getModalTitle(ticketType));
 
     try {
-        // Fetch custom fields from API
+        
         const response: any = await discordApiClient.get(
             `/discord/ticket-type-settings/${ticketType}/custom-fields`
         );
 
-        // HttpClient interceptor already unwrapped response.data, so response IS the data
         const customFieldsData = response?.data;
 
         if (customFieldsData && customFieldsData.fields && customFieldsData.fields.length > 0) {
-            // Use custom fields from database
+            
             const fields = buildFieldsFromCustomDefinitions(customFieldsData.fields);
-            modal.addComponents(...fields.slice(0, 5)); // Discord max 5 components per modal
+            modal.addComponents(...fields.slice(0, 5)); 
         } else {
-            // Fallback to hardcoded fields
+            
             const fields = getModalFields(ticketType);
             modal.addComponents(...fields);
         }
     } catch (error) {
         logger.warn(`[CreateTicket] Failed to fetch custom fields for ${ticketType}, using defaults:`, error);
-        // Fallback to hardcoded fields
+        
         const fields = getModalFields(ticketType);
         modal.addComponents(...fields);
     }
@@ -135,47 +108,39 @@ async function buildModalForTicketType(ticketType: TicketType): Promise<ModalBui
     return modal;
 }
 
-/**
- * Build modal fields from custom field definitions
- */
 function buildFieldsFromCustomDefinitions(
     customFields: CustomFieldDefinition[]
 ): ActionRowBuilder<TextInputBuilder>[] {
     const rows: ActionRowBuilder<TextInputBuilder>[] = [];
 
-    // Discord modals support max 5 action rows
     for (let i = 0; i < Math.min(customFields.length, 5); i++) {
         const field = customFields[i];
 
         const input = new TextInputBuilder()
             .setCustomId(field.id)
-            .setLabel(field.label.slice(0, 45)) // Discord limit: 45 chars
+            .setLabel(field.label.slice(0, 45)) 
             .setRequired(field.required);
 
-        // Set placeholder if provided (Discord limit: 100 chars)
         if (field.placeholder) {
             input.setPlaceholder(field.placeholder.slice(0, 100));
         }
 
-        // Set style based on type
         if (field.type === "textarea") {
             input.setStyle(TextInputStyle.Paragraph);
         } else {
             input.setStyle(TextInputStyle.Short);
         }
 
-        // Set max length if provided (Discord limit: 4000)
         if (field.maxLength) {
             input.setMaxLength(Math.min(field.maxLength, 4000));
         }
 
-        // Set min/max for number fields (as value constraints)
         if (field.type === "number") {
             if (field.min !== undefined) {
-                input.setMinLength(1); // At least 1 character for numbers
+                input.setMinLength(1); 
             }
             if (field.max !== undefined) {
-                input.setMaxLength(20); // Reasonable max for numbers
+                input.setMaxLength(20); 
             }
         }
 
@@ -185,9 +150,6 @@ function buildFieldsFromCustomDefinitions(
     return rows;
 }
 
-/**
- * Get modal title based on ticket type
- */
 function getModalTitle(ticketType: TicketType): string {
     switch (ticketType) {
         case TicketType.PURCHASE_SERVICES_OSRS:
@@ -209,15 +171,12 @@ function getModalTitle(ticketType: TicketType): string {
     }
 }
 
-/**
- * Get modal fields based on ticket type
- */
 function getModalFields(ticketType: TicketType): ActionRowBuilder<TextInputBuilder>[] {
-    // Common fields
+    
     const rows: ActionRowBuilder<TextInputBuilder>[] = [];
 
     if (ticketType === TicketType.PURCHASE_SERVICES_OSRS || ticketType === TicketType.PURCHASE_SERVICES_RS3) {
-        // SERVICE ORDER FORM
+        
         rows.push(
             new ActionRowBuilder<TextInputBuilder>().addComponents(
                 new TextInputBuilder()
@@ -248,7 +207,7 @@ function getModalFields(ticketType: TicketType): ActionRowBuilder<TextInputBuild
             )
         );
     } else if (ticketType === TicketType.BUY_GOLD_OSRS || ticketType === TicketType.BUY_GOLD_RS3) {
-        // BUY GOLD FORM
+        
         rows.push(
             new ActionRowBuilder<TextInputBuilder>().addComponents(
                 new TextInputBuilder()
@@ -288,7 +247,7 @@ function getModalFields(ticketType: TicketType): ActionRowBuilder<TextInputBuild
             )
         );
     } else if (ticketType === TicketType.SELL_GOLD_OSRS || ticketType === TicketType.SELL_GOLD_RS3) {
-        // SELL GOLD FORM
+        
         rows.push(
             new ActionRowBuilder<TextInputBuilder>().addComponents(
                 new TextInputBuilder()
@@ -328,7 +287,7 @@ function getModalFields(ticketType: TicketType): ActionRowBuilder<TextInputBuild
             )
         );
     } else if (ticketType === TicketType.SWAP_CRYPTO) {
-        // CRYPTO SWAP FORM
+        
         rows.push(
             new ActionRowBuilder<TextInputBuilder>().addComponents(
                 new TextInputBuilder()

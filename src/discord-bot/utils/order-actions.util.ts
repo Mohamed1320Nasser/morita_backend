@@ -13,10 +13,6 @@ import { discordApiClient } from "../clients/DiscordApiClient";
 import { getOrderChannelService } from "../services/orderChannel.service";
 import { notifySupportOrderUpdate } from "./notification.util";
 
-/**
- * Shared utility for starting work on an order
- * Used by both /start-work command and "Start Work" button
- */
 export async function startWorkOnOrder(
     client: Client,
     orderId: string,
@@ -29,16 +25,14 @@ export async function startWorkOnOrder(
 }> {
     logger.info(`[StartWorkUtil] Worker ${workerDiscordId} starting work on order #${orderData.orderNumber}`);
 
-    // Update order status to IN_PROGRESS
     await discordApiClient.put(`/discord/orders/${orderId}/status`, {
         status: "IN_PROGRESS",
         workerDiscordId,
         reason: `Worker started work on Order #${orderData.orderNumber}`,
     });
 
-    // Create beautiful ephemeral success embed
     const ephemeralEmbed = new EmbedBuilder()
-        .setColor(0x57f287) // Green
+        .setColor(0x57f287) 
         .setTitle("✅ 🚀 Work Started")
         .setDescription(`✅ You've started work on Order #${orderData.orderNumber}!`)
         .addFields([
@@ -48,7 +42,6 @@ export async function startWorkOnOrder(
         .setTimestamp()
         .setFooter({ text: "Good luck with the job!" });
 
-    // Create Mark Complete button
     const completeButton = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
             .setCustomId(`mark_complete_${orderId}`)
@@ -56,7 +49,6 @@ export async function startWorkOnOrder(
             .setStyle(ButtonStyle.Success)
     );
 
-    // Update pinned message in order channel
     if (orderData.discordChannelId) {
         try {
             const orderChannelService = getOrderChannelService(client);
@@ -79,7 +71,6 @@ export async function startWorkOnOrder(
             logger.error("[StartWorkUtil] Failed to update pinned message:", updateError);
         }
 
-        // Send public message to order channel
         try {
             const orderChannel = await client.channels.fetch(orderData.discordChannelId) as TextChannel;
             await orderChannel.send({
@@ -90,7 +81,6 @@ export async function startWorkOnOrder(
         }
     }
 
-    // Notify support/admin about work started
     await notifySupportOrderUpdate(client, {
         orderNumber: orderData.orderNumber,
         orderId,
@@ -111,10 +101,6 @@ export async function startWorkOnOrder(
     };
 }
 
-/**
- * Shared utility for completing work on an order
- * Used by both /complete-work command and "Mark Complete" button/modal
- */
 export async function completeWorkOnOrder(
     client: Client,
     orderId: string,
@@ -128,7 +114,6 @@ export async function completeWorkOnOrder(
 }> {
     logger.info(`[CompleteWorkUtil] Worker ${workerDiscordId} completing order #${orderData.orderNumber}`);
 
-    // Complete work - change status to AWAITING_CONFIRM
     const completeResponse: any = await discordApiClient.put(`/discord/orders/${orderId}/complete`, {
         workerDiscordId,
         completionNotes,
@@ -137,7 +122,6 @@ export async function completeWorkOnOrder(
     const completedOrder = completeResponse.data || completeResponse;
     const orderValue = parseFloat(orderData.orderValue);
 
-    // Create worker success embed (NO PAYOUT INFO - as requested)
     const workerEmbed = new EmbedBuilder()
         .setTitle("✅ Work Completed!")
         .setDescription(`You've marked Order #${orderData.orderNumber} as complete!`)
@@ -148,13 +132,12 @@ export async function completeWorkOnOrder(
         .addFields([
             { name: "⏳ Next Step", value: "Waiting for customer to confirm completion", inline: false },
         ])
-        .setColor(0xf59e0b) // Orange
+        .setColor(0xf59e0b) 
         .setTimestamp();
 
-    // Send notification in order channel with thread
     if (orderChannel) {
         try {
-            // Update pinned message (remove buttons)
+            
             if (orderData.pinnedMessageId) {
                 try {
                     const pinnedMessage = await orderChannel.messages.fetch(orderData.pinnedMessageId);
@@ -182,7 +165,7 @@ export async function completeWorkOnOrder(
 
                     await pinnedMessage.edit({
                         embeds: [updatedEmbed.toJSON() as any],
-                        components: [], // Remove all buttons
+                        components: [], 
                     });
 
                     logger.info(`[CompleteWorkUtil] Updated pinned message ${orderData.pinnedMessageId}`);
@@ -191,15 +174,13 @@ export async function completeWorkOnOrder(
                 }
             }
 
-            // Create thread for completion review
             const thread = await orderChannel.threads.create({
                 name: `Order #${orderData.orderNumber} - Completion Review`,
-                autoArchiveDuration: 1440, // 24 hours
+                autoArchiveDuration: 1440, 
                 reason: 'Order completion review thread',
-                type: 11, // Public thread
+                type: 11, 
             });
 
-            // Send order info in thread
             const orderInfoEmbed = new EmbedBuilder()
                 .setTitle(`📦 Order #${orderData.orderNumber} Completed`)
                 .setDescription(`<@${orderData.customer.discordId}>, the worker has finished your order!`)
@@ -223,7 +204,6 @@ export async function completeWorkOnOrder(
                 embeds: [orderInfoEmbed.toJSON() as any],
             });
 
-            // Send action buttons
             const confirmButton = new ButtonBuilder()
                 .setCustomId(`confirm_complete_${orderId}`)
                 .setLabel("✅ Confirm Complete")
@@ -247,7 +227,6 @@ export async function completeWorkOnOrder(
                 components: [buttonRow.toJSON() as any],
             });
 
-            // Send public completion message with thread link
             await orderChannel.send({
                 content: `✅ <@${orderData.worker.discordId}> has completed Order #${orderData.orderNumber}\n\n📋 Review thread: ${thread.toString()}`,
             });
@@ -258,7 +237,6 @@ export async function completeWorkOnOrder(
         }
     }
 
-    // Notify support/admin
     await notifySupportOrderUpdate(client, {
         orderNumber: orderData.orderNumber,
         orderId,
@@ -279,11 +257,6 @@ export async function completeWorkOnOrder(
     };
 }
 
-/**
- * Shared utility for confirming order completion
- * Used by both customer "Confirm Complete" button and admin "Approve Work" resolution
- * Handles all Discord notifications and updates after order is confirmed
- */
 export async function confirmOrderCompletion(
     client: Client,
     orderId: string,
@@ -300,9 +273,8 @@ export async function confirmOrderCompletion(
     logger.info(`[ConfirmOrderUtil] Confirming order #${orderData.orderNumber} by ${confirmedByDiscordId}`);
 
     const orderValue = parseFloat(orderData.orderValue);
-    const workerPayout = orderValue * 0.8; // 80%
+    const workerPayout = orderValue * 0.8; 
 
-    // Create customer confirmation embed
     const customerEmbed = new EmbedBuilder()
         .setTitle("✅ Order Confirmed!")
         .setDescription(
@@ -314,11 +286,10 @@ export async function confirmOrderCompletion(
             { name: "💰 Order Value", value: `$${orderValue.toFixed(2)} USD`, inline: true },
             { name: "📊 Status", value: "✅ COMPLETED", inline: true },
         ])
-        .setColor(0x57f287) // Green
+        .setColor(0x57f287) 
         .setTimestamp()
         .setFooter({ text: "Thank you for your business!" });
 
-    // Update pinned message in order channel
     if (orderChannel && orderData.pinnedMessageId) {
         try {
             const pinnedMessage = await orderChannel.messages.fetch(orderData.pinnedMessageId);
@@ -354,7 +325,7 @@ export async function confirmOrderCompletion(
             await pinnedMessage.edit({
                 content: `✅ Order completed and confirmed`,
                 embeds: [completionEmbed.toJSON() as any],
-                components: [], // Remove all buttons
+                components: [], 
             });
 
             logger.info(`[ConfirmOrderUtil] Updated pinned message ${orderData.pinnedMessageId}`);
@@ -363,7 +334,6 @@ export async function confirmOrderCompletion(
         }
     }
 
-    // Send celebration message in order channel
     if (orderChannel) {
         try {
             await orderChannel.send({
@@ -385,7 +355,6 @@ export async function confirmOrderCompletion(
         }
     }
 
-    // Send DM to customer
     try {
         const customerUser = await client.users.fetch(orderData.customer.discordId);
 
@@ -428,7 +397,6 @@ export async function confirmOrderCompletion(
         logger.warn(`[ConfirmOrderUtil] Could not send DM to customer:`, dmError);
     }
 
-    // Send DM to worker
     try {
         const workerUser = await client.users.fetch(orderData.worker.discordId);
 
@@ -465,7 +433,6 @@ export async function confirmOrderCompletion(
         logger.warn(`[ConfirmOrderUtil] Could not send DM to worker:`, dmError);
     }
 
-    // Notify support
     await notifySupportOrderUpdate(client, {
         orderNumber: orderData.orderNumber,
         orderId,
@@ -477,7 +444,6 @@ export async function confirmOrderCompletion(
         actionBy: confirmedByDiscordId,
     });
 
-    // Send review request in thread (if available) or order channel
     if (sendReviewRequest) {
         const targetChannel = reviewThread || orderChannel;
 

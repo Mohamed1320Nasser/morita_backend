@@ -39,7 +39,6 @@ async function execute(interaction: ChatInputCommandInteraction) {
             `[CompleteWork] Worker ${interaction.user.tag} completing order #${orderNumber}`
         );
 
-        // Find order by order number
         const orderSearch = await findOrderByNumber(orderNumber);
 
         if (!orderSearch) {
@@ -51,7 +50,6 @@ async function execute(interaction: ChatInputCommandInteraction) {
 
         const { orderId, orderData } = orderSearch;
 
-        // Validate worker is assigned to this order
         if (!orderData.worker || orderData.worker.discordId !== workerDiscordId) {
             await interaction.editReply({
                 content: `❌ You are not the assigned worker for Order **#${orderNumber}**.\n\nThis order is assigned to: ${orderData.worker ? orderData.worker.fullname : "No one"}`,
@@ -59,7 +57,6 @@ async function execute(interaction: ChatInputCommandInteraction) {
             return;
         }
 
-        // Validate order status
         if (orderData.status !== "IN_PROGRESS") {
             await interaction.editReply({
                 content: `❌ Cannot mark Order **#${orderNumber}** as complete.\n\nCurrent status: \`${orderData.status}\`\n\n${
@@ -71,10 +68,8 @@ async function execute(interaction: ChatInputCommandInteraction) {
             return;
         }
 
-        // Get order channel if available
         const orderChannel = interaction.channel instanceof TextChannel ? interaction.channel : undefined;
 
-        // Use shared utility function
         const completeResult = await completeWorkOnOrder(
             interaction.client,
             orderId,
@@ -84,7 +79,6 @@ async function execute(interaction: ChatInputCommandInteraction) {
             orderChannel
         );
 
-        // Send ephemeral response to worker
         await interaction.editReply({
             embeds: [completeResult.workerEmbed.toJSON() as any],
         });

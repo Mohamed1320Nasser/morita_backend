@@ -1,13 +1,5 @@
-/**
- * Calculator Command Messages
- *
- * Centralized messages for price calculator commands (!s, !p, !m, !i, !q)
- * Provides consistent, user-friendly error messages and help text.
- */
 
-/**
- * Command format examples for help messages
- */
+
 export const COMMAND_EXAMPLES = {
   SKILLS: '!s agility 70-99',
   BOSSING: '!p cox 120',
@@ -17,9 +9,6 @@ export const COMMAND_EXAMPLES = {
   QUEST_BATCH: '!q desert treasure 1, monkey madness, infernal cape',
 } as const;
 
-/**
- * Error messages for invalid command formats
- */
 export const INVALID_FORMAT_ERRORS = {
   SKILLS: () =>
     `❌ **Invalid Command Format**\n\n` +
@@ -47,9 +36,6 @@ export const INVALID_FORMAT_ERRORS = {
     `**Multiple Quests:** \`${COMMAND_EXAMPLES.QUEST_BATCH}\``,
 } as const;
 
-/**
- * Error messages for invalid parameters
- */
 export const INVALID_PARAMETER_ERRORS = {
   LEVEL_RANGE: () =>
     `❌ **Invalid Level Range**\n\n` +
@@ -80,9 +66,6 @@ export const INVALID_PARAMETER_ERRORS = {
     `**Example:** \`1000\``,
 } as const;
 
-/**
- * Error messages for service not found
- */
 export const SERVICE_NOT_FOUND_ERRORS = {
   GENERIC: (serviceName: string) =>
     `❌ **Service Not Found**\n\n` +
@@ -111,9 +94,6 @@ export const SERVICE_NOT_FOUND_ERRORS = {
     `**Searched for:** ${questNames.join(', ')}`,
 } as const;
 
-/**
- * Calculation error messages
- */
 export const CALCULATION_ERRORS = {
   GENERIC: () =>
     `❌ **Calculation Error**\n\n` +
@@ -137,9 +117,6 @@ export const CALCULATION_ERRORS = {
     `Please contact support.`,
 } as const;
 
-/**
- * Status messages
- */
 export const STATUS_MESSAGES = {
   CALCULATING: '🔢 Calculating price...',
   FETCHING_QUOTE: '💰 Fetching price quote...',
@@ -147,9 +124,6 @@ export const STATUS_MESSAGES = {
   FETCHING_IRONMAN: '🔗 Calculating Ironman service price...',
 } as const;
 
-/**
- * Success message helpers
- */
 export const SUCCESS_MESSAGES = {
   QUEST_NOTE: () =>
     `ℹ️ **Note**\n` +
@@ -162,9 +136,6 @@ export const SUCCESS_MESSAGES = {
     `Contact support for detailed breakdown!`,
 } as const;
 
-/**
- * Helper to format "Could not find" message for batch requests
- */
 export function formatNotFoundMessage(notFound: string[]): string {
   if (notFound.length === 0) {
     return '';

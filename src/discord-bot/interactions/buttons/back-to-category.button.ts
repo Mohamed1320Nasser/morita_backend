@@ -6,19 +6,16 @@ export async function handleBackToCategory(
     interaction: ButtonInteraction
 ): Promise<void> {
     try {
-        // Extract category ID from customId (format: back_to_category_{categoryId})
+        
         const categoryId = interaction.customId.replace("back_to_category_", "");
 
         logger.info(
             `[BackToCategory] User ${interaction.user.tag} dismissed service details for category: ${categoryId}`
         );
 
-        // Clear auto-delete timeout (user dismissed manually)
         const messageId = `${interaction.id}`;
         pricingMessageTracker.clearTimeout(messageId);
 
-        // Simply dismiss the ephemeral message (like Discord's "Dismiss message" button)
-        // No confirmation message needed - just delete it immediately
         await interaction.deferUpdate();
         await interaction.deleteReply();
 
@@ -27,7 +24,6 @@ export async function handleBackToCategory(
     } catch (error) {
         logger.error("[BackToCategory] Error dismissing message:", error);
 
-        // Fallback: try to delete anyway
         try {
             if (!interaction.replied && !interaction.deferred) {
                 await interaction.deferUpdate();

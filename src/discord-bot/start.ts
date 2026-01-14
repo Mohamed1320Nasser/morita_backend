@@ -46,7 +46,6 @@ if (!discordConfig.validate()) {
 }
 logger.info("Discord configuration validated");
 
-// Import the client and startBot function
 import { startBot } from "./index";
 import discordClient from "./index";
 import prisma from "../common/prisma/client";
@@ -54,16 +53,12 @@ import prisma from "../common/prisma/client";
 logger.info("Discord bot startup script loaded - starting bot explicitly...");
 startBot();
 
-// ============================================
-// BOT HTTP API SERVER (for Discord channel management)
-// ============================================
 const BOT_API_PORT = process.env.BOT_API_PORT || 3002;
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Health check
 app.get("/health", (req, res) => {
     res.json({
         status: "ok",
@@ -72,12 +67,10 @@ app.get("/health", (req, res) => {
     });
 });
 
-// Get all channels status
 app.get("/discord/channels/status", async (req, res) => {
     try {
         const isConnected = discordClient.isReady();
 
-        // Get all channel statuses from database
         let dbStatuses: any[] = [];
         try {
             dbStatuses = await (prisma as any).discordChannelPublishStatus.findMany();
@@ -85,10 +78,8 @@ app.get("/discord/channels/status", async (req, res) => {
             logger.debug("[Bot API] Channel status table not found");
         }
 
-        // Build status for each channel type
         const channels: any[] = [];
 
-        // Pricing Channel
         const pricingStatus = dbStatuses.find(s => s.channelType === "PRICING");
         const pricingChannel = isConnected && discordConfig.pricingChannelId
             ? discordClient.channels.cache.get(discordConfig.pricingChannelId)
@@ -105,7 +96,6 @@ app.get("/discord/channels/status", async (req, res) => {
             lastError: pricingStatus?.lastError || null,
         });
 
-        // TOS Channel
         const tosStatus = dbStatuses.find(s => s.channelType === "TOS");
         const tosChannel = isConnected && onboardingConfig.tosChannelId
             ? discordClient.channels.cache.get(onboardingConfig.tosChannelId)
@@ -122,7 +112,6 @@ app.get("/discord/channels/status", async (req, res) => {
             lastError: tosStatus?.lastError || null,
         });
 
-        // Ticket Channels
         const ticketsStatus = dbStatuses.find(s => s.channelType === "TICKETS");
         const ticketCategory = isConnected && discordConfig.createTicketCategoryId
             ? discordClient.channels.cache.get(discordConfig.createTicketCategoryId)
@@ -153,7 +142,6 @@ app.get("/discord/channels/status", async (req, res) => {
     }
 });
 
-// Helper function to update channel status in database
 async function updateChannelStatus(
     channelType: "PRICING" | "TOS" | "TICKETS",
     data: {
@@ -191,7 +179,6 @@ async function updateChannelStatus(
     }
 }
 
-// Publish pricing channel
 app.post("/discord/channels/publish/pricing", async (req, res) => {
     try {
         if (!discordClient.isReady()) {
@@ -225,7 +212,6 @@ app.post("/discord/channels/publish/pricing", async (req, res) => {
     }
 });
 
-// Publish TOS channel
 app.post("/discord/channels/publish/tos", async (req, res) => {
     try {
         if (!discordClient.isReady()) {
@@ -256,7 +242,6 @@ app.post("/discord/channels/publish/tos", async (req, res) => {
     }
 });
 
-// Publish ticket channels
 app.post("/discord/channels/publish/tickets", async (req, res) => {
     try {
         if (!discordClient.isReady()) {
@@ -287,11 +272,9 @@ app.post("/discord/channels/publish/tickets", async (req, res) => {
     }
 });
 
-// Publish all channels
 app.post("/discord/channels/publish/all", async (req, res) => {
     const results: { channel: string; success: boolean; error?: string }[] = [];
 
-    // Publish pricing
     try {
         if (discordClient.isReady() && discordClient.improvedChannelManager) {
             await discordClient.improvedChannelManager.rebuildChannel();
@@ -313,7 +296,6 @@ app.post("/discord/channels/publish/all", async (req, res) => {
         results.push({ channel: "PRICING", success: false, error: error.message });
     }
 
-    // Publish TOS
     try {
         if (discordClient.isReady() && discordClient.tosManager) {
             await discordClient.tosManager.publishTos();
@@ -333,7 +315,6 @@ app.post("/discord/channels/publish/all", async (req, res) => {
         results.push({ channel: "TOS", success: false, error: error.message });
     }
 
-    // Publish Tickets
     try {
         if (discordClient.isReady() && discordClient.ticketCategoryManager) {
             await discordClient.ticketCategoryManager.publishTickets();
@@ -361,7 +342,6 @@ app.post("/discord/channels/publish/all", async (req, res) => {
     });
 });
 
-// Start the bot API server
 app.listen(BOT_API_PORT, () => {
     logger.info(`[Bot API] Discord bot API server running on port ${BOT_API_PORT}`);
 });

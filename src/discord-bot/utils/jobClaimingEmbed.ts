@@ -12,9 +12,6 @@ export interface JobClaimingData {
     customerDiscordId: string;
 }
 
-/**
- * Deposit tier configuration
- */
 export enum DepositTier {
     LOW = "LOW",
     MEDIUM = "MEDIUM",
@@ -29,37 +26,34 @@ export interface DepositTierInfo {
     color: number;
 }
 
-/**
- * Determine deposit tier based on amount
- */
 export function getDepositTier(depositAmount: number): DepositTierInfo {
     if (depositAmount < 50) {
         return {
             tier: DepositTier.LOW,
             emoji: "🟢",
             label: "Low Deposit",
-            color: 0x57f287 // Green
+            color: 0x57f287 
         };
     } else if (depositAmount < 100) {
         return {
             tier: DepositTier.MEDIUM,
             emoji: "🟡",
             label: "Medium Deposit",
-            color: 0xf59e0b // Orange/Yellow
+            color: 0xf59e0b 
         };
     } else if (depositAmount < 200) {
         return {
             tier: DepositTier.HIGH,
             emoji: "🟠",
             label: "High Deposit",
-            color: 0xe67e22 // Orange
+            color: 0xe67e22 
         };
     } else {
         return {
             tier: DepositTier.VERY_HIGH,
             emoji: "🔴",
             label: "Very High Deposit",
-            color: 0xed4245 // Red
+            color: 0xed4245 
         };
     }
 }
@@ -72,7 +66,7 @@ export function createJobClaimingEmbed(data: JobClaimingData): EmbedBuilder {
         logger.error(`[JobClaimingEmbed] Missing orderNumber!`, data);
     }
 
-    const workerPayout = data.orderValue * 0.8; // 80% payout
+    const workerPayout = data.orderValue * 0.8; 
     const tierInfo = getDepositTier(data.depositAmount);
 
     const embed = new EmbedBuilder()
@@ -104,7 +98,7 @@ export function createJobClaimingEmbed(data: JobClaimingData): EmbedBuilder {
                 inline: true,
             },
         ])
-        .setColor(tierInfo.color) // Color based on deposit tier
+        .setColor(tierInfo.color) 
         .setTimestamp()
         .setFooter({
             text: data.orderId ?
@@ -122,7 +116,6 @@ export function createJobClaimingEmbed(data: JobClaimingData): EmbedBuilder {
         ]);
     }
 
-    // Add tier-specific eligibility information
     let tierDescription = "";
     switch (tierInfo.tier) {
         case DepositTier.LOW:
@@ -157,9 +150,6 @@ export function createJobClaimingEmbed(data: JobClaimingData): EmbedBuilder {
     return embed;
 }
 
-/**
- * Creates a claim button for job claiming
- */
 export function createClaimButton(orderId: string, disabled: boolean = false): ActionRowBuilder<ButtonBuilder> {
     const button = new ButtonBuilder()
         .setCustomId(`claim_job_${orderId}`)
@@ -170,9 +160,6 @@ export function createClaimButton(orderId: string, disabled: boolean = false): A
     return new ActionRowBuilder<ButtonBuilder>().addComponents(button);
 }
 
-/**
- * Creates a claimed embed (after job is claimed)
- */
 export function createJobClaimedEmbed(data: JobClaimingData, workerDiscordId: string, claimedAt: Date): EmbedBuilder {
     const embed = new EmbedBuilder()
         .setTitle("✅ JOB CLAIMED")
@@ -201,7 +188,7 @@ export function createJobClaimedEmbed(data: JobClaimingData, workerDiscordId: st
                 inline: true,
             },
         ])
-        .setColor(0x57f287) // Green color for claimed jobs
+        .setColor(0x57f287) 
         .setTimestamp()
         .setFooter({ text: `Order ID: ${data.orderId}` });
 

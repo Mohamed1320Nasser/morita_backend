@@ -1,13 +1,12 @@
-// Bot response messages
+
 export const MESSAGES = {
-    // General
+    
     WELCOME: "🎮 Welcome to Morita Gaming Services!",
     LOADING: "⏳ Loading...",
     ERROR: "❌ An error occurred. Please try again later.",
     SUCCESS: "✅ Success!",
     CANCELLED: "❌ Operation cancelled.",
 
-    // Services
     SERVICES_TITLE: "🎮 Morita Services",
     SERVICES_SUBTITLE: "Professional OSRS Services & Premium Gaming Solutions",
     SELECT_CATEGORY: "Select a service category to browse:",
@@ -15,7 +14,6 @@ export const MESSAGES = {
     NO_SERVICES: "No services available in this category.",
     SERVICE_DETAILS: "Service Details",
 
-    // Pricing
     PRICING_TITLE: "💰 Price Calculator",
     SELECT_METHOD: "Select pricing method:",
     SELECT_PAYMENT: "Select payment method:",
@@ -28,7 +26,6 @@ export const MESSAGES = {
     TOTAL_PRICE: "Total Price",
     NO_MODIFIERS: "No modifiers applied",
 
-    // Orders
     ORDER_TITLE: "📝 Order Details",
     ORDER_CONFIRMATION: "Order Confirmation",
     ORDER_CREATED: "Order created successfully!",
@@ -41,7 +38,6 @@ export const MESSAGES = {
     CONFIRM_ORDER: "Confirm Order",
     CANCEL_ORDER: "Cancel Order",
 
-    // Tickets
     TICKET_CREATED: "🎫 Ticket created successfully!",
     TICKET_TITLE: "Order Ticket",
     ORDER_STATUS: "Order Status",
@@ -54,7 +50,6 @@ export const MESSAGES = {
     UPDATE_STATUS: "Update Status",
     COMPLETE_ORDER: "Complete Order",
 
-    // Errors
     INVALID_SERVICE: "Invalid service selected.",
     INVALID_METHOD: "Invalid pricing method selected.",
     INVALID_PAYMENT: "Invalid payment method selected.",
@@ -65,13 +60,11 @@ export const MESSAGES = {
     PERMISSION_ERROR: "You do not have permission to perform this action.",
     VALIDATION_ERROR: "Please provide valid information.",
 
-    // Success messages
     PRICE_CALCULATED: "Price calculated successfully!",
     ORDER_SUBMITTED: "Order submitted successfully!",
     TICKET_OPENED: "Ticket opened successfully!",
     STATUS_UPDATED: "Status updated successfully!",
 
-    // Help
     HELP_TITLE: "🤖 Morita Bot Help",
     HELP_DESCRIPTION: "Here are the available commands:",
     COMMANDS: {
@@ -102,7 +95,6 @@ export const MESSAGES = {
         },
     },
 
-    // Footer messages
     FOOTER: {
         BRAND: "Morita Gaming Services",
         WEBSITE: "https://morita-gaming.com",
@@ -110,7 +102,6 @@ export const MESSAGES = {
         POWERED_BY: "Powered by Morita Bot",
     },
 
-    // Status messages
     STATUS: {
         PENDING: "⏳ Pending",
         IN_PROGRESS: "🔄 In Progress",
@@ -118,7 +109,6 @@ export const MESSAGES = {
         CANCELLED: "❌ Cancelled",
     },
 
-    // Payment methods
     PAYMENT: {
         CRYPTO: "💎 Crypto",
         NON_CRYPTO: "💳 Non-Crypto",
@@ -128,7 +118,6 @@ export const MESSAGES = {
         BANK_TRANSFER: "🏦 Bank Transfer",
     },
 
-    // Pricing units
     PRICING_UNITS: {
         FIXED: "Fixed Price",
         PER_LEVEL: "Per Level",

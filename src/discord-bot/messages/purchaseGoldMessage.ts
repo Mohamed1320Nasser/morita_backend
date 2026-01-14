@@ -5,11 +5,11 @@ import {
 } from "../utils/ticketTypeHelper";
 
 export async function buildPurchaseGoldMessage() {
-    // Fetch active ticket types for the buy-gold group
+    
     const activeTypes = await getActiveTicketTypesForGroup("buy-gold");
 
     const embed = new EmbedBuilder()
-        .setColor(0xF1C40F) // Gold color
+        .setColor(0xF1C40F) 
         .setTitle("💰 Buy OSRS & RS3 Gold Instantly - Safe & Easy!")
         .setDescription(
             "**💵 Want to Buy OSRS or RS3 Gold? Here's How:**\n\n" +
@@ -35,7 +35,6 @@ export async function buildPurchaseGoldMessage() {
         })
         .setTimestamp();
 
-    // Build buttons dynamically
     const buttons = buildButtonsFromTicketTypes(activeTypes);
 
     if (buttons.length === 0) {

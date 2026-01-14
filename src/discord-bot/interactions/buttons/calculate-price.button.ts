@@ -2,9 +2,6 @@ import { ButtonInteraction, EmbedBuilder } from "discord.js";
 import logger from "../../../common/loggers";
 import { discordConfig } from "../../config/discord.config";
 
-/**
- * Error types that indicate an interaction is no longer valid
- */
 const INTERACTION_EXPIRED_ERRORS = [
     "unknown interaction",
     "interaction has already been acknowledged",
@@ -12,9 +9,6 @@ const INTERACTION_EXPIRED_ERRORS = [
     "unknown message",
 ];
 
-/**
- * Check if an error indicates the interaction expired
- */
 function isInteractionExpiredError(error: unknown): boolean {
     if (!(error instanceof Error)) return false;
     const message = error.message.toLowerCase();
@@ -25,11 +19,11 @@ export async function handleCalculatePrice(
     interaction: ButtonInteraction
 ): Promise<void> {
     try {
-        // Get service ID from button custom ID (format: 'calculate_price_<id>')
+        
         const serviceId = interaction.customId.replace("calculate_price_", "");
 
         if (!serviceId) {
-            // Try to reply, but handle expired interactions
+            
             try {
                 await interaction.reply({
                     content: "Invalid service selection. Please try again.",
@@ -45,7 +39,6 @@ export async function handleCalculatePrice(
             return;
         }
 
-        // Fetch service to get the name
         const service =
             await interaction.client.apiService.getServiceWithPricing(serviceId);
 
@@ -57,7 +50,6 @@ export async function handleCalculatePrice(
             return;
         }
 
-        // Determine which calculator command to use based on pricing type
         const pricingMethod = service.pricingMethods?.[0];
         let commandExample = '';
         let commandType = '';
@@ -73,7 +65,6 @@ export async function handleCalculatePrice(
             return;
         }
 
-        // Determine command type based on pricing unit
         switch (pricingMethod.pricingUnit) {
             case 'PER_LEVEL':
                 commandType = 'Skills Calculator';
@@ -84,7 +75,7 @@ export async function handleCalculatePrice(
                 commandExample = `!p ${service.name.toLowerCase()} 100`;
                 break;
             case 'PER_ITEM':
-                // Check if it's Ironman category
+                
                 if (service.category?.slug?.includes('ironman')) {
                     commandType = 'Ironman Calculator';
                     commandExample = `!i ${service.name.toLowerCase()} 1000`;
@@ -102,9 +93,8 @@ export async function handleCalculatePrice(
                 commandExample = `!s ${service.name.toLowerCase()} 70-99`;
         }
 
-        // Build beautiful calculator redirect embed with clean design
         const embed = new EmbedBuilder()
-            .setColor(0x5865F2) // Discord Blurple - professional look
+            .setColor(0x5865F2) 
             .setTitle(`💰 ${service.emoji || '⭐'} ${service.name} Price Calculator`)
             .setDescription(
                 `> **Get instant pricing** for **${service.name}**!\n` +
@@ -120,7 +110,7 @@ export async function handleCalculatePrice(
                     inline: false,
                 },
                 {
-                    name: '\u200B', // Spacer
+                    name: '\u200B', 
                     value: '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
                     inline: false,
                 },
@@ -134,7 +124,7 @@ export async function handleCalculatePrice(
                     inline: false,
                 },
                 {
-                    name: '\u200B', // Spacer
+                    name: '\u200B', 
                     value: '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
                     inline: false,
                 },
@@ -163,7 +153,7 @@ export async function handleCalculatePrice(
                     inline: false,
                 },
                 {
-                    name: '\u200B', // Spacer
+                    name: '\u200B', 
                     value: '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
                     inline: false,
                 },
@@ -183,8 +173,6 @@ export async function handleCalculatePrice(
             })
             .setTimestamp();
 
-        // Send ephemeral reply with calculator instructions
-        // Wrap in try/catch to handle expired interactions
         try {
             await interaction.reply({
                 embeds: [embed.toJSON() as any],
@@ -206,8 +194,6 @@ export async function handleCalculatePrice(
     } catch (error) {
         logger.error("Error handling calculate price button:", error);
 
-        // If interaction not replied yet, reply with error
-        // Wrap in try/catch to handle expired interactions
         if (!interaction.replied && !interaction.deferred) {
             try {
                 await interaction.reply({
@@ -219,7 +205,7 @@ export async function handleCalculatePrice(
                     logger.debug("[CalculatePrice] Interaction expired during error reply");
                     return;
                 }
-                // Log but don't throw - we're already in error handling
+                
                 logger.error("[CalculatePrice] Failed to send error reply:", errorReplyError);
             }
         }

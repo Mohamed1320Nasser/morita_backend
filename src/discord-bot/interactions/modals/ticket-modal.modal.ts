@@ -3,22 +3,18 @@ import logger from "../../../common/loggers";
 import { getTicketService } from "../../services/ticket.service";
 import { TicketType, TicketMetadata } from "../../types/discord.types";
 
-/**
- * Handle ticket modal submissions for all ticket types
- */
 export async function handleTicketModal(
     interaction: ModalSubmitInteraction
 ): Promise<void> {
-    // Extract ticket type early (before defer)
+    
     const ticketType = interaction.customId.replace("ticket_modal_", "") as TicketType;
     logger.info(`[TicketModal] Processing ${ticketType} for ${interaction.user.tag}`);
 
     try {
-        // Immediately defer the reply to prevent timeout
+        
         await interaction.deferReply({ ephemeral: true });
         logger.info(`[TicketModal] Deferred reply for ${ticketType}`);
 
-        // Get guild
         const guild = interaction.guild;
         if (!guild) {
             await interaction.editReply({
@@ -27,13 +23,10 @@ export async function handleTicketModal(
             return;
         }
 
-        // Extract form data based on ticket type
         const { customerNotes, metadata, serviceId, categoryId } = extractFormData(interaction, ticketType);
 
-        // Get ticket service
         const ticketService = getTicketService(interaction.client);
 
-        // Create ticket with type
         const { channel, ticket } = await ticketService.createTicketChannelWithType(
             guild,
             interaction.user,
@@ -48,7 +41,6 @@ export async function handleTicketModal(
             metadata
         );
 
-        // Reply to user with embed
         const ticketNumber = ticket.ticketNumber.toString().padStart(4, "0");
         const successEmbed = new DiscordEmbedBuilder()
             .setColor(0x57f287)
@@ -70,15 +62,14 @@ export async function handleTicketModal(
     } catch (error: any) {
         logger.error("[TicketModal] Error creating ticket:", error);
 
-        // Check if error is due to interaction timeout
         if (error.message?.includes('Unknown interaction') || error.code === 10062) {
             logger.warn("[TicketModal] Interaction expired before we could respond");
-            // Can't reply - interaction is expired
+            
             return;
         }
 
         try {
-            // Only try to edit reply if interaction was deferred successfully
+            
             if (interaction.deferred || interaction.replied) {
                 await interaction.editReply({
                     content: "❌ Failed to create ticket. Please try again or contact support directly.",
@@ -95,9 +86,6 @@ export async function handleTicketModal(
     }
 }
 
-/**
- * Extract form data based on ticket type (dynamically based on form fields)
- */
 function extractFormData(
     interaction: ModalSubmitInteraction,
     ticketType: TicketType
@@ -112,11 +100,10 @@ function extractFormData(
     let serviceId: string | undefined;
     let categoryId: string | undefined;
 
-    // Extract all fields from the modal dynamically
     const fieldMap: Record<string, string> = {};
 
     try {
-        // Get all components from the modal
+        
         interaction.fields.fields.forEach((field, key) => {
             try {
                 const value = interaction.fields.getTextInputValue(key);
@@ -124,14 +111,13 @@ function extractFormData(
                     fieldMap[key] = value;
                 }
             } catch (e) {
-                // Field doesn't exist or is empty
+                
             }
         });
     } catch (error) {
         logger.warn("[TicketModal] Error extracting fields:", error);
     }
 
-    // Map common fields to metadata
     if (fieldMap["gold_amount"]) {
         metadata.goldAmount = parseFloat(fieldMap["gold_amount"]);
     }
@@ -154,7 +140,7 @@ function extractFormData(
         metadata.cryptoType = fieldMap["crypto_type"];
     }
     if (fieldMap["amount"]) {
-        // Could be crypto amount or general amount
+        
         const amountValue = parseFloat(fieldMap["amount"]);
         if (!isNaN(amountValue)) {
             metadata.cryptoAmount = amountValue;
@@ -167,10 +153,9 @@ function extractFormData(
         metadata.specialNotes = fieldMap["additional_notes"] || fieldMap["special_notes"];
     }
 
-    // Build readable customer notes from all fields
     Object.entries(fieldMap).forEach(([key, value]) => {
         if (value) {
-            // Convert field key to readable label
+            
             const label = key
                 .split("_")
                 .map(word => word.charAt(0).toUpperCase() + word.slice(1))
@@ -180,7 +165,6 @@ function extractFormData(
         }
     });
 
-    // Set default categories based on ticket type
     if (ticketType === TicketType.PURCHASE_SERVICES_OSRS || ticketType === TicketType.PURCHASE_SERVICES_RS3) {
         categoryId = process.env.DEFAULT_SERVICE_CATEGORY_ID;
     } else if (ticketType === TicketType.BUY_GOLD_OSRS || ticketType === TicketType.BUY_GOLD_RS3 ||
@@ -190,12 +174,10 @@ function extractFormData(
         categoryId = process.env.CRYPTO_CATEGORY_ID;
     }
 
-    // If no fields extracted, add a default note
     const customerNotes = customerNotesLines.length > 0
         ? customerNotesLines.join("\n")
         : `**Ticket Type:** ${getTicketTypeLabel(ticketType)}`;
 
-    // Store all raw field data in metadata for future reference
     if (Object.keys(fieldMap).length > 0) {
         metadata.internalNotes = JSON.stringify(fieldMap);
     }
@@ -203,9 +185,6 @@ function extractFormData(
     return { customerNotes, metadata, serviceId, categoryId };
 }
 
-/**
- * Get user-friendly ticket type label
- */
 function getTicketTypeLabel(ticketType: TicketType): string {
     switch (ticketType) {
         case TicketType.PURCHASE_SERVICES_OSRS:

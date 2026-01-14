@@ -12,19 +12,17 @@ import { ImprovedChannelManager } from "../services/improvedChannelManager.servi
 import { TicketCategoryManager } from "../services/ticketCategoryManager.service";
 import { TosManagerService } from "../services/tosManager.service";
 
-// Extend Discord client with custom properties
 declare module "discord.js" {
     interface Client {
         commands: Collection<string, Command>;
         apiService: ApiService;
-        channelManager: ChannelManagerService; // Legacy (keep for compatibility)
-        improvedChannelManager: ImprovedChannelManager; // New real-time system
-        ticketCategoryManager: TicketCategoryManager; // Multi-type ticket channels
-        tosManager: TosManagerService; // TOS/Onboarding channel manager
+        channelManager: ChannelManagerService; 
+        improvedChannelManager: ImprovedChannelManager; 
+        ticketCategoryManager: TicketCategoryManager; 
+        tosManager: TosManagerService; 
     }
 }
 
-// Command interface
 export interface Command {
     data: {
         name: string;
@@ -34,25 +32,21 @@ export interface Command {
     execute: (interaction: CommandInteraction) => Promise<void>;
 }
 
-// Button interaction interface
 export interface Button {
     customId: string;
     execute: (interaction: ButtonInteraction) => Promise<void>;
 }
 
-// Select menu interaction interface
 export interface SelectMenu {
     customId: string;
     execute: (interaction: SelectMenuInteraction) => Promise<void>;
 }
 
-// Modal interaction interface
 export interface Modal {
     customId: string;
     execute: (interaction: ModalSubmitInteraction) => Promise<void>;
 }
 
-// Service category type
 export interface ServiceCategory {
     id: string;
     name: string;
@@ -65,7 +59,6 @@ export interface ServiceCategory {
     services?: Service[];
 }
 
-// Service modifier type (applies to all methods in the service)
 export interface ServiceModifier {
     id: string;
     name: string;
@@ -77,7 +70,6 @@ export interface ServiceModifier {
     active: boolean;
 }
 
-// Service type
 export interface Service {
     id: string;
     name: string;
@@ -92,35 +84,32 @@ export interface Service {
     pricingMethods?: PricingMethod[];
 }
 
-// Pricing method type
 export interface PricingMethod {
     id: string;
     name: string;
-    groupName?: string; // Group name for organizing methods (e.g., "BANDOS", "ARMA - Armadyl")
+    groupName?: string; 
     description?: string;
     basePrice: number;
     pricingUnit: "FIXED" | "PER_LEVEL" | "PER_KILL" | "PER_ITEM" | "PER_HOUR";
-    startLevel?: number; // Starting level for level-based pricing
-    endLevel?: number; // Ending level for level-based pricing
+    startLevel?: number; 
+    endLevel?: number; 
     displayOrder: number;
     active: boolean;
     modifiers?: PricingModifier[];
     methodPrices?: MethodPrice[];
 }
 
-// Pricing modifier type
 export interface PricingModifier {
     id: string;
     name: string;
     modifierType: "PERCENTAGE" | "FIXED";
     value: number;
     condition?: string;
-    displayType?: "NORMAL" | "UPCHARGE" | "DISCOUNT" | "NOTE" | "WARNING"; // How to display this modifier
+    displayType?: "NORMAL" | "UPCHARGE" | "DISCOUNT" | "NOTE" | "WARNING"; 
     priority: number;
     active: boolean;
 }
 
-// Payment method type
 export interface PaymentMethod {
     id: string;
     name: string;
@@ -128,14 +117,12 @@ export interface PaymentMethod {
     active: boolean;
 }
 
-// Method price type
 export interface MethodPrice {
     id: string;
     price: number;
     paymentMethod: PaymentMethod;
 }
 
-// Price calculation request
 export interface PriceCalculationRequest {
     methodId: string;
     paymentMethodId: string;
@@ -143,7 +130,6 @@ export interface PriceCalculationRequest {
     customConditions?: Record<string, any>;
 }
 
-// Price calculation result
 export interface PriceCalculationResult {
     basePrice: number;
     finalPrice: number;
@@ -186,7 +172,6 @@ export interface PriceCalculationResult {
     };
 }
 
-// Order data type
 export interface OrderData {
     serviceId: string;
     methodId: string;
@@ -197,7 +182,6 @@ export interface OrderData {
     totalPrice: number;
 }
 
-// Ticket Type enum
 export enum TicketType {
     PURCHASE_SERVICES_OSRS = "PURCHASE_SERVICES_OSRS",
     PURCHASE_SERVICES_RS3 = "PURCHASE_SERVICES_RS3",
@@ -209,7 +193,6 @@ export enum TicketType {
     GENERAL = "GENERAL",
 }
 
-// Ticket data type
 export interface TicketData {
     orderId: string;
     customerId: string;
@@ -217,7 +200,7 @@ export interface TicketData {
     totalPrice: number;
     status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
     channelId?: string;
-    ticketType?: TicketType; // NEW
+    ticketType?: TicketType; 
     accountData?: {
         username: string;
         password: string;
@@ -226,7 +209,6 @@ export interface TicketData {
     };
 }
 
-// Ticket metadata for gold/crypto transactions
 export interface TicketMetadata {
     goldAmount?: number;
     goldRate?: number;

@@ -3,20 +3,9 @@ import { discordConfig } from "../config/discord.config";
 import { onboardingConfig } from "../config/onboarding.config";
 import logger from "../../common/loggers";
 
-/**
- * This script automatically configures Discord channel permissions for the onboarding flow.
- *
- * What it does:
- * 1. Finds @everyone role and Customer role
- * 2. Sets up #TERMS-OF-SERVICES channel permissions
- * 3. Configures all other channels to be hidden from @everyone, visible to Customer role
- *
- * Run this script with: npm run setup:permissions
- */
-
 const CHANNELS_TO_EXCLUDE_FROM_CUSTOMER = [
-    onboardingConfig.tosChannelId, // TOS channel - only visible to new members
-    // Add other admin/staff-only channels here if needed
+    onboardingConfig.tosChannelId, 
+    
 ];
 
 async function setupOnboardingPermissions() {
@@ -30,11 +19,9 @@ async function setupOnboardingPermissions() {
     try {
         logger.info("=== Starting Discord Onboarding Permissions Setup ===");
 
-        // Login to Discord
         logger.info("Logging in to Discord...");
         await client.login(discordConfig.token);
 
-        // Wait for client to be ready
         await new Promise<void>((resolve) => {
             client.once("ready", () => {
                 logger.info(`✅ Logged in as ${client.user?.tag}`);
@@ -46,18 +33,14 @@ async function setupOnboardingPermissions() {
             throw new Error("Client user is not available");
         }
 
-        // Get the guild
         const guild = await client.guilds.fetch(discordConfig.guildId);
         logger.info(`✅ Found guild: ${guild.name}`);
 
-        // Fetch all roles
         await guild.roles.fetch();
 
-        // Get @everyone role (always exists, ID = guild.id)
         const everyoneRole = guild.roles.everyone;
         logger.info(`✅ Found @everyone role (ID: ${everyoneRole.id})`);
 
-        // Get Customer role
         if (!onboardingConfig.customerRoleId) {
             throw new Error("DISCORD_CUSTOMER_ROLE_ID not configured in environment variables");
         }
@@ -68,16 +51,13 @@ async function setupOnboardingPermissions() {
         }
         logger.info(`✅ Found Customer role: ${customerRole.name} (ID: ${customerRole.id})`);
 
-        // Get Bot role (current bot's highest role)
         const botMember = await guild.members.fetch(client.user.id);
         const botRole = botMember.roles.highest;
         logger.info(`✅ Bot role: ${botRole.name} (ID: ${botRole.id})`);
 
-        // Fetch all channels
         const channels = await guild.channels.fetch();
         logger.info(`✅ Found ${channels.size} channels`);
 
-        // Get TOS channel
         if (!onboardingConfig.tosChannelId) {
             throw new Error("DISCORD_TOS_CHANNEL_ID not configured in environment variables");
         }
@@ -92,9 +72,8 @@ async function setupOnboardingPermissions() {
 
         let updatedChannels = 0;
 
-        // Configure each channel
         for (const [channelId, channel] of channels) {
-            // Skip non-text channels (categories, voice, etc.) for now
+            
             if (
                 !channel ||
                 channel.type === ChannelType.GuildCategory ||
@@ -110,7 +89,7 @@ async function setupOnboardingPermissions() {
                 logger.info(`Configuring: #${channel.name}`);
 
                 if (isTosChannel) {
-                    // TOS Channel: @everyone can view (read-only), Customer cannot view
+                    
                     await channel.permissionOverwrites.set([
                         {
                             id: everyoneRole.id,
@@ -142,7 +121,7 @@ async function setupOnboardingPermissions() {
 
                     logger.info(`  ✅ #${channel.name}: @everyone can view (read-only), Customer hidden`);
                 } else {
-                    // All other channels: @everyone cannot view, Customer can view
+                    
                     await channel.permissionOverwrites.set([
                         {
                             id: everyoneRole.id,
@@ -198,5 +177,4 @@ async function setupOnboardingPermissions() {
     }
 }
 
-// Run the script
 setupOnboardingPermissions();

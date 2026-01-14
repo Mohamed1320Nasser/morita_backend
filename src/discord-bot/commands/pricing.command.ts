@@ -23,10 +23,10 @@ export default {
                 ?.value as string;
 
             if (serviceName) {
-                // Direct service pricing calculation
+                
                 await handleDirectPricing(interaction, serviceName);
             } else {
-                // Show service selection
+                
                 await handleServiceSelection(interaction);
             }
 
@@ -56,7 +56,7 @@ async function handleDirectPricing(
     serviceName: string
 ) {
     try {
-        // Search for service by name
+        
         const services = await interaction.client.apiService.getServices();
         const service = services.find(
             s =>
@@ -73,7 +73,6 @@ async function handleDirectPricing(
             return;
         }
 
-        // Get service with pricing details
         const serviceWithPricing =
             await interaction.client.apiService.getServiceById(service.id);
 
@@ -89,7 +88,6 @@ async function handleDirectPricing(
             return;
         }
 
-        // Create pricing calculator embed
         const embed =
             EmbedBuilder.createPricingCalculatorEmbed(serviceWithPricing);
         const methodSelectMenu = ComponentBuilder.createMethodSelectMenu(
@@ -109,7 +107,7 @@ async function handleDirectPricing(
 
 async function handleServiceSelection(interaction: CommandInteraction) {
     try {
-        // Get all services
+        
         const services = await interaction.client.apiService.getServices();
 
         if (!services || services.length === 0) {
@@ -121,7 +119,6 @@ async function handleServiceSelection(interaction: CommandInteraction) {
             return;
         }
 
-        // Create service selection embed
         const embed = EmbedBuilder.createServicesEmbed([]);
         embed.setTitle("💰 Price Calculator");
         embed.setDescription("Select a service to calculate pricing:");

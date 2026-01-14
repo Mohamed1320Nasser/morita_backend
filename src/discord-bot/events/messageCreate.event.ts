@@ -17,41 +17,37 @@ const apiService = new ApiService(discordConfig.apiBaseUrl);
 export default {
     name: Events.MessageCreate,
     async execute(message: Message) {
-        // Ignore bot messages
         if (message.author.bot) return;
 
         const prefix = discordConfig.prefix;
         const content = message.content.toLowerCase();
 
-        // Check if message starts with any calculator command (!s, !p, !m, !i, !q)
         const commandMatch = content.match(/^!([spmiq])\s+/);
         if (!commandMatch) return;
 
-        const commandType = commandMatch[1]; // s, p, m, i, or q
+        const commandType = commandMatch[1];
 
-        // If calculator channel is configured, only respond in that channel
         if (discordConfig.calculatorChannelId) {
             if (message.channelId !== discordConfig.calculatorChannelId) {
-                return; // Silently ignore if not in calculator channel
+                return;
             }
         }
 
         try {
-            // Route to appropriate handler based on command type
             switch (commandType) {
-                case 's': // Skills - PER_LEVEL
+                case 's':
                     await handleSkillsCommand(message, apiService);
                     break;
-                case 'p': // PvM/Bossing - PER_KILL
+                case 'p':
                     await handleBossingCommand(message, apiService);
                     break;
-                case 'm': // Minigames - PER_ITEM
+                case 'm':
                     await handleMinigamesCommand(message, apiService);
                     break;
-                case 'i': // Ironman - PER_ITEM (filtered by category)
+                case 'i':
                     await handleIronmanCommand(message, apiService);
                     break;
-                case 'q': // Quote - FIXED price
+                case 'q':
                     await handleQuoteCommand(message, apiService);
                     break;
                 default:
@@ -74,7 +70,6 @@ export default {
     },
 };
 
-// Handler for !s command (Skills - PER_LEVEL pricing)
 async function handleSkillsCommand(message: Message, apiService: ApiService) {
     const prefix = discordConfig.prefix;
     const args = message.content.slice(prefix.length + 2).trim().split(/\s+/);
@@ -88,7 +83,6 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
         return;
     }
 
-    // Parse service name (can have multiple words before level range)
     const lastArg = args[args.length - 1];
     const levelMatch = lastArg.match(/^(\d+)-(\d+)$/);
 
@@ -104,12 +98,7 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
     const startLevel = parseInt(levelMatch[1]);
     const endLevel = parseInt(levelMatch[2]);
 
-    // Service name is everything except the last argument
     const serviceName = args.slice(0, -1).join(" ").toLowerCase();
-
-    logger.info(`[PriceCalculator] Command: !s ${serviceName} ${startLevel}-${endLevel} by ${message.author.tag}`);
-
-    // Validate levels
     if (startLevel < 1 || startLevel > 99 || endLevel < 1 || endLevel > 99) {
         await sendInvalidParameterError(
             message,
@@ -130,19 +119,15 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
         return;
     }
 
-    // Send "calculating..." message
     const thinkingMsg = await message.reply("🔢 Calculating price...");
 
-    // Get all services to find matching service
     const services = await apiService.getAllServicesWithPricing();
 
-    // Find service by name or slug - prioritize exact matches
     let service = services.find((s: any) =>
         s.name.toLowerCase() === serviceName ||
         s.slug.toLowerCase() === serviceName
     );
 
-    // If no exact match, try partial match
     if (!service) {
         service = services.find((s: any) =>
             s.name.toLowerCase().includes(serviceName) ||
@@ -150,12 +135,8 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
         );
     }
 
-    // If still no service found, check if serviceName is a groupName
     let groupNameToUse: string | undefined = undefined;
     if (!service) {
-        logger.info(`[PriceCalculator] 🔍 Service not found, checking if "${serviceName}" is a groupName`);
-
-        // Search for methods with this groupName across all services
         for (const s of services) {
             const methodWithGroup = s.pricingMethods?.find((m: any) =>
                 m.groupName && m.groupName.toLowerCase() === serviceName
@@ -164,7 +145,6 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
             if (methodWithGroup) {
                 service = s;
                 groupNameToUse = methodWithGroup.groupName;
-                logger.info(`[PriceCalculator] ✅ Found groupName "${groupNameToUse}" in service "${service.name}"`);
                 break;
             }
         }
@@ -181,54 +161,40 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
         return;
     }
 
-    // Call the pricing calculator service directly (avoids HTTP overhead and same-process issues)
     try {
-        logger.info(`[PriceCalculator] Calculating with serviceId: ${service.id}, levels: ${startLevel}-${endLevel}`);
-
-        // Create a new instance of the pricing service (no dependencies)
         const pricingService = new PricingCalculatorService();
 
-        // Call the service method directly
         const result = await pricingService.calculateLevelRangePrice({
             serviceId: service.id,
             startLevel,
             endLevel,
-            groupName: groupNameToUse, // Pass groupName if found
+            groupName: groupNameToUse,
+            skipModifiers: true, // Disable modifiers for calculator commands
         });
 
-        logger.info('[PriceCalculator] Calculation completed successfully');
         const data = result;
 
-        // Validate response structure
         if (!data || !data.service) {
-            logger.error('[PriceCalculator] Invalid API response structure:');
-            logger.error('[PriceCalculator] result:', JSON.stringify(result, null, 2));
-            logger.error('[PriceCalculator] data:', JSON.stringify(data, null, 2));
+            logger.error('[PriceCalculator] Invalid API response structure');
             throw new Error('Invalid response from pricing calculator API');
         }
 
-        // Build the calculator result embed (MMOGoldHut style)
         const embed = new EmbedBuilder()
             .setTitle(`${data.service.emoji || '⭐'} ${data.service.name} Calculator`)
-            .setColor(0xfca311) // Orange color from MMOGoldHut
+            .setColor(0xfca311)
             .setTimestamp();
 
-        // Calculate total discount/upcharge from all methods to show at top
         const cheapestMethod = data.methodOptions?.find((m: any) => m.isCheapest);
         const allDiscounts = cheapestMethod?.modifiers?.filter((m: any) => m.applied && Number(m.value) < 0) || [];
         const totalDiscountPercent = allDiscounts.reduce((sum: number, mod: any) =>
             mod.type === 'PERCENTAGE' ? sum + Math.abs(Number(mod.value)) : sum, 0
         );
 
-        logger.info('[PriceCalculator] Total discount percent: ' + totalDiscountPercent);
-
-        // Add level range, XP required, and discount (if any)
         let levelRangeValue =
             `**${data.levels.start}  →  ${data.levels.end}**\n` +
             `\`\`\`ansi\n\u001b[36m${data.levels.formattedXp} XP Required\u001b[0m\n\`\`\``;
 
         if (totalDiscountPercent > 0) {
-            logger.info('[PriceCalculator] ✅ Adding discount to display: ' + totalDiscountPercent.toFixed(1) + '%');
             levelRangeValue += `\`\`\`ansi\n\u001b[32mDiscount: ${totalDiscountPercent.toFixed(1)}%\u001b[0m\n\`\`\``;
         }
 
@@ -238,22 +204,16 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
             inline: false,
         });
 
-        // Add each method option as a separate choice
         if (data.methodOptions && data.methodOptions.length > 0) {
-            // Build pricing display - group by method name (groupName)
             const priceLines: string[] = [];
 
-            // Get only individual segments (not Optimal Combination)
             const individualSegments = data.methodOptions.filter((m: any) => {
-                // Skip "Optimal Combination" and other combined methods
                 return m.methodName.includes('(') && m.methodName.includes('-') && m.methodName.includes(')');
             });
 
-            // Group segments by method name (extract base name before level range)
             const groupedMethods: { [key: string]: any[] } = {};
 
             for (const method of individualSegments) {
-                // Extract base method name: "Barbarian Fishing (50-58)" -> "Barbarian Fishing"
                 const baseNameMatch = method.methodName.match(/^(.+?)\s*\(\d+-\d+\)$/);
                 const baseName = baseNameMatch ? baseNameMatch[1].trim() : method.methodName;
 
@@ -263,22 +223,17 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
                 groupedMethods[baseName].push(method);
             }
 
-            // Display grouped methods (like MMOGoldHut style)
             for (const [groupName, methods] of Object.entries(groupedMethods)) {
-                // Sort methods by start level
                 methods.sort((a, b) => {
                     const aMatch = a.methodName.match(/\((\d+)-\d+\)/);
                     const bMatch = b.methodName.match(/\((\d+)-\d+\)/);
                     return (aMatch ? parseInt(aMatch[1]) : 0) - (bMatch ? parseInt(bMatch[1]) : 0);
                 });
 
-                // Calculate total price for this group
                 const totalPrice = methods.reduce((sum, m) => sum + m.finalPrice, 0);
 
-                // Add group header
                 priceLines.push(`**${groupName}**`);
 
-                // Add level ranges with price for each method in the group
                 for (const method of methods) {
                     const levelMatch = method.methodName.match(/\((\d+-\d+)\)/);
                     const levelRange = levelMatch ? levelMatch[1] : '';
@@ -286,12 +241,10 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
                     priceLines.push(`  📊 [ ${levelRange} ] — $${price}`);
                 }
 
-                // Add total price for the group
                 priceLines.push(`  💰 **Total: $${totalPrice.toFixed(2)}**`);
-                priceLines.push(''); // Spacing between groups
+                priceLines.push('');
             }
 
-            // Remove last empty line
             if (priceLines.length > 0) {
                 priceLines.pop();
 
@@ -302,10 +255,7 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
                 });
             }
 
-            // Show beautiful breakdown for cheapest COMPLETE option (not partial segments)
-            // Filter to only methods that cover the FULL requested range
             const completeMethods = data.methodOptions.filter((m: any) => {
-                // Check if this method covers the full range
                 if (!m.levelRanges || m.levelRanges.length === 0) return false;
 
                 const minLevel = Math.min(...m.levelRanges.map((r: any) => r.startLevel));
@@ -314,18 +264,15 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
                 return minLevel <= data.levels.start && maxLevel >= data.levels.end;
             });
 
-            // Find cheapest complete method
             const cheapest = completeMethods.length > 0
                 ? completeMethods.reduce((min, curr) => curr.finalPrice < min.finalPrice ? curr : min)
-                : data.methodOptions.find(m => m.isCheapest); // Fallback to original logic
+                : data.methodOptions.find(m => m.isCheapest);
             if (cheapest) {
                 const hasModifiers = cheapest.modifiersTotal !== 0;
 
-                // Separate modifiers by type
                 const discounts = cheapest.modifiers.filter(m => m.applied && Number(m.value) < 0);
                 const upcharges = cheapest.modifiers.filter(m => m.applied && Number(m.value) > 0);
 
-                // Add header with service info
                 let headerBreakdown = `\`\`\`yml\n`;
                 headerBreakdown += `Service:        ${data.service.name}\n`;
                 headerBreakdown += `─────────────────────────────────────────\n`;
@@ -339,9 +286,7 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
                     inline: false,
                 });
 
-                // Add each segment as its own field for professional display
                 if (cheapest.levelRanges && cheapest.levelRanges.length > 0) {
-                    // Sort level ranges by start level
                     const sortedRanges = [...cheapest.levelRanges].sort((a, b) => a.startLevel - b.startLevel);
 
                     for (let i = 0; i < sortedRanges.length; i++) {
@@ -365,11 +310,9 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
                     }
                 }
 
-                // Build pricing summary
                 let pricingSummary = `\`\`\`yml\n`;
                 pricingSummary += `Base Cost:      $${cheapest.subtotal.toFixed(2)}\n`;
 
-                // Show discounts
                 if (discounts.length > 0) {
                     for (const mod of discounts) {
                         const modValue = mod.type === 'PERCENTAGE'
@@ -379,7 +322,6 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
                     }
                 }
 
-                // Show upcharges
                 if (upcharges.length > 0) {
                     for (const mod of upcharges) {
                         const modValue = mod.type === 'PERCENTAGE'
@@ -391,12 +333,7 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
 
                 pricingSummary += `\`\`\``;
 
-                logger.info('[PriceCalculator] 💰 Final price: $' + cheapest.finalPrice.toFixed(2));
-
-                // Add final price in ANSI color
                 pricingSummary += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${cheapest.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
-
-                logger.info('[PriceCalculator] ✅ Sending embed with all segments');
 
                 embed.addFields({
                     name: "💰 Price Summary",
@@ -406,13 +343,10 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
             }
         }
 
-        // Edit the "calculating..." message with the result
         await thinkingMsg.edit({
             content: "",
             embeds: [embed.toJSON() as any],
         });
-
-        logger.info(`[PriceCalculator] Result sent for ${service.name} (${startLevel}-${endLevel}) to ${message.author.tag}`);
 
     } catch (apiError) {
         logger.error('[PriceCalculator] API error:', apiError);
@@ -424,12 +358,8 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
     }
 }
 
-// Handler for !p command (PvM/Bossing - PER_KILL pricing)
-// Enhanced to match old OSRS Machines system with multi-tier pricing table
 async function handleBossingCommand(message: Message, apiService: ApiService) {
-    // Prevent duplicate responses from bot messages
     if (message.author.bot) {
-        logger.debug('[PvM] Ignoring bot message to prevent duplicates');
         return;
     }
 
@@ -445,7 +375,6 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
         return;
     }
 
-    // Last argument is kill count
     const killCountStr = args[args.length - 1];
     const killCount = parseInt(killCountStr);
 
@@ -459,7 +388,6 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
         return;
     }
 
-    // Validate kill count range
     if (killCount > 10000) {
         await sendInvalidParameterError(
             message,
@@ -470,10 +398,8 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
         return;
     }
 
-    // Service name is everything except the last argument
     let serviceName = args.slice(0, -1).join(" ").toLowerCase();
 
-    // Common boss aliases - map short names to full service names
     const bossAliases: { [key: string]: string } = {
         'cox': 'chambers',
         'chambers of xeric': 'chambers',
@@ -486,130 +412,153 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
         'corrupted': 'corrupted gauntlet',
     };
 
-    // Check if serviceName matches an alias
     if (bossAliases[serviceName]) {
-        logger.info(`[PvM] 🔄 Alias detected: "${serviceName}" → "${bossAliases[serviceName]}"`);
         serviceName = bossAliases[serviceName];
     }
 
-    logger.info(`[PriceCalculator] Command: !p ${serviceName} ${killCount} by ${message.author.tag}`);
-
-    // Send "calculating..." message
     const thinkingMsg = await message.reply("🔢 Calculating price...");
 
-    // Get all services to find matching service
     const services = await apiService.getAllServicesWithPricing();
 
-    logger.info(`[PvM] 📊 Total services fetched: ${services.length}`);
+    // Filter to only services with PER_KILL pricing
+    const pvmServices = services.filter((s: any) =>
+        s.pricingMethods?.some((m: any) => m.pricingUnit === 'PER_KILL')
+    );
 
-    // Find service by name or slug (filter for PER_KILL services)
-    let service = services.find((s: any) => {
-        const matchesName = s.name.toLowerCase().includes(serviceName) ||
-            s.slug.toLowerCase().includes(serviceName);
-        const hasPerKillPricing = s.pricingMethods?.some((m: any) => m.pricingUnit === 'PER_KILL');
-
-        return matchesName && hasPerKillPricing;
-    });
-
-    // If no service found, check if serviceName is a groupName
+    let service: any = null;
     let groupNameFilter: string | undefined = undefined;
+    let specificMethodName: string | undefined = undefined;
+
+    // 1. Exact service name match
+    service = pvmServices.find((s: any) =>
+        s.name.toLowerCase() === serviceName ||
+        s.slug.toLowerCase() === serviceName
+    );
+
+    // 2. Exact method name match (e.g., "duke sucellus", "yama")
     if (!service) {
-        logger.info(`[PvM] 🔍 Service not found, checking if "${serviceName}" is a groupName`);
-
-        // Debug: Log all groupNames to see what's available
-        const allGroupNames: string[] = [];
-        for (const s of services) {
-            if (s.pricingMethods) {
-                s.pricingMethods.forEach((m: any) => {
-                    if (m.pricingUnit === 'PER_KILL' && m.groupName) {
-                        allGroupNames.push(m.groupName);
-                    }
-                });
-            }
-        }
-        logger.info(`[PvM] 🔍 Available groupNames: ${allGroupNames.slice(0, 20).join(', ')}...`);
-
-        // Search for methods with this groupName across all services
-        for (const s of services) {
-            const methodWithGroup = s.pricingMethods?.find((m: any) =>
+        for (const s of pvmServices) {
+            const method = s.pricingMethods?.find((m: any) =>
                 m.pricingUnit === 'PER_KILL' &&
-                m.groupName &&
-                m.groupName.toLowerCase() === serviceName
+                m.name.toLowerCase() === serviceName
             );
-
-            if (methodWithGroup) {
+            if (method) {
                 service = s;
-                groupNameFilter = methodWithGroup.groupName;
-                logger.info(`[PvM] ✅ Found groupName "${groupNameFilter}" in service "${service.name}"`);
+                specificMethodName = method.name;
                 break;
             }
         }
     }
 
-    // Fetch full service with modifiers (both service-level and method-level)
+    // 3. Exact groupName match
+    if (!service) {
+        for (const s of pvmServices) {
+            const methodWithGroup = s.pricingMethods?.find((m: any) =>
+                m.pricingUnit === 'PER_KILL' &&
+                m.groupName &&
+                m.groupName.toLowerCase() === serviceName
+            );
+            if (methodWithGroup) {
+                service = s;
+                groupNameFilter = methodWithGroup.groupName;
+                break;
+            }
+        }
+    }
+
+    // 4. Partial service name match
+    if (!service) {
+        service = pvmServices.find((s: any) =>
+            s.name.toLowerCase().includes(serviceName) ||
+            s.slug.toLowerCase().includes(serviceName)
+        );
+    }
+
+    // 5. Partial method name match
+    if (!service) {
+        for (const s of pvmServices) {
+            const method = s.pricingMethods?.find((m: any) =>
+                m.pricingUnit === 'PER_KILL' &&
+                m.name.toLowerCase().includes(serviceName)
+            );
+            if (method) {
+                service = s;
+                specificMethodName = method.name;
+                break;
+            }
+        }
+    }
+
+    // 6. Partial groupName match
+    if (!service) {
+        for (const s of pvmServices) {
+            const methodWithGroup = s.pricingMethods?.find((m: any) =>
+                m.pricingUnit === 'PER_KILL' &&
+                m.groupName &&
+                m.groupName.toLowerCase().includes(serviceName)
+            );
+            if (methodWithGroup) {
+                service = s;
+                groupNameFilter = methodWithGroup.groupName;
+                break;
+            }
+        }
+    }
+
     if (service) {
         const fullService = await apiService.getServiceWithPricing(service.id);
         service = fullService;
     }
 
     if (!service) {
-        logger.warn(`[PvM] ❌ No service found matching "${serviceName}" with PER_KILL pricing`);
-
-        // Delete thinking message
         await deleteThinkingMessage(thinkingMsg);
-
-        // Send ephemeral error
         await sendServiceNotFoundError(
             message,
             serviceName,
             "PvM",
-            ["!p cox 120", "!p cgp 50", "!p zulrah 100", "!p tob 25"]
+            ["!p yama 10", "!p duke sucellus 10", "!p cox 120", "!p zulrah 100"]
         );
         return;
     }
 
-    logger.info(`[PvM] ✅ Found service: "${service.name}" (id: ${service.id})`);
-
     try {
-        logger.info(`[PriceCalculator] Calculating with serviceId: ${service.id}, kills: ${killCount}`);
 
         const pricingService = new PricingCalculatorService();
 
-        // Get ALL PER_KILL pricing methods (multiple tiers like old system)
         if (!service.pricingMethods || service.pricingMethods.length === 0) {
             throw new Error('No pricing methods found for this service');
         }
 
         let allMethods = service.pricingMethods.filter((m: any) => m.pricingUnit === 'PER_KILL');
 
-        // Filter by groupName if specified
         if (groupNameFilter) {
             allMethods = allMethods.filter((m: any) => m.groupName === groupNameFilter);
-            logger.info(`[PvM] 🎯 Filtered to ${allMethods.length} methods with groupName "${groupNameFilter}"`);
+        }
+
+        // If a specific method was matched, filter to only that method
+        if (specificMethodName) {
+            allMethods = allMethods.filter((m: any) => m.name === specificMethodName);
         }
 
         if (allMethods.length === 0) {
             throw new Error(groupNameFilter
                 ? `No PER_KILL pricing methods found with groupName "${groupNameFilter}"`
-                : 'No PER_KILL pricing method found for this service'
+                : specificMethodName
+                    ? `No PER_KILL pricing method found with name "${specificMethodName}"`
+                    : 'No PER_KILL pricing method found for this service'
             );
         }
 
-        // Get ALL payment methods (to show multiple price options like old system)
         const paymentMethods = await apiService.getPaymentMethods();
         if (!paymentMethods || paymentMethods.length === 0) {
             throw new Error('No payment methods available');
         }
 
-        logger.info(`[PvM] Found ${allMethods.length} pricing tiers and ${paymentMethods.length} payment methods`);
-
-        // Build OLD SYSTEM style embed with table and colors
         const embed = new EmbedBuilder()
-            .setTitle(`🔥 Bossing Calculator`) // Red fire emoji like old system
-            .setColor(0xfca311) // Orange color
+            .setTitle(`🔥 Bossing Calculator`)
+            .setColor(0xfca311)
             .setTimestamp();
 
-        // Calculate total discount from service-level modifiers
         const serviceModifiers = service.serviceModifiers || [];
         const discountModifiers = serviceModifiers.filter((m: any) =>
             m.active && m.modifierType === 'PERCENTAGE' && Number(m.value) < 0
@@ -618,13 +567,14 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
             sum + Math.abs(Number(mod.value)), 0
         );
 
-        // Compact table header
+        // Use specific method name if matched, otherwise use service name
+        const displayName = specificMethodName || service.name;
+
         let tableText = "```ansi\n";
         tableText += `\u001b[0;37mMonster:                   Amount  Discount\u001b[0m\n`;
         tableText += `\u001b[0;37m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m\n`;
 
-        // Show service name, kill count, and discount (compact)
-        const monsterName = service.name.substring(0, 25).padEnd(25);
+        const monsterName = displayName.substring(0, 25).padEnd(25);
         const discountDisplay = totalDiscountPercent > 0
             ? `\u001b[0;32m${totalDiscountPercent.toFixed(0)}%\u001b[0m`
             : `\u001b[0;37mNone\u001b[0m`;
@@ -633,8 +583,6 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
         tableText += "```";
 
         embed.setDescription(tableText);
-
-        // Calculate prices for each tier (using first/default payment method)
         const tierResults: Array<{
             tier: string;
             notes: string;
@@ -646,12 +594,8 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
 
         const defaultPaymentMethod = paymentMethods[0];
 
-        // Get all active service modifier IDs to apply them automatically
-        const serviceModifierIds = (service.serviceModifiers || [])
-            .filter((m: any) => m.active)
-            .map((m: any) => m.id);
-
-        logger.info(`[PvM] Applying ${serviceModifierIds.length} service-level modifiers`);
+        // Modifiers disabled for calculator commands
+        const serviceModifierIds: string[] = [];
 
         for (const method of allMethods) {
             try {
@@ -659,12 +603,9 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
                     methodId: method.id,
                     paymentMethodId: defaultPaymentMethod.id,
                     quantity: killCount,
-                    serviceModifierIds, // ✅ Pass service modifier IDs
+                    serviceModifierIds,
                 });
 
-                logger.info(`[PvM] Method: ${method.name} | Base: $${result.basePrice} | Modifiers: $${result.breakdown?.totalModifiers || 0} | Final: $${result.finalPrice}`);
-
-                // Extract applied modifiers
                 const appliedModifiers = result.modifiers
                     ?.filter((m: any) => m.applied)
                     .map((m: any) => ({
@@ -686,19 +627,14 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
             }
         }
 
-        // Build pricing tiers section - COMPACT with modifier breakdown
         for (const tier of tierResults) {
             let tierSection = "";
 
-            // Tier header
             tierSection += `\`\`\`fix\n${tier.tier}\n\`\`\``;
 
-            // Notes and Price Per Kill
             tierSection += `**${tier.notes}** • \`$${tier.pricePerKill.toFixed(2)}/kc\`\n`;
-
-            // Price breakdown
             if (tier.modifiers.length > 0) {
-                // Has modifiers - show breakdown
+                
                 tierSection += `\`\`\`diff\n`;
                 tierSection += `  Base Price           $${tier.basePrice.toFixed(2)}\n`;
 
@@ -712,11 +648,10 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
                 tierSection += `\n= Total              $${tier.finalPrice.toFixed(2)}\n`;
                 tierSection += `\`\`\``;
             } else {
-                // No modifiers - show direct price
+                
                 tierSection += `\`\`\`ansi\n\u001b[1;32m💰 Price: $${tier.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
             }
 
-            // Add field
             embed.addFields({
                 name: "\u200B",
                 value: tierSection,
@@ -724,7 +659,6 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
             });
         }
 
-        // Add footer
         embed.setFooter({
             text: `Morita Gaming Services`,
         });
@@ -738,10 +672,8 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
     } catch (apiError) {
         logger.error('[PriceCalculator] API error:', apiError);
 
-        // Delete thinking message
         await deleteThinkingMessage(thinkingMsg);
 
-        // Send ephemeral error
         await sendCalculationError(
             message,
             apiError instanceof Error ? apiError.message : String(apiError)
@@ -749,7 +681,6 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
     }
 }
 
-// Helper function to find minigame service or method
 function findMinigameItem(services: any[], searchTerm: string): {
     service: any;
     method: any | null;
@@ -760,8 +691,6 @@ function findMinigameItem(services: any[], searchTerm: string): {
 
     logger.info(`[Minigames] 🔍 Searching for: "${searchTerm}"`);
 
-    // Filter for minigame services (PER_ITEM pricing)
-    // Note: We don't exclude any categories here - let the search find what matches
     const minigameServices = services.filter((s: any) => {
         const hasPerItemPricing = s.pricingMethods?.some((m: any) => m.pricingUnit === 'PER_ITEM');
         return hasPerItemPricing;
@@ -769,12 +698,10 @@ function findMinigameItem(services: any[], searchTerm: string): {
 
     logger.info(`[Minigames] 📋 Found ${minigameServices.length} PER_ITEM services to search`);
 
-    // Log first few service names for debugging
     minigameServices.slice(0, 5).forEach((s: any) => {
         logger.info(`[Minigames]   - "${s.name}" (${s.pricingMethods?.filter((m: any) => m.pricingUnit === 'PER_ITEM').length} methods)`);
     });
 
-    // Priority 1: Exact match on METHOD name
     for (const service of minigameServices) {
         if (!service.pricingMethods) continue;
 
@@ -793,7 +720,6 @@ function findMinigameItem(services: any[], searchTerm: string): {
         }
     }
 
-    // Priority 2: Exact match on SERVICE name
     const exactServiceMatch = minigameServices.find((s: any) =>
         s.name.toLowerCase() === normalized ||
         s.slug.toLowerCase() === normalized
@@ -808,7 +734,6 @@ function findMinigameItem(services: any[], searchTerm: string): {
         };
     }
 
-    // Priority 2.5: Exact match on GROUP NAME
     for (const service of minigameServices) {
         if (!service.pricingMethods) continue;
 
@@ -829,7 +754,6 @@ function findMinigameItem(services: any[], searchTerm: string): {
         }
     }
 
-    // Priority 3: Partial match on METHOD name
     for (const service of minigameServices) {
         if (!service.pricingMethods) continue;
 
@@ -848,7 +772,6 @@ function findMinigameItem(services: any[], searchTerm: string): {
         }
     }
 
-    // Priority 4: Partial match on SERVICE name
     const partialServiceMatch = minigameServices.find((s: any) =>
         s.name.toLowerCase().includes(normalized) ||
         s.slug.toLowerCase().includes(normalized)
@@ -867,7 +790,6 @@ function findMinigameItem(services: any[], searchTerm: string): {
     return null;
 }
 
-// Batch minigame quote handler
 async function handleBatchMinigameQuote(
     message: Message,
     apiService: ApiService,
@@ -912,15 +834,12 @@ async function handleBatchMinigameQuote(
             const { service, method: specificMethod } = searchResult;
             const fullService = await apiService.getServiceWithPricing(service.id);
 
-            // Get service modifiers
-            const serviceModifierIds = (fullService.serviceModifiers || [])
-                .filter((m: any) => m.active)
-                .map((m: any) => m.id);
+            // Modifiers disabled for calculator commands
+            const serviceModifierIds: string[] = [];
 
-            // Determine which method to use
             let method = specificMethod;
             if (!method) {
-                // Use cheapest method if service search
+                
                 const allMethods = fullService.pricingMethods.filter((m: any) => m.pricingUnit === 'PER_ITEM');
                 let cheapestMethod = allMethods[0];
                 let cheapestPrice = Infinity;
@@ -958,7 +877,6 @@ async function handleBatchMinigameQuote(
             totalPrice += result.finalPrice;
         }
 
-        // Build batch quote embed
         const embed = new EmbedBuilder()
             .setTitle(`🎮 Minigame Batch Quote`)
             .setColor(0xfca311)
@@ -1010,7 +928,6 @@ async function handleBatchMinigameQuote(
     }
 }
 
-// Handler for !m command (Minigames - PER_ITEM pricing)
 async function handleMinigamesCommand(message: Message, apiService: ApiService) {
     const prefix = discordConfig.prefix;
     const input = message.content.slice(prefix.length + 2).trim();
@@ -1024,11 +941,10 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
         return;
     }
 
-    // Parse multiple items (comma-separated)
     const items: Array<{ name: string; quantity: number }> = [];
 
     if (input.includes(',')) {
-        // Comma-separated format: "game1 qty1, game2 qty2"
+        
         const parts = input.split(',').map(s => s.trim());
 
         for (const part of parts) {
@@ -1057,7 +973,7 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
             items.push({ name: itemName, quantity: qty });
         }
     } else {
-        // Single item format: "game name quantity"
+        
         const args = input.split(/\s+/);
 
         if (args.length < 2) {
@@ -1084,25 +1000,20 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
         items.push({ name: gameName, quantity });
     }
 
-    // Check if batch quote (multiple items)
     if (items.length > 1) {
         await handleBatchMinigameQuote(message, apiService, items);
         return;
     }
 
-    // Single item - continue with show all methods or specific method logic
     const gameName = items[0].name;
     const quantity = items[0].quantity;
 
     logger.info(`[Minigames] Command: !m ${gameName} ${quantity} by ${message.author.tag}`);
 
-    // Send "calculating..." message
     const thinkingMsg = await message.reply("🎮 Calculating Minigame service price...");
 
-    // Get all services
     const services = await apiService.getAllServicesWithPricing();
 
-    // Find minigame item (service or method)
     const searchResult = findMinigameItem(services, gameName);
 
     if (!searchResult) {
@@ -1121,37 +1032,30 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
     try {
         logger.info(`[Minigames] Calculating with serviceId: ${service.id}, quantity: ${quantity}, showAllMethods: ${showAllMethods}, groupName: ${groupName || 'none'}`);
 
-        // Fetch full service details with pricing methods
         const fullService = await apiService.getServiceWithPricing(service.id);
 
         const pricingService = new PricingCalculatorService();
 
-        // Get payment methods
         const paymentMethods = await apiService.getPaymentMethods();
         if (!paymentMethods || paymentMethods.length === 0) {
             throw new Error('No payment methods available');
         }
         const defaultPaymentMethod = paymentMethods[0];
 
-        // Get all active service modifier IDs
-        const serviceModifierIds = (fullService.serviceModifiers || [])
-            .filter((m: any) => m.active)
-            .map((m: any) => m.id);
+        // Modifiers disabled for calculator commands
+        const serviceModifierIds: string[] = [];
 
-        logger.info(`[Minigames] Applying ${serviceModifierIds.length} service-level modifiers`);
+        logger.info(`[Minigames] Modifiers disabled for calculator commands`);
 
         if (!fullService.pricingMethods || fullService.pricingMethods.length === 0) {
             throw new Error('No pricing methods found for this service');
         }
 
-        // CASE A: Show all methods (when service name or groupName is used)
         if (showAllMethods) {
             logger.info('[Minigames] 📋 Showing all methods for service');
 
-            // Get all PER_ITEM methods
             let allMethods = fullService.pricingMethods.filter((m: any) => m.pricingUnit === 'PER_ITEM');
 
-            // Filter by groupName if specified
             if (groupName) {
                 allMethods = allMethods.filter((m: any) => m.groupName === groupName);
                 logger.info(`[Minigames] 🎯 Filtered to ${allMethods.length} methods with groupName "${groupName}"`);
@@ -1161,7 +1065,6 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
                 throw new Error('No PER_ITEM pricing methods found for this service');
             }
 
-            // Calculate price for each method
             const methodResults = [];
             for (const method of allMethods) {
                 const result = await pricingService.calculatePrice({
@@ -1177,10 +1080,8 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
                 });
             }
 
-            // Sort by price (cheapest first)
             methodResults.sort((a, b) => a.result.finalPrice - b.result.finalPrice);
 
-            // Build embed showing all methods
             const embed = new EmbedBuilder()
                 .setTitle(`${service.emoji || '🎮'} ${service.name}`)
                 .setColor(0xfca311)
@@ -1192,16 +1093,15 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
                 inline: false,
             });
 
-            // Show all pricing options
             const priceLines: string[] = [];
             for (let i = 0; i < methodResults.length; i++) {
                 const { method, result } = methodResults[i];
-                const indicator = i === 0 ? "✅" : "◻️"; // Cheapest first
+                const indicator = i === 0 ? "✅" : "◻️"; 
                 priceLines.push(`${indicator} **${method.name}**`);
                 priceLines.push(`   💰 \`$${result.finalPrice.toFixed(2)}\``);
                 priceLines.push('');
             }
-            priceLines.pop(); // Remove last empty line
+            priceLines.pop(); 
 
             embed.addFields({
                 name: "💵 Pricing Options",
@@ -1209,9 +1109,9 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
                 inline: false,
             });
 
-            // Show breakdown for cheapest option
             const cheapest = methodResults[0];
             const appliedModifiers = cheapest.result.modifiers.filter((m: any) => m.applied);
+            const cheapestBaseCost = cheapest.result.breakdown?.subtotal ?? (cheapest.method.basePrice * quantity);
 
             let breakdown = `\`\`\`yml\n`;
             breakdown += `Method:         ${cheapest.method.name}\n`;
@@ -1219,7 +1119,7 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
             breakdown += `Quantity:       ${quantity.toLocaleString()} items\n`;
             breakdown += `Rate:           $${cheapest.method.basePrice.toFixed(6)}/item\n`;
             breakdown += `─────────────────────────────────────────\n`;
-            breakdown += `Base Cost:      $${cheapest.result.basePrice.toFixed(2)}\n`;
+            breakdown += `Base Cost:      $${cheapestBaseCost.toFixed(2)}\n`;
 
             if (appliedModifiers.length > 0) {
                 for (const mod of appliedModifiers) {
@@ -1249,13 +1149,12 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
 
             logger.info(`[Minigames] ✅ Sent all methods for ${service.name} to ${message.author.tag}`);
         }
-        // CASE B: Show specific method (when method name is used)
+        
         else {
             logger.info(`[Minigames] 🎯 Showing specific method: ${specificMethod.name}`);
 
             const method = specificMethod;
 
-            // Calculate price
             const result = await pricingService.calculatePrice({
                 methodId: method.id,
                 paymentMethodId: defaultPaymentMethod.id,
@@ -1268,16 +1167,16 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
                 .setColor(0xfca311)
                 .setTimestamp();
 
-            // Build clean price calculation display
+            const baseCost = result.breakdown?.subtotal ?? (method.basePrice * quantity);
+
             let priceCalc = `\`\`\`yml\n`;
             priceCalc += `Method:         ${method.name}\n`;
             priceCalc += `─────────────────────────────────────────\n`;
             priceCalc += `Quantity:       ${quantity.toLocaleString()} items\n`;
             priceCalc += `Rate:           $${method.basePrice.toFixed(6)}/item\n`;
             priceCalc += `─────────────────────────────────────────\n`;
-            priceCalc += `Base Cost:      $${result.basePrice.toFixed(2)}\n`;
+            priceCalc += `Base Cost:      $${baseCost.toFixed(2)}\n`;
 
-            // Add modifiers
             const appliedModifiers = result.modifiers.filter((m: any) => m.applied);
             if (appliedModifiers.length > 0) {
                 for (const mod of appliedModifiers) {
@@ -1293,7 +1192,6 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
 
             priceCalc += `\`\`\``;
 
-            // Add final price in ANSI color
             priceCalc += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${result.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
 
             embed.addFields({
@@ -1319,14 +1217,9 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
     }
 }
 
-/**
- * Find Ironman item by service name or method name
- * Returns: { service, method?, showAllMethods }
- */
 function findIronmanItem(services: any[], searchTerm: string): any | null {
     const normalized = searchTerm.toLowerCase().trim();
 
-    // Filter to only Ironman Gathering services
     const ironmanServices = services.filter((s: any) =>
         s.category?.slug === 'ironman-gathering' ||
         s.category?.name?.toLowerCase().includes('ironman')
@@ -1334,7 +1227,6 @@ function findIronmanItem(services: any[], searchTerm: string): any | null {
 
     logger.info(`[Ironman] Searching for: "${normalized}" in ${ironmanServices.length} Ironman services`);
 
-    // Priority 1: Exact match on METHOD name
     for (const service of ironmanServices) {
         if (!service.pricingMethods) continue;
 
@@ -1353,7 +1245,6 @@ function findIronmanItem(services: any[], searchTerm: string): any | null {
         }
     }
 
-    // Priority 2: Exact match on SERVICE name
     const exactServiceMatch = ironmanServices.find((s: any) =>
         s.name.toLowerCase() === normalized ||
         s.slug.toLowerCase() === normalized
@@ -1368,7 +1259,6 @@ function findIronmanItem(services: any[], searchTerm: string): any | null {
         };
     }
 
-    // Priority 2.5: Exact match on GROUP NAME
     for (const service of ironmanServices) {
         if (!service.pricingMethods) continue;
 
@@ -1389,7 +1279,6 @@ function findIronmanItem(services: any[], searchTerm: string): any | null {
         }
     }
 
-    // Priority 3: Partial match on METHOD name
     for (const service of ironmanServices) {
         if (!service.pricingMethods) continue;
 
@@ -1408,7 +1297,6 @@ function findIronmanItem(services: any[], searchTerm: string): any | null {
         }
     }
 
-    // Priority 4: Partial match on SERVICE name
     const partialServiceMatch = ironmanServices.find((s: any) =>
         s.name.toLowerCase().includes(normalized) ||
         s.slug.toLowerCase().includes(normalized)
@@ -1427,7 +1315,6 @@ function findIronmanItem(services: any[], searchTerm: string): any | null {
     return null;
 }
 
-// Handler for batch Ironman quote (multiple items)
 async function handleBatchIronmanQuote(
     message: Message,
     apiService: ApiService,
@@ -1447,7 +1334,6 @@ async function handleBatchIronmanQuote(
         }
         const defaultPaymentMethod = paymentMethods[0];
 
-        // Calculate price for each item
         const calculations: Array<{
             itemName: string;
             quantity: number;
@@ -1474,22 +1360,17 @@ async function handleBatchIronmanQuote(
 
             const { service, method: specificMethod } = searchResult;
 
-            // Get full service details
             const fullService = await apiService.getServiceWithPricing(service.id);
 
-            // Get all active service modifier IDs to apply them automatically
-            const serviceModifierIds = (fullService.serviceModifiers || [])
-                .filter((m: any) => m.active)
-                .map((m: any) => m.id);
+            // Modifiers disabled for calculator commands
+            const serviceModifierIds: string[] = [];
 
-            // Determine which method to use
             let method = specificMethod;
             if (!method) {
-                // If service search, use cheapest method
+
                 const allMethods = fullService.pricingMethods.filter((m: any) => m.pricingUnit === 'PER_ITEM');
                 if (allMethods.length === 0) continue;
 
-                // Calculate prices for all methods and find cheapest
                 let cheapestMethod = allMethods[0];
                 let cheapestPrice = Infinity;
 
@@ -1498,7 +1379,7 @@ async function handleBatchIronmanQuote(
                         methodId: m.id,
                         paymentMethodId: defaultPaymentMethod.id,
                         quantity: item.quantity,
-                        serviceModifierIds, // ✅ Pass service modifier IDs
+                        serviceModifierIds,
                     });
                     if (result.finalPrice < cheapestPrice) {
                         cheapestPrice = result.finalPrice;
@@ -1508,12 +1389,11 @@ async function handleBatchIronmanQuote(
                 method = cheapestMethod;
             }
 
-            // Calculate final price
             const result = await pricingService.calculatePrice({
                 methodId: method.id,
                 paymentMethodId: defaultPaymentMethod.id,
                 quantity: item.quantity,
-                serviceModifierIds, // ✅ Pass service modifier IDs
+                serviceModifierIds,
             });
 
             calculations.push({
@@ -1527,13 +1407,11 @@ async function handleBatchIronmanQuote(
             totalPrice += result.finalPrice;
         }
 
-        // Build batch quote embed
         const embed = new EmbedBuilder()
             .setTitle(`🔗 Ironman Batch Quote`)
             .setColor(0xfca311)
             .setTimestamp();
 
-        // Build items list
         let itemsList = `\`\`\`yml\n`;
         for (let i = 0; i < calculations.length; i++) {
             const calc = calculations[i];
@@ -1552,7 +1430,6 @@ async function handleBatchIronmanQuote(
             inline: false,
         });
 
-        // Build total price display
         let totalDisplay = `\`\`\`yml\n`;
         totalDisplay += `Items:          ${calculations.length}\n`;
         totalDisplay += `─────────────────────────────────────────\n`;
@@ -1581,7 +1458,6 @@ async function handleBatchIronmanQuote(
     }
 }
 
-// Handler for !i command (Ironman Gathering - PER_ITEM pricing, filtered by category)
 async function handleIronmanCommand(message: Message, apiService: ApiService) {
     const prefix = discordConfig.prefix;
     const input = message.content.slice(prefix.length + 2).trim();
@@ -1595,11 +1471,10 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
         return;
     }
 
-    // Parse multiple items (comma-separated)
     const items: Array<{ name: string; quantity: number }> = [];
 
     if (input.includes(',')) {
-        // Comma-separated format: "item1 qty1, item2 qty2, item3 qty3"
+        
         const parts = input.split(',').map(s => s.trim());
 
         for (const part of parts) {
@@ -1628,7 +1503,7 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
             items.push({ name: itemName, quantity: qty });
         }
     } else {
-        // Single item format: "item name quantity"
+        
         const args = input.split(/\s+/);
 
         if (args.length < 2) {
@@ -1655,25 +1530,20 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
         items.push({ name: serviceName, quantity });
     }
 
-    // Check if batch quote (multiple items)
     if (items.length > 1) {
         await handleBatchIronmanQuote(message, apiService, items);
         return;
     }
 
-    // Single item - use existing logic
     const serviceName = items[0].name;
     const quantity = items[0].quantity;
 
     logger.info(`[Ironman] Command: !i ${serviceName} ${quantity} by ${message.author.tag}`);
 
-    // Send "calculating..." message
     const thinkingMsg = await message.reply("🔗 Calculating Ironman service price...");
 
-    // Get all services to find matching service
     const services = await apiService.getAllServicesWithPricing();
 
-    // Find Ironman item (service or method)
     const searchResult = findIronmanItem(services, serviceName);
 
     if (!searchResult) {
@@ -1692,37 +1562,30 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
     try {
         logger.info(`[Ironman] Calculating with serviceId: ${service.id}, quantity: ${quantity}, showAllMethods: ${showAllMethods}, groupName: ${groupName || 'none'}`);
 
-        // Fetch full service details with pricing methods
         const fullService = await apiService.getServiceWithPricing(service.id);
 
         const pricingService = new PricingCalculatorService();
 
-        // Get payment methods to get the default one
         const paymentMethods = await apiService.getPaymentMethods();
         if (!paymentMethods || paymentMethods.length === 0) {
             throw new Error('No payment methods available');
         }
         const defaultPaymentMethod = paymentMethods[0];
 
-        // Get all active service modifier IDs to apply them automatically
-        const serviceModifierIds = (fullService.serviceModifiers || [])
-            .filter((m: any) => m.active)
-            .map((m: any) => m.id);
+        // Modifiers disabled for calculator commands
+        const serviceModifierIds: string[] = [];
 
-        logger.info(`[Ironman] Applying ${serviceModifierIds.length} service-level modifiers`);
+        logger.info(`[Ironman] Modifiers disabled for calculator commands`);
 
         if (!fullService.pricingMethods || fullService.pricingMethods.length === 0) {
             throw new Error('No pricing methods found for this service');
         }
 
-        // CASE A: Show all methods (when service name or groupName is used)
         if (showAllMethods) {
             logger.info('[Ironman] 📋 Showing all methods for service');
 
-            // Get all PER_ITEM methods
             let allMethods = fullService.pricingMethods.filter((m: any) => m.pricingUnit === 'PER_ITEM');
 
-            // Filter by groupName if specified
             if (groupName) {
                 allMethods = allMethods.filter((m: any) => m.groupName === groupName);
                 logger.info(`[Ironman] 🎯 Filtered to ${allMethods.length} methods with groupName "${groupName}"`);
@@ -1732,14 +1595,13 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
                 throw new Error('NO PER_ITEM pricing methods found for this service');
             }
 
-            // Calculate price for each method
             const methodResults = [];
             for (const method of allMethods) {
                 const result = await pricingService.calculatePrice({
                     methodId: method.id,
                     paymentMethodId: defaultPaymentMethod.id,
                     quantity: quantity,
-                    serviceModifierIds, // ✅ Pass service modifier IDs
+                    serviceModifierIds, 
                 });
 
                 methodResults.push({
@@ -1748,13 +1610,11 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
                 });
             }
 
-            // Sort by price (cheapest first)
             methodResults.sort((a, b) => a.result.finalPrice - b.result.finalPrice);
 
-            // Build embed showing all methods
             const embed = new EmbedBuilder()
                 .setTitle(`${service.emoji || '🔗'} ${service.name}`)
-                .setColor(0xfca311) // Orange color
+                .setColor(0xfca311) 
                 .setTimestamp();
 
             embed.addFields({
@@ -1763,24 +1623,21 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
                 inline: false,
             });
 
-            // Build pricing options display
             const priceLines: string[] = [];
 
             for (let i = 0; i < methodResults.length; i++) {
                 const { method, result } = methodResults[i];
-                const indicator = i === 0 ? "✅" : "◻️"; // First is cheapest
+                const indicator = i === 0 ? "✅" : "◻️"; 
                 const price = result.finalPrice.toFixed(2);
                 const rate = method.basePrice.toFixed(6);
 
                 logger.info(`[Ironman] 💰 ${method.name}: $${price} (${rate}/item)`);
 
-                // Compact display with rate
                 priceLines.push(`${indicator} **${method.name}**`);
                 priceLines.push(`   💰 \`$${price}\` • Rate: \`$${rate}/item\``);
-                priceLines.push(''); // Spacing
+                priceLines.push(''); 
             }
 
-            // Remove last empty line
             if (priceLines.length > 0) {
                 priceLines.pop();
             }
@@ -1791,8 +1648,9 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
                 inline: false,
             });
 
-            // Show breakdown for cheapest method
             const cheapest = methodResults[0];
+            const cheapestBaseCost = cheapest.result.breakdown?.subtotal ?? (cheapest.method.basePrice * quantity);
+
             let breakdown = `\`\`\`yml\n`;
             breakdown += `Service:        ${service.name}\n`;
             breakdown += `─────────────────────────────────────────\n`;
@@ -1800,9 +1658,8 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
             breakdown += `Method:         ${cheapest.method.name}\n`;
             breakdown += `Rate:           $${cheapest.method.basePrice.toFixed(6)}/item\n`;
             breakdown += `─────────────────────────────────────────\n`;
-            breakdown += `Base Cost:      $${cheapest.result.basePrice.toFixed(2)}\n`;
+            breakdown += `Base Cost:      $${cheapestBaseCost.toFixed(2)}\n`;
 
-            // Show modifiers
             const appliedModifiers = cheapest.result.modifiers.filter((m: any) => m.applied);
             if (appliedModifiers.length > 0) {
                 for (const mod of appliedModifiers) {
@@ -1830,42 +1687,41 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
 
             logger.info(`[Ironman] ✅ Sent all methods for ${service.name} to ${message.author.tag}`);
         }
-        // CASE B: Show specific method (when method name is used)
+        
         else {
             logger.info(`[Ironman] 🎯 Showing specific method: ${specificMethod.name}`);
 
             const method = specificMethod;
 
-            // Calculate price
             const result = await pricingService.calculatePrice({
                 methodId: method.id,
                 paymentMethodId: defaultPaymentMethod.id,
                 quantity: quantity,
-                serviceModifierIds, // ✅ Pass service modifier IDs
+                serviceModifierIds, 
             });
 
             const embed = new EmbedBuilder()
                 .setTitle(`${service.emoji || '🔗'} ${service.name}`)
-                .setColor(0xfca311) // Orange color
+                .setColor(0xfca311) 
                 .setTimestamp();
 
-            // Build clean price calculation display
+            const baseCost = result.breakdown?.subtotal ?? (method.basePrice * quantity);
+
             let priceCalc = `\`\`\`yml\n`;
             priceCalc += `Method:         ${method.name}\n`;
             priceCalc += `─────────────────────────────────────────\n`;
             priceCalc += `Quantity:       ${quantity.toLocaleString()} items\n`;
             priceCalc += `Rate:           $${method.basePrice.toFixed(6)}/item\n`;
             priceCalc += `─────────────────────────────────────────\n`;
-            priceCalc += `Base Cost:      $${result.basePrice.toFixed(2)}\n`;
+            priceCalc += `Base Cost:      $${baseCost.toFixed(2)}\n`;
 
-            // Add modifiers
             const appliedModifiers = result.modifiers.filter((m: any) => m.applied);
             if (appliedModifiers.length > 0) {
                 for (const mod of appliedModifiers) {
                     const modValue = mod.type === 'PERCENTAGE'
                         ? `${mod.value}%`
                         : (mod.value < 0 ? `-$${Math.abs(mod.value).toFixed(2)}` : `+$${mod.value.toFixed(2)}`);
-                    // Determine icon based on modifier value (positive = upcharge, negative = discount)
+
                     const icon = Number(mod.value) > 0 ? '⚠️  ' : Number(mod.value) < 0 ? '✅ ' : '';
                     const displayName = `${icon}${mod.name}`;
                     priceCalc += `${displayName}:`.padEnd(16) + `${modValue}\n`;
@@ -1875,7 +1731,6 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
 
             priceCalc += `\`\`\``;
 
-            // Add final price in ANSI color
             priceCalc += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${result.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
 
             embed.addFields({
@@ -1884,7 +1739,6 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
                 inline: false,
             });
 
-            // Add requirements note if available
             if (method.description) {
                 embed.addFields({
                     name: "📋 Requirements",
@@ -1910,8 +1764,6 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
     }
 }
 
-// Handler for !q command (Quote - FIXED pricing)
-// Supports: service name (gets all methods), method name, groupName, or comma-separated list
 async function handleQuoteCommand(message: Message, apiService: ApiService) {
     const prefix = discordConfig.prefix;
     const input = message.content.slice(prefix.length + 2).trim();
@@ -1925,7 +1777,6 @@ async function handleQuoteCommand(message: Message, apiService: ApiService) {
         return;
     }
 
-    // Check if batch request (contains commas)
     const isBatchRequest = input.includes(',');
 
     logger.info(`[Quote] Command: !q ${input} by ${message.author.tag} (batch: ${isBatchRequest})`);
@@ -1935,11 +1786,11 @@ async function handleQuoteCommand(message: Message, apiService: ApiService) {
     );
 
     try {
-        // Get all services with pricing
+        
         const services = await apiService.getAllServicesWithPricing();
 
         if (isBatchRequest) {
-            // Batch mode: find each item separately
+            
             const itemNames = input.split(',').map(s => s.trim().toLowerCase());
             const foundMethods: Array<{ name: string; price: number; displayOrder: number; groupName?: string }> = [];
             const notFound: string[] = [];
@@ -1947,7 +1798,7 @@ async function handleQuoteCommand(message: Message, apiService: ApiService) {
             for (const itemName of itemNames) {
                 const result = findQuoteMatch(services, itemName);
                 if (result && result.methods.length > 0) {
-                    // Add all methods from this result
+                    
                     foundMethods.push(...result.methods);
                 } else {
                     notFound.push(itemName);
@@ -1965,7 +1816,6 @@ async function handleQuoteCommand(message: Message, apiService: ApiService) {
                 return;
             }
 
-            // Build batch result
             const batchResult = {
                 title: `Batch Quote (${foundMethods.length} items)`,
                 description: 'Multiple quests/services',
@@ -1978,7 +1828,7 @@ async function handleQuoteCommand(message: Message, apiService: ApiService) {
             logger.info(`[Quote] ✅ Batch quote sent: ${foundMethods.length} found, ${notFound.length} not found`);
 
         } else {
-            // Single mode: find one service/method/group
+            
             const result = findQuoteMatch(services, input.toLowerCase());
 
             if (!result) {
@@ -2003,10 +1853,6 @@ async function handleQuoteCommand(message: Message, apiService: ApiService) {
     }
 }
 
-/**
- * Find matching service/methods for quote command
- * Priority: 1. Exact service name, 2. Exact method name, 3. Exact groupName, 4. Partial matches
- */
 function findQuoteMatch(services: any[], searchName: string): {
     title: string;
     description: string;
@@ -2015,12 +1861,10 @@ function findQuoteMatch(services: any[], searchName: string): {
 } | null {
     const normalized = normalizeQuestName(searchName);
 
-    // Filter services that have FIXED pricing methods
     const fixedServices = services.filter((s: any) =>
         s.pricingMethods?.some((m: any) => m.pricingUnit === 'FIXED')
     );
 
-    // 1. Try exact match on SERVICE NAME → return ALL methods in that service
     for (const service of fixedServices) {
         if (normalizeQuestName(service.name) === normalized ||
             normalizeQuestName(service.slug) === normalized) {
@@ -2046,7 +1890,6 @@ function findQuoteMatch(services: any[], searchName: string): {
         }
     }
 
-    // 2. Try exact match on PRICING METHOD NAME → return just that method
     for (const service of fixedServices) {
         const methodMatch = service.pricingMethods?.find((m: any) =>
             m.pricingUnit === 'FIXED' &&
@@ -2070,7 +1913,6 @@ function findQuoteMatch(services: any[], searchName: string): {
         }
     }
 
-    // 3. Try exact match on GROUP NAME → return all methods in that group
     for (const service of fixedServices) {
         const methodsInGroup = service.pricingMethods?.filter((m: any) =>
             m.pricingUnit === 'FIXED' &&
@@ -2099,13 +1941,12 @@ function findQuoteMatch(services: any[], searchName: string): {
         }
     }
 
-    // 4. Try partial match on service names
     const partialServiceMatches = fixedServices.filter((s: any) =>
         normalizeQuestName(s.name).includes(normalized)
     );
 
     if (partialServiceMatches.length > 0) {
-        // Prefer shortest match (more specific)
+        
         const bestMatch = partialServiceMatches.reduce((shortest, curr) =>
             curr.name.length < shortest.name.length ? curr : shortest
         );
@@ -2130,7 +1971,6 @@ function findQuoteMatch(services: any[], searchName: string): {
         };
     }
 
-    // 5. Try partial match on pricing method names
     for (const service of fixedServices) {
         const methodMatch = service.pricingMethods?.find((m: any) =>
             m.pricingUnit === 'FIXED' &&
@@ -2158,9 +1998,6 @@ function findQuoteMatch(services: any[], searchName: string): {
     return null;
 }
 
-/**
- * Send quote embed (matches style of other commands like !s, !i)
- */
 async function sendQuoteEmbed(
     thinkingMsg: Message,
     result: {
@@ -2176,11 +2013,9 @@ async function sendQuoteEmbed(
         .setColor(0xfca311)
         .setTimestamp();
 
-    // Build pricing display - show each method individually (no grouping for batch)
     const priceLines: string[] = [];
     let totalPrice = 0;
 
-    // Sort methods by displayOrder
     const sortedMethods = [...result.methods].sort((a, b) => a.displayOrder - b.displayOrder);
 
     for (const method of sortedMethods) {
@@ -2190,7 +2025,6 @@ async function sendQuoteEmbed(
         totalPrice += method.price;
     }
 
-    // Remove last empty line
     if (priceLines.length > 0 && priceLines[priceLines.length - 1] === '') {
         priceLines.pop();
     }
@@ -2201,7 +2035,6 @@ async function sendQuoteEmbed(
         inline: false,
     });
 
-    // Show grand total if multiple items
     if (result.methods.length > 1) {
         embed.addFields({
             name: "💎 Grand Total",
@@ -2210,7 +2043,6 @@ async function sendQuoteEmbed(
         });
     }
 
-    // Show not found items if any
     const notFoundContent = result.notFound && result.notFound.length > 0
         ? `⚠️ Not found: ${result.notFound.join(', ')}`
         : "";
@@ -2221,20 +2053,16 @@ async function sendQuoteEmbed(
     });
 }
 
-/**
- * Normalize quest name (handle Roman numerals and formatting)
- * IMPORTANT: Preserves apostrophes for quest names like "Cook's Assistant"
- */
 function normalizeQuestName(name: string): string {
     return name
         .toLowerCase()
         .trim()
-        .replace(/\bi\b/g, '1')     // I → 1
-        .replace(/\bii\b/g, '2')    // II → 2
-        .replace(/\biii\b/g, '3')   // III → 3
-        .replace(/\biv\b/g, '4')    // IV → 4
-        .replace(/\bv\b/g, '5')     // V → 5
+        .replace(/\bi\b/g, '1')     
+        .replace(/\bii\b/g, '2')    
+        .replace(/\biii\b/g, '3')   
+        .replace(/\biv\b/g, '4')    
+        .replace(/\bv\b/g, '5')     
         .replace(/[^a-z0-9\s']/g, '') // Remove special chars BUT keep apostrophes
         .replace(/\s+/g, ' ')       // Normalize spaces
-        .replace(/'+/g, "'");       // Normalize multiple apostrophes to single
+        .replace(/'+/g, "'");       
 }

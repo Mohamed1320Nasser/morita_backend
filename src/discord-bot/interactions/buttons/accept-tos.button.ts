@@ -13,7 +13,6 @@ export default {
             const username = interaction.user.username;
             const member = interaction.member as any;
 
-            // 1. Check if already completed onboarding (has Customer role)
             const hasCustomerRole = member?.roles?.cache?.has(onboardingConfig.customerRoleId);
 
             if (hasCustomerRole) {
@@ -23,13 +22,11 @@ export default {
                 });
             }
 
-            // 2. Check session status - allow re-entry if TOS accepted but not completed
             let existingSession = null;
             try {
                 const sessionResponse = await axios.get(`${discordConfig.apiBaseUrl}/onboarding/sessions/${discordId}`);
                 existingSession = sessionResponse.data.data;
 
-                // If session is completed (has completedAt), tell user they already registered
                 if (existingSession?.completedAt) {
                     return await interaction.reply({
                         content: "✅ You have already accepted the Terms of Service and completed registration!\n\nIf you don't have access to channels, please contact an administrator.",
@@ -37,16 +34,14 @@ export default {
                     });
                 }
 
-                // If TOS accepted but not completed, allow them to continue
                 if (existingSession?.tosAccepted && !existingSession?.completedAt) {
                     logger.info(`[Onboarding] ${username} re-attempting registration after previous partial completion`);
                 }
             } catch (sessionError) {
-                // Session doesn't exist yet, that's fine
+                
                 logger.debug(`[Onboarding] No existing session for ${username}`);
             }
 
-            // 3. Get active TOS
             const tosResponse = await axios.get(`${discordConfig.apiBaseUrl}/onboarding/tos/active`);
             const activeTos = tosResponse.data.data;
 
@@ -57,23 +52,16 @@ export default {
                 });
             }
 
-            // NOTE: Don't record TOS acceptance yet - wait until questionnaire is shown or onboarding completes
-            // This prevents users from getting stuck if an error occurs
-
-            // 4. Fetch active questions
             const questionsResponse = await axios.get(`${discordConfig.apiBaseUrl}/onboarding/questions/active`);
             const questions = questionsResponse.data.data;
 
-            // If no questions exist, complete onboarding immediately with default data
             if (!questions || questions.length === 0) {
                 logger.info(`[Onboarding] No questions configured, completing onboarding directly for ${username}`);
 
-                // IMPORTANT: Defer reply FIRST to prevent "interaction failed"
-                // Discord only gives 3 seconds to respond, but onboarding takes longer
                 await interaction.deferReply({ ephemeral: true });
 
                 try {
-                    // Record TOS acceptance first
+                    
                     await axios.post(`${discordConfig.apiBaseUrl}/onboarding/tos/accept`, {
                         discordId,
                         discordUsername: username,
@@ -112,9 +100,6 @@ export default {
                 }
             }
 
-            // 5. Record TOS acceptance BEFORE showing modal
-            // If modal fails to show, user can try again
-            // Skip if user already has an existing session with TOS accepted
             if (!existingSession?.tosAccepted) {
                 try {
                     await axios.post(`${discordConfig.apiBaseUrl}/onboarding/tos/accept`, {
@@ -125,7 +110,7 @@ export default {
                     });
                     logger.info(`[Onboarding] TOS accepted by ${username}`);
                 } catch (tosError: any) {
-                    // If 409 conflict or 500 error, likely already accepted - continue anyway
+                    
                     if (tosError.response?.status === 409 || tosError.response?.status === 500) {
                         logger.warn(`[Onboarding] TOS already accepted by ${username}, continuing...`);
                     } else {
@@ -143,7 +128,6 @@ export default {
                 logger.info(`[Onboarding] TOS already accepted for ${username}, skipping acceptance recording`);
             }
 
-            // 6. Show questionnaire modal (first batch - max 5 questions)
             const firstBatch = questions.slice(0, onboardingConfig.maxQuestionsPerModal);
 
             const modal = new ModalBuilder()
@@ -153,7 +137,7 @@ export default {
             firstBatch.forEach((q: any) => {
                 const input = new TextInputBuilder()
                     .setCustomId(`question_${q.id}`)
-                    .setLabel(q.question.substring(0, 45)) // Discord label max 45 chars
+                    .setLabel(q.question.substring(0, 45)) 
                     .setStyle(q.fieldType === "TEXTAREA" ? TextInputStyle.Paragraph : TextInputStyle.Short)
                     .setRequired(q.required);
 
@@ -186,7 +170,6 @@ export default {
                 `Error: \`${errorMsg}\`\n\n` +
                 `Please try again or contact an administrator.`;
 
-            // Try to reply based on interaction state
             try {
                 if (interaction.deferred) {
                     await interaction.editReply({ content: errorContent });

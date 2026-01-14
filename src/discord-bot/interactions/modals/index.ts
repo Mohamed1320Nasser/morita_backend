@@ -2,14 +2,13 @@ import { ModalSubmitInteraction } from "discord.js";
 import { Modal } from "../../types/discord.types";
 import logger from "../../../common/loggers";
 
-// Import all modal handlers
 import { handleOrderDetailsModal } from "./order-details.modal";
 import { handleCalculatorModal } from "./calculator.modal";
 import {
     handleTicketCreateModal,
     handleTicketCloseConfirmModal,
 } from "./ticket-create.modal";
-import { handleTicketModal } from "./ticket-modal.modal"; // NEW
+import { handleTicketModal } from "./ticket-modal.modal"; 
 import { handleCreateOrderJobModal } from "./create-order-job.modal";
 import { handleCompleteOrderModal } from "./complete-order.modal";
 import { handleReportIssueModal } from "./report-issue.modal";
@@ -17,10 +16,9 @@ import { handleOrderReviewModal } from "./order-review.modal";
 import { handleResolveApproveWorkCompleteModal } from "./resolve-approve-work-complete.modal";
 import { handleResolveRequestCorrectionsModal } from "./resolve-request-corrections.modal";
 import { handleResolveApproveCustomerRefundModal } from "./resolve-approve-customer-refund.modal";
-// Onboarding modal handlers
+
 import onboardingQuestionnaireModal from "./onboarding-questionnaire.modal";
 
-// Modal handler mapping (exact matches)
 const modalHandlers: {
     [key: string]: (interaction: ModalSubmitInteraction) => Promise<void>;
 } = {
@@ -28,7 +26,6 @@ const modalHandlers: {
     order_details_modal_ticket: handleOrderDetailsModal,
 };
 
-// Pattern-based modal handlers (for dynamic customIds)
 const patternModalHandlers: Array<{
     pattern: RegExp;
     handler: (interaction: ModalSubmitInteraction) => Promise<void>;
@@ -42,7 +39,7 @@ const patternModalHandlers: Array<{
         handler: handleTicketCreateModal,
     },
     {
-        pattern: /^ticket_modal_/, // NEW - handles all ticket types
+        pattern: /^ticket_modal_/, 
         handler: handleTicketModal,
     },
     {
@@ -83,22 +80,18 @@ const patternModalHandlers: Array<{
     },
 ];
 
-// Export modal handlers as array for the main interaction handler
 export default Object.entries(modalHandlers).map(([customId, execute]) => ({
     customId,
     execute,
 })) as Modal[];
 
-// Helper function to handle modal interactions
 export async function handleModalInteraction(
     interaction: ModalSubmitInteraction
 ): Promise<void> {
     const customId = interaction.customId;
 
-    // Check exact match first
     let handler = modalHandlers[customId];
 
-    // If no exact match, check pattern matches
     if (!handler) {
         const patternMatch = patternModalHandlers.find((ph) =>
             ph.pattern.test(customId)
@@ -114,7 +107,6 @@ export async function handleModalInteraction(
         } catch (error) {
             logger.error(`Error handling modal ${customId}:`, error);
 
-            // Try to send error message
             try {
                 if (interaction.deferred && !interaction.replied) {
                     await interaction.editReply({
@@ -143,5 +135,4 @@ export async function handleModalInteraction(
     }
 }
 
-// Export pattern handlers for use in other parts of the codebase if needed
 export { patternModalHandlers };

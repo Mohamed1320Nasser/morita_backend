@@ -5,11 +5,11 @@ import {
 } from "../utils/ticketTypeHelper";
 
 export async function buildSellGoldMessage() {
-    // Fetch active ticket types for the sell-gold group
+    
     const activeTypes = await getActiveTicketTypesForGroup("sell-gold");
 
     const embed = new EmbedBuilder()
-        .setColor(0xE74C3C) // Red color
+        .setColor(0xE74C3C) 
         .setTitle("💸 Best Rates. Instant Payment. 100% Safe!")
         .setDescription(
             "**💰 Want to Sell OSRS or RS3 Gold? Here's How:**\n\n" +
@@ -28,7 +28,6 @@ export async function buildSellGoldMessage() {
         })
         .setTimestamp();
 
-    // Build buttons dynamically
     const buttons = buildButtonsFromTicketTypes(activeTypes);
 
     if (buttons.length === 0) {

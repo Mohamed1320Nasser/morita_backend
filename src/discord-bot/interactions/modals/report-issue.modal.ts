@@ -32,7 +32,6 @@ export async function handleReportIssueModal(interaction: ModalSubmitInteraction
         const issueData = issueResponse.data || issueResponse;
         logger.info(`[ReportIssue] Issue created: ${issueData.id}, Order ${orderId} marked as DISPUTED`);
 
-        // Send confirmation to customer
         const customerEmbed = new EmbedBuilder()
             .setTitle("⚠️ Issue Reported")
             .setDescription(
@@ -45,7 +44,7 @@ export async function handleReportIssueModal(interaction: ModalSubmitInteraction
                 { name: "⏳ Next Step", value: "Support will contact you", inline: false },
                 { name: "📝 Your Report", value: issueDescription.substring(0, 1024), inline: false },
             ])
-            .setColor(0xed4245) // Red for disputed
+            .setColor(0xed4245) 
             .setTimestamp()
             .setFooter({ text: "Please wait for support assistance" });
 
@@ -61,7 +60,6 @@ export async function handleReportIssueModal(interaction: ModalSubmitInteraction
                 : undefined;
             const orderChannel = interaction.channel instanceof TextChannel ? interaction.channel : undefined;
 
-            // Post to issues channel and get Discord message ID
             const discordMessageId = await issuesChannelService.postIssue(
                 issueData,
                 orderData,
@@ -72,7 +70,6 @@ export async function handleReportIssueModal(interaction: ModalSubmitInteraction
 
             logger.info(`[ReportIssue] Posted issue to issues channel with message ID: ${discordMessageId}`);
 
-            // Save Discord message ID to database
             if (discordMessageId) {
                 await discordApiClient.put(`/discord/orders/issues/${issueData.id}`, {
                     discordMessageId,
@@ -84,13 +81,12 @@ export async function handleReportIssueModal(interaction: ModalSubmitInteraction
             logger.error(`[ReportIssue] Failed to post to issues channel:`, channelError);
         }
 
-        // Get the parent channel (order channel) to post dispute notification and disable buttons
         let parentChannel: TextChannel | null = null;
 
         if (interaction.channel instanceof TextChannel) {
             parentChannel = interaction.channel;
         } else if (interaction.channel?.isThread()) {
-            // If clicked from thread, get parent channel
+            
             parentChannel = interaction.channel.parent as TextChannel;
         }
 
@@ -119,9 +115,8 @@ export async function handleReportIssueModal(interaction: ModalSubmitInteraction
                 .setColor(0xed4245)
                 .setTimestamp();
 
-            // Disable the buttons by editing messages with buttons in channel AND threads
             try {
-                // Helper function to disable buttons in a specific channel/thread
+                
                 const disableButtonsInChannel = async (targetChannel: TextChannel | AnyThreadChannel) => {
                     const messages = await targetChannel.messages.fetch({ limit: 50 });
 
@@ -139,16 +134,14 @@ export async function handleReportIssueModal(interaction: ModalSubmitInteraction
 
                     for (const msg of messagesWithButtons.values()) {
                         await msg.edit({
-                            components: [], // Remove all buttons
+                            components: [], 
                         });
                         logger.info(`[ReportIssue] Disabled buttons on message ${msg.id} in ${targetChannel.name}`);
                     }
                 };
 
-                // Disable buttons in main channel
                 await disableButtonsInChannel(parentChannel);
 
-                // Also check all threads (both active and archived)
                 const [activeThreads, archivedThreads] = await Promise.all([
                     parentChannel.threads.fetchActive(),
                     parentChannel.threads.fetchArchived({ limit: 10 })

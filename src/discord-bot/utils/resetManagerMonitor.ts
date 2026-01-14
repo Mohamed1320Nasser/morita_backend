@@ -1,18 +1,10 @@
 import { getSelectMenuResetManager } from "../services/selectMenuResetManager";
 import logger from "../../common/loggers";
 
-/**
- * Monitoring utility for SelectMenuResetManager
- * Provides health checks and debugging information
- */
 export class ResetManagerMonitor {
     private static monitoringInterval: NodeJS.Timeout | null = null;
-    private static readonly MONITOR_INTERVAL = 60000; // 1 minute
+    private static readonly MONITOR_INTERVAL = 60000; 
 
-    /**
-     * Start monitoring the reset manager
-     * Logs statistics periodically for debugging
-     */
     static startMonitoring(): void {
         if (this.monitoringInterval) {
             logger.warn("[ResetManagerMonitor] Monitoring already started");
@@ -28,9 +20,6 @@ export class ResetManagerMonitor {
         );
     }
 
-    /**
-     * Stop monitoring
-     */
     static stopMonitoring(): void {
         if (this.monitoringInterval) {
             clearInterval(this.monitoringInterval);
@@ -39,21 +28,16 @@ export class ResetManagerMonitor {
         }
     }
 
-    /**
-     * Log health check statistics
-     */
     static logHealthCheck(): void {
         const resetManager = getSelectMenuResetManager();
         const stats = resetManager.getStats();
         const metrics = resetManager.getMetrics();
 
-        // Calculate success rate
         const successRate =
             metrics.totalResets > 0
                 ? ((metrics.successfulResets / metrics.totalResets) * 100).toFixed(2)
                 : "N/A";
 
-        // Calculate cache hit rate
         const totalCacheRequests = metrics.cacheHits + metrics.cacheMisses;
         const cacheHitRate =
             totalCacheRequests > 0
@@ -77,21 +61,18 @@ export class ResetManagerMonitor {
             },
         });
 
-        // Alert if success rate is low
         if (metrics.totalResets > 10 && parseFloat(successRate) < 80) {
             logger.warn(
                 `[ResetManagerMonitor] LOW SUCCESS RATE DETECTED: ${successRate}% (${metrics.successfulResets}/${metrics.totalResets})`
             );
         }
 
-        // Alert if there are too many active locks (potential deadlock)
         if (stats.activeLocks > 5) {
             logger.warn(
                 `[ResetManagerMonitor] HIGH ACTIVE LOCKS: ${stats.activeLocks} (potential deadlock)`
             );
         }
 
-        // Alert if cache is too old
         if (stats.cacheAge > 60000) {
             logger.debug(
                 `[ResetManagerMonitor] Cache is old: ${stats.cacheAge}ms`
@@ -99,9 +80,6 @@ export class ResetManagerMonitor {
         }
     }
 
-    /**
-     * Get current health status
-     */
     static getHealthStatus(): {
         status: "healthy" | "warning" | "critical";
         message: string;
@@ -111,13 +89,11 @@ export class ResetManagerMonitor {
         const stats = resetManager.getStats();
         const metrics = resetManager.getMetrics();
 
-        // Calculate success rate
         const successRate =
             metrics.totalResets > 0
                 ? (metrics.successfulResets / metrics.totalResets) * 100
                 : 100;
 
-        // Determine health status
         if (metrics.totalResets > 10 && successRate < 50) {
             return {
                 status: "critical",

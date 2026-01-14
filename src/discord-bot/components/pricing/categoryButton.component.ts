@@ -2,9 +2,7 @@ import { ButtonBuilder, ButtonStyle, ActionRowBuilder } from "discord.js";
 import { ServiceCategory, Service } from "../../types/discord.types";
 
 export class CategoryButtonComponent {
-    /**
-     * Create toggle button for each category
-     */
+    
     static createCategoryToggleButton(
         category: ServiceCategory,
         isExpanded: boolean = false
@@ -19,9 +17,6 @@ export class CategoryButtonComponent {
         return new ActionRowBuilder<ButtonBuilder>().addComponents(button);
     }
 
-    /**
-     * Create service buttons for expanded category
-     */
     static createServiceButtons(
         services: Service[]
     ): ActionRowBuilder<ButtonBuilder>[] {

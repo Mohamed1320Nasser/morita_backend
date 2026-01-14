@@ -2,9 +2,6 @@ import { Client, GuildMember } from "discord.js";
 import { discordConfig } from "../config/discord.config";
 import logger from "../../common/loggers";
 
-/**
- * Check if a Discord user has admin or support role
- */
 export async function isAdminOrSupport(client: Client, discordId: string): Promise<boolean> {
     try {
         const guild = await client.guilds.fetch(discordConfig.guildId);
@@ -31,9 +28,6 @@ export async function isAdminOrSupport(client: Client, discordId: string): Promi
     }
 }
 
-/**
- * Check if a Discord user has admin role
- */
 export async function isAdmin(client: Client, discordId: string): Promise<boolean> {
     try {
         const guild = await client.guilds.fetch(discordConfig.guildId);
@@ -49,9 +43,6 @@ export async function isAdmin(client: Client, discordId: string): Promise<boolea
     }
 }
 
-/**
- * Check if a Discord user has support role
- */
 export async function isSupport(client: Client, discordId: string): Promise<boolean> {
     try {
         const guild = await client.guilds.fetch(discordConfig.guildId);

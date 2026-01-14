@@ -1,15 +1,4 @@
-/**
- * Discord Error Handler Utility
- *
- * Centralized error handling for Discord bot interactions.
- * Provides classification, logging, user notification, and error tracking.
- *
- * Main functions:
- * - handleInteractionError: Main entry point for handling interaction errors
- * - classifyError: Classify unknown errors into DiscordError types
- * - logError: Log errors to Winston and Sentry
- * - notifyUser: Send user-friendly error messages via Discord
- */
+
 
 import {
   ButtonInteraction,
@@ -39,9 +28,6 @@ import {
   buildCustomErrorMessage,
 } from '../config/errorMessages.config';
 
-/**
- * Type alias for all interaction types
- */
 type AnyInteraction =
   | CommandInteraction
   | ButtonInteraction
@@ -49,30 +35,6 @@ type AnyInteraction =
   | StringSelectMenuInteraction
   | BaseInteraction;
 
-/**
- * Main error handler for Discord interactions
- *
- * This is the primary function to use when catching errors in interaction handlers.
- * It will:
- * 1. Classify the error
- * 2. Log it to Winston/Sentry
- * 3. Notify the user (if appropriate)
- * 4. Return error metadata
- *
- * @param error - The caught error
- * @param interaction - The Discord interaction that caused the error
- * @param options - Optional configuration for error handling
- * @returns ErrorHandlerResponse with handling status and metadata
- *
- * @example
- * ```typescript
- * try {
- *   await someOperation();
- * } catch (error) {
- *   await handleInteractionError(error, interaction);
- * }
- * ```
- */
 export async function handleInteractionError(
   error: unknown,
   interaction: AnyInteraction,
@@ -89,15 +51,13 @@ export async function handleInteractionError(
 
   let discordError: DiscordError;
 
-  // If already a DiscordError, use it directly
   if (isDiscordError(error)) {
     discordError = error;
   } else {
-    // Classify the error
+    
     discordError = classifyError(error, interaction, additionalContext);
   }
 
-  // Override user message if provided
   if (customUserMessage) {
     discordError.userMessage = customUserMessage;
   }
@@ -105,12 +65,10 @@ export async function handleInteractionError(
   let userNotified = false;
   let logged = false;
 
-  // Log the error (unless disabled)
   if (shouldLog) {
     logged = await logError(discordError, includeStack);
   }
 
-  // Notify user (unless disabled or error shouldn't be shown)
   if (notifyUser && discordError.notifyUser && shouldNotifyUser(discordError.type)) {
     userNotified = await notifyUserOfError(interaction, discordError);
   }
@@ -127,21 +85,6 @@ export async function handleInteractionError(
   };
 }
 
-/**
- * Classify an unknown error into a DiscordError
- *
- * Examines the error and determines:
- * - Error type (from ErrorType enum)
- * - Status code
- * - Severity
- * - Whether it's retryable
- * - User-friendly message
- *
- * @param error - The error to classify
- * @param interaction - Optional interaction context
- * @param additionalContext - Additional context data
- * @returns Classified DiscordError
- */
 export function classifyError(
   error: unknown,
   interaction?: AnyInteraction,
@@ -149,10 +92,8 @@ export function classifyError(
 ): DiscordError {
   const timestamp = new Date();
 
-  // Extract interaction context
   const context = interaction ? extractInteractionContext(interaction) : undefined;
 
-  // Default error structure
   let errorType = ErrorType.UNKNOWN_ERROR;
   let errorStatus = ErrorStatus.INTERNAL_ERROR;
   let severity = ErrorSeverity.MEDIUM;
@@ -161,7 +102,6 @@ export function classifyError(
   let message = 'An unknown error occurred';
   let stack: string | undefined;
 
-  // Handle Discord API errors
   if (isDiscordAPIError(error)) {
     const classification = classifyDiscordAPIError(error.code);
     errorType = classification.type;
@@ -171,17 +111,16 @@ export function classifyError(
     notifyUser = classification.notifyUser;
     message = error.message || message;
   }
-  // Handle standard Error objects
+  
   else if (error instanceof Error) {
     message = error.message;
     stack = error.stack;
 
-    // Check for specific error patterns in message
     if (message.includes('Unknown interaction')) {
       errorType = ErrorType.UNKNOWN_INTERACTION;
       errorStatus = ErrorStatus.NOT_FOUND;
       severity = ErrorSeverity.LOW;
-      notifyUser = false; // Don't notify for expired interactions
+      notifyUser = false; 
       retryable = false;
     } else if (message.includes('already acknowledged') || message.includes('already been acknowledged')) {
       errorType = ErrorType.INTERACTION_ALREADY_ACKNOWLEDGED;
@@ -281,15 +220,13 @@ export function classifyError(
       retryable = true;
     }
   }
-  // Handle string errors
+  
   else if (typeof error === 'string') {
     message = error;
   }
 
-  // Get user-friendly message
   const userMessage = getUserMessage(errorType);
 
-  // Build DiscordError
   const discordError: DiscordError = {
     type: errorType,
     status: errorStatus,
@@ -308,12 +245,6 @@ export function classifyError(
   return discordError;
 }
 
-/**
- * Classify Discord API error codes into error types
- *
- * @param code - Discord API error code
- * @returns Error classification
- */
 function classifyDiscordAPIError(code: number): {
   type: ErrorType;
   status: ErrorStatus;
@@ -432,13 +363,6 @@ function classifyDiscordAPIError(code: number): {
   }
 }
 
-/**
- * Log error to Winston and Sentry
- *
- * @param error - DiscordError to log
- * @param includeStack - Whether to include stack trace
- * @returns true if logged successfully
- */
 export async function logError(error: DiscordError, includeStack: boolean = true): Promise<boolean> {
   try {
     const logData: any = {
@@ -450,7 +374,6 @@ export async function logError(error: DiscordError, includeStack: boolean = true
       timestamp: error.timestamp,
     };
 
-    // Add context if available
     if (error.context) {
       logData.context = {
         interactionType: error.context.type,
@@ -461,17 +384,14 @@ export async function logError(error: DiscordError, includeStack: boolean = true
       };
     }
 
-    // Add metadata if available
     if (error.metadata) {
       logData.metadata = error.metadata;
     }
 
-    // Add stack if available and requested
     if (includeStack && error.stack) {
       logData.stack = error.stack;
     }
 
-    // Log based on severity
     switch (error.severity) {
       case ErrorSeverity.CRITICAL:
       case ErrorSeverity.HIGH:
@@ -489,26 +409,16 @@ export async function logError(error: DiscordError, includeStack: boolean = true
 
     return true;
   } catch (loggingError) {
-    // Fallback if logging fails - use logger as last resort
+    
     logger.error('Failed to log Discord error:', loggingError);
     logger.error('Original error:', error);
     return false;
   }
 }
 
-/**
- * Notify user about the error via Discord
- *
- * Attempts to send an ephemeral message to the user.
- * Handles cases where interaction is already replied/deferred.
- *
- * @param interaction - The Discord interaction
- * @param error - The DiscordError
- * @returns true if user was notified successfully
- */
 async function notifyUserOfError(interaction: AnyInteraction, error: DiscordError): Promise<boolean> {
   try {
-    // Check if interaction can be replied to
+    
     if (!interaction.isRepliable()) {
       return false;
     }
@@ -519,20 +429,18 @@ async function notifyUserOfError(interaction: AnyInteraction, error: DiscordErro
       | ModalSubmitInteraction
       | StringSelectMenuInteraction;
 
-    // Don't notify for expired interactions
     if (error.type === ErrorType.UNKNOWN_INTERACTION) {
       return false;
     }
 
-    // Determine reply method based on interaction state
     if (replyableInteraction.replied || replyableInteraction.deferred) {
-      // Use followUp if already replied/deferred
+      
       await replyableInteraction.followUp({
         content: error.userMessage,
         ephemeral: true,
       });
     } else {
-      // Use reply if not yet replied
+      
       await replyableInteraction.reply({
         content: error.userMessage,
         ephemeral: true,
@@ -541,7 +449,7 @@ async function notifyUserOfError(interaction: AnyInteraction, error: DiscordErro
 
     return true;
   } catch (notifyError) {
-    // Failed to notify user - log this but don't throw
+    
     logger.warn('Failed to notify user about error:', {
       originalError: error.type,
       notifyError: notifyError instanceof Error ? notifyError.message : 'Unknown error',
@@ -551,14 +459,6 @@ async function notifyUserOfError(interaction: AnyInteraction, error: DiscordErro
   }
 }
 
-/**
- * Determine if user should be notified about this error type
- *
- * Some errors don't warrant user notification (e.g., expired interactions)
- *
- * @param errorType - The error type
- * @returns true if user should be notified
- */
 export function shouldNotifyUser(errorType: ErrorType): boolean {
   const noNotifyTypes = [
     ErrorType.UNKNOWN_INTERACTION,
@@ -568,12 +468,6 @@ export function shouldNotifyUser(errorType: ErrorType): boolean {
   return !noNotifyTypes.includes(errorType);
 }
 
-/**
- * Determine if error is retryable
- *
- * @param errorType - The error type
- * @returns true if error can be retried
- */
 export function isRetryableError(errorType: ErrorType): boolean {
   const retryableTypes = [
     ErrorType.RATE_LIMITED,
@@ -590,12 +484,6 @@ export function isRetryableError(errorType: ErrorType): boolean {
   return retryableTypes.includes(errorType);
 }
 
-/**
- * Extract interaction context for logging
- *
- * @param interaction - The Discord interaction
- * @returns InteractionContext
- */
 function extractInteractionContext(interaction: AnyInteraction): InteractionContext {
   let type: InteractionContext['type'] = 'unknown';
   let identifier = 'unknown';
@@ -623,27 +511,6 @@ function extractInteractionContext(interaction: AnyInteraction): InteractionCont
   };
 }
 
-/**
- * Create a custom DiscordError manually
- *
- * Useful when you want to throw a specific error type
- *
- * @param type - Error type
- * @param message - Internal error message
- * @param options - Additional options
- * @returns DiscordError
- *
- * @example
- * ```typescript
- * if (balance < amount) {
- *   throw createDiscordError(
- *     ErrorType.INSUFFICIENT_BALANCE,
- *     `User ${userId} has insufficient balance`,
- *     { userId, balance, required: amount }
- *   );
- * }
- * ```
- */
 export function createDiscordError(
   type: ErrorType,
   message: string,
@@ -656,7 +523,6 @@ export function createDiscordError(
 ): DiscordError {
   const userMessage = options.customUserMessage || getUserMessage(type);
 
-  // Determine defaults based on type
   let status = options.status || ErrorStatus.INTERNAL_ERROR;
   let severity = options.severity || ErrorSeverity.MEDIUM;
   let retryable = isRetryableError(type);
@@ -674,12 +540,6 @@ export function createDiscordError(
   };
 }
 
-/**
- * Check if an error is a Discord "Unknown Interaction" error
- *
- * @param error - Error to check
- * @returns true if error is an expired interaction error
- */
 export function isExpiredInteractionError(error: unknown): boolean {
   if (isDiscordAPIError(error) && error.code === DiscordAPIError.UNKNOWN_INTERACTION) {
     return true;
@@ -692,14 +552,6 @@ export function isExpiredInteractionError(error: unknown): boolean {
   return false;
 }
 
-/**
- * Check if interaction is safe to reply to
- *
- * Verifies that the interaction hasn't expired and hasn't been replied to yet
- *
- * @param interaction - The interaction to check
- * @returns true if safe to reply
- */
 export function canReplyToInteraction(
   interaction: AnyInteraction
 ): interaction is CommandInteraction | ButtonInteraction | ModalSubmitInteraction | StringSelectMenuInteraction {
@@ -713,20 +565,9 @@ export function canReplyToInteraction(
     | ModalSubmitInteraction
     | StringSelectMenuInteraction;
 
-  // Check if not replied and not deferred
   return !replyable.replied && !replyable.deferred;
 }
 
-/**
- * Safely reply to interaction with error handling
- *
- * Attempts to reply, handling all error cases gracefully
- *
- * @param interaction - The interaction to reply to
- * @param content - Message content
- * @param ephemeral - Whether message should be ephemeral (default: true)
- * @returns true if reply was successful
- */
 export async function safeReply(
   interaction: AnyInteraction,
   content: string,
@@ -753,7 +594,7 @@ export async function safeReply(
 
     return true;
   } catch (error) {
-    // Don't throw - just log and return false
+    
     logger.debug('Failed to send safe reply:', {
       error: error instanceof Error ? error.message : 'Unknown error',
     });

@@ -9,14 +9,9 @@ export class MessagePersistenceService {
         this.client = client;
     }
 
-    /**
-     * Compare two messages to check if content is different
-     * Returns true if messages are DIFFERENT (need to edit)
-     * Returns false if messages are SAME (skip edit)
-     */
     private messageContentChanged(existingMessage: Message, newMessageData: MessageCreateOptions): boolean {
         try {
-            // Compare text content
+            
             const oldContent = existingMessage.content || "";
             const newContent = newMessageData.content || "";
             if (oldContent !== newContent) {
@@ -24,7 +19,6 @@ export class MessagePersistenceService {
                 return true;
             }
 
-            // Compare embeds
             const oldEmbeds = existingMessage.embeds || [];
             const newEmbeds = (newMessageData.embeds || []) as any[];
 
@@ -37,10 +31,8 @@ export class MessagePersistenceService {
                 const oldEmbed = oldEmbeds[i];
                 const newEmbed = newEmbeds[i];
 
-                // Extract data from EmbedBuilder if needed (has .data property)
                 const newData = (newEmbed as any).data || newEmbed;
 
-                // Compare embed properties
                 if (oldEmbed.title !== newData.title) {
                     logger.debug(`[MessagePersistence] Embed title changed: "${oldEmbed.title}" -> "${newData.title}"`);
                     return true;
@@ -58,7 +50,6 @@ export class MessagePersistenceService {
                     return true;
                 }
 
-                // Compare image/thumbnail
                 if (oldEmbed.image?.url !== newData.image?.url) {
                     logger.debug("[MessagePersistence] Embed image changed");
                     return true;
@@ -68,13 +59,11 @@ export class MessagePersistenceService {
                     return true;
                 }
 
-                // Compare footer
                 if (oldEmbed.footer?.text !== newData.footer?.text) {
                     logger.debug("[MessagePersistence] Embed footer changed");
                     return true;
                 }
 
-                // Compare fields
                 const oldFields = oldEmbed.fields || [];
                 const newFields = newData.fields || [];
                 if (oldFields.length !== newFields.length) {
@@ -92,7 +81,6 @@ export class MessagePersistenceService {
                 }
             }
 
-            // Compare components (buttons, select menus)
             const oldComponents = existingMessage.components || [];
             const newComponents = (newMessageData.components || []) as any[];
 
@@ -114,14 +102,12 @@ export class MessagePersistenceService {
                     const oldComp = oldRow.components[j];
                     const newComp = newRow.components[j];
 
-                    // Compare component basic properties
                     if (oldComp.type !== newComp.type) {
                         logger.debug("[MessagePersistence] Component type changed");
                         return true;
                     }
 
-                    // For buttons
-                    if (oldComp.type === 2) { // Button
+                    if (oldComp.type === 2) { 
                         if (oldComp.label !== newComp.label ||
                             oldComp.customId !== newComp.customId ||
                             oldComp.style !== newComp.style ||
@@ -131,15 +117,13 @@ export class MessagePersistenceService {
                         }
                     }
 
-                    // For select menus
-                    if (oldComp.type === 3) { // Select menu
+                    if (oldComp.type === 3) { 
                         if (oldComp.placeholder !== newComp.placeholder ||
                             oldComp.customId !== newComp.customId) {
                             logger.debug("[MessagePersistence] Select menu changed");
                             return true;
                         }
 
-                        // Compare options
                         const oldOptions = oldComp.options || [];
                         const newOptions = newComp.options || [];
                         if (oldOptions.length !== newOptions.length) {
@@ -159,27 +143,16 @@ export class MessagePersistenceService {
                 }
             }
 
-            // No changes detected
             logger.debug("[MessagePersistence] No content changes detected");
             return false;
 
         } catch (error) {
-            // If comparison fails, assume content changed to be safe
+            
             logger.warn("[MessagePersistence] Error comparing messages, assuming changed:", error);
             return true;
         }
     }
 
-    /**
-     * Ensure a message exists - creates new or edits existing
-     * This is the MAIN method to use for all persistent messages
-     *
-     * @param channelId - Discord channel ID
-     * @param messageType - Type identifier (TOS, TICKET_MENU, PRICING, etc.)
-     * @param messageData - Message content (embeds, components, content)
-     * @param options - Additional options (pin, categoryId, serviceId)
-     * @returns The message object
-     */
     async ensureMessage(
         channelId: string,
         messageType: string,
@@ -192,13 +165,12 @@ export class MessagePersistenceService {
         }
     ): Promise<Message> {
         try {
-            // Get channel
+            
             const channel = await this.client.channels.fetch(channelId);
             if (!channel || !(channel instanceof TextChannel)) {
                 throw new Error(`Channel ${channelId} not found or not a text channel`);
             }
 
-            // Check if message already exists in database
             const existingRecord = await prisma.discordMessage.findFirst({
                 where: {
                     channelId,
@@ -212,20 +184,18 @@ export class MessagePersistenceService {
             let message: Message;
 
             if (existingRecord) {
-                // Message exists - try to fetch and check if content changed
+                
                 try {
                     message = await channel.messages.fetch(existingRecord.messageId);
 
-                    // Compare content - only edit if different
                     const contentChanged = this.messageContentChanged(message, messageData);
 
                     if (contentChanged) {
-                        // Content changed - edit the message
+                        
                         await message.edit(messageData as MessageEditOptions);
 
                         logger.info(`[MessagePersistence] ✏️ Edited message (content changed): ${messageType} in ${channel.name}`);
 
-                        // Update database record
                         await prisma.discordMessage.update({
                             where: { id: existingRecord.id },
                             data: {
@@ -233,16 +203,15 @@ export class MessagePersistenceService {
                             },
                         });
                     } else {
-                        // Content is the same - skip edit
+                        
                         logger.info(`[MessagePersistence] ✅ Message already up-to-date (skipped edit): ${messageType} in ${channel.name}`);
                     }
                 } catch (fetchError) {
-                    // Message was deleted - create new one
+                    
                     logger.warn(`[MessagePersistence] Message ${existingRecord.messageId} not found, creating new one`);
 
                     message = await channel.send(messageData);
 
-                    // Update database with new message ID
                     await prisma.discordMessage.update({
                         where: { id: existingRecord.id },
                         data: {
@@ -254,10 +223,9 @@ export class MessagePersistenceService {
                     logger.info(`[MessagePersistence] Created new message after deletion: ${messageType}`);
                 }
             } else {
-                // No existing message - create new
+                
                 message = await channel.send(messageData);
 
-                // Save to database
                 await prisma.discordMessage.create({
                     data: {
                         messageId: message.id,
@@ -273,7 +241,6 @@ export class MessagePersistenceService {
                 logger.info(`[MessagePersistence] Created new message: ${messageType} in ${channel.name}`);
             }
 
-            // Pin message if requested
             if (options?.pin && !message.pinned) {
                 await message.pin();
                 await prisma.discordMessage.update({
@@ -290,9 +257,6 @@ export class MessagePersistenceService {
         }
     }
 
-    /**
-     * Get stored message from database
-     */
     async getMessage(
         channelId: string,
         messageType: string,
@@ -325,7 +289,7 @@ export class MessagePersistenceService {
             try {
                 return await channel.messages.fetch(record.messageId);
             } catch (error) {
-                // Message doesn't exist anymore - clean up database
+                
                 await prisma.discordMessage.delete({
                     where: { id: record.id },
                 });
@@ -337,9 +301,6 @@ export class MessagePersistenceService {
         }
     }
 
-    /**
-     * Delete message and remove from database
-     */
     async deleteMessage(
         channelId: string,
         messageType: string,
@@ -361,7 +322,7 @@ export class MessagePersistenceService {
             });
 
             if (record) {
-                // Try to delete message from Discord
+                
                 try {
                     const channel = await this.client.channels.fetch(channelId);
                     if (channel && channel instanceof TextChannel) {
@@ -372,7 +333,6 @@ export class MessagePersistenceService {
                     logger.warn(`[MessagePersistence] Could not delete message from Discord:`, error);
                 }
 
-                // Delete from database
                 await prisma.discordMessage.delete({
                     where: { id: record.id },
                 });
@@ -384,9 +344,6 @@ export class MessagePersistenceService {
         }
     }
 
-    /**
-     * Clear all messages of a specific type in a channel
-     */
     async clearMessages(channelId: string, messageType: string): Promise<void> {
         try {
             const records = await prisma.discordMessage.findMany({
@@ -406,7 +363,7 @@ export class MessagePersistenceService {
                     const message = await channel.messages.fetch(record.messageId);
                     await message.delete();
                 } catch (error) {
-                    // Message already deleted
+                    
                 }
 
                 await prisma.discordMessage.delete({
@@ -420,9 +377,6 @@ export class MessagePersistenceService {
         }
     }
 
-    /**
-     * Clear expired messages (for temporary messages)
-     */
     async clearExpiredMessages(): Promise<void> {
         try {
             const expiredMessages = await prisma.discordMessage.findMany({
@@ -441,7 +395,7 @@ export class MessagePersistenceService {
                         await message.delete();
                     }
                 } catch (error) {
-                    // Message already deleted
+                    
                 }
 
                 await prisma.discordMessage.delete({
@@ -458,7 +412,6 @@ export class MessagePersistenceService {
     }
 }
 
-// Singleton instance
 let messagePersistenceInstance: MessagePersistenceService | null = null;
 
 export function getMessagePersistence(client: Client): MessagePersistenceService {

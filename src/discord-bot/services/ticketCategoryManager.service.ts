@@ -17,22 +17,16 @@ export class TicketCategoryManager {
         this.client = client;
     }
 
-    /**
-     * Setup only - validates guild/category exists but doesn't publish messages
-     * Used for manual publish mode
-     */
     async setupOnly(): Promise<void> {
         try {
             logger.info("[TicketCategoryManager] Setting up (manual publish mode)...");
 
-            // Get guild
             this.guild = this.client.guilds.cache.get(discordConfig.guildId);
             if (!this.guild) {
                 logger.warn("[TicketCategoryManager] Guild not found");
                 return;
             }
 
-            // Check if category exists
             if (discordConfig.createTicketCategoryId) {
                 const existing = this.guild.channels.cache.get(discordConfig.createTicketCategoryId);
                 if (existing && existing.type === ChannelType.GuildCategory) {
@@ -45,34 +39,23 @@ export class TicketCategoryManager {
         }
     }
 
-    /**
-     * Publish ticket channels to Discord
-     * Call this via API endpoint for manual publishing
-     */
     async publishTickets(): Promise<void> {
         await this.initialize();
     }
 
-    /**
-     * Initialize the ticket category and channels
-     */
     async initialize(): Promise<void> {
         try {
             logger.info("[TicketCategoryManager] Initializing...");
 
-            // Get guild
             this.guild = this.client.guilds.cache.get(discordConfig.guildId);
             if (!this.guild) {
                 throw new Error("Guild not found");
             }
 
-            // Get or create CREATE TICKET category
             this.ticketCategory = await this.getOrCreateCategory();
 
-            // Get or create channels
             await this.getOrCreateChannels();
 
-            // Send messages to channels
             await this.sendMessagesToChannels();
 
             logger.info("[TicketCategoryManager] Initialization complete");
@@ -82,13 +65,9 @@ export class TicketCategoryManager {
         }
     }
 
-    /**
-     * Get or create the CREATE TICKET category
-     */
     private async getOrCreateCategory(): Promise<CategoryChannel> {
         if (!this.guild) throw new Error("Guild not initialized");
 
-        // Try to find existing category
         if (discordConfig.createTicketCategoryId) {
             const existing = this.guild.channels.cache.get(discordConfig.createTicketCategoryId);
             if (existing && existing.type === ChannelType.GuildCategory) {
@@ -97,7 +76,6 @@ export class TicketCategoryManager {
             }
         }
 
-        // Try to find by name
         const existingByName = this.guild.channels.cache.find(
             c => c.name.toLowerCase() === "create ticket" && c.type === ChannelType.GuildCategory
         );
@@ -105,7 +83,6 @@ export class TicketCategoryManager {
             return existingByName as CategoryChannel;
         }
 
-        // Create new category
         logger.info("[TicketCategoryManager] Creating new CREATE TICKET category");
         const category = await this.guild.channels.create({
             name: "CREATE TICKET",
@@ -114,7 +91,7 @@ export class TicketCategoryManager {
                 {
                     id: this.guild.id,
                     allow: [PermissionFlagsBits.ViewChannel],
-                    deny: [PermissionFlagsBits.SendMessages], // Everyone can view but not send
+                    deny: [PermissionFlagsBits.SendMessages], 
                 },
                 {
                     id: discordConfig.supportRoleId,
@@ -131,9 +108,6 @@ export class TicketCategoryManager {
         return category;
     }
 
-    /**
-     * Get or create all 4 ticket channels
-     */
     private async getOrCreateChannels(): Promise<void> {
         if (!this.guild || !this.ticketCategory) throw new Error("Guild or category not initialized");
 
@@ -150,13 +124,9 @@ export class TicketCategoryManager {
         }
     }
 
-    /**
-     * Get or create a single channel
-     */
     private async getOrCreateChannel(channelName: string, configKey: string): Promise<TextChannel> {
         if (!this.guild || !this.ticketCategory) throw new Error("Guild or category not initialized");
 
-        // Try to find existing channel
         const channelId = (discordConfig as any)[configKey];
         if (channelId) {
             const existing = this.guild.channels.cache.get(channelId);
@@ -166,7 +136,6 @@ export class TicketCategoryManager {
             }
         }
 
-        // Try to find by name in the category
         const existingByName = this.guild.channels.cache.find(
             c => c.name === channelName &&
                  c.type === ChannelType.GuildText &&
@@ -176,7 +145,6 @@ export class TicketCategoryManager {
             return existingByName as TextChannel;
         }
 
-        // Create new channel
         logger.info(`[TicketCategoryManager] Creating new channel: ${channelName}`);
         const channel = await this.guild.channels.create({
             name: channelName,
@@ -203,30 +171,24 @@ export class TicketCategoryManager {
         return channel;
     }
 
-    /**
-     * Send messages to all channels
-     */
     private async sendMessagesToChannels(): Promise<void> {
         try {
-            // Purchase Services
+            
             const purchaseServicesChannel = this.channels.get("purchaseServicesChannelId");
             if (purchaseServicesChannel) {
                 await this.ensureAndSendMessage(purchaseServicesChannel, await buildPurchaseServicesMessage());
             }
 
-            // Purchase Gold
             const purchaseGoldChannel = this.channels.get("purchaseGoldChannelId");
             if (purchaseGoldChannel) {
                 await this.ensureAndSendMessage(purchaseGoldChannel, await buildPurchaseGoldMessage());
             }
 
-            // Sell Gold
             const sellGoldChannel = this.channels.get("sellGoldChannelId");
             if (sellGoldChannel) {
                 await this.ensureAndSendMessage(sellGoldChannel, await buildSellGoldMessage());
             }
 
-            // Swap Crypto
             const swapCryptoChannel = this.channels.get("swapCryptoChannelId");
             if (swapCryptoChannel) {
                 await this.ensureAndSendMessage(swapCryptoChannel, await buildSwapCryptoMessage());
@@ -239,9 +201,6 @@ export class TicketCategoryManager {
         }
     }
 
-    /**
-     * Ensure message exists in channel (create or edit)
-     */
     private async ensureAndSendMessage(
         channel: TextChannel,
         messageData: { embeds: any[]; components: any[] }
@@ -249,13 +208,12 @@ export class TicketCategoryManager {
         try {
             const messagePersistence = getMessagePersistence(this.client);
 
-            // Use message persistence to create or edit existing message
             await messagePersistence.ensureMessage(
                 channel.id,
                 "TICKET_MENU",
                 messageData,
                 {
-                    pin: false  // Don't pin ticket menu messages
+                    pin: false  
                 }
             );
 
@@ -265,15 +223,11 @@ export class TicketCategoryManager {
         }
     }
 
-    /**
-     * Refresh all channel messages
-     */
     async refreshMessages(): Promise<void> {
         await this.sendMessagesToChannels();
     }
 }
 
-// Singleton instance
 let ticketCategoryManagerInstance: TicketCategoryManager | undefined = undefined;
 
 export function getTicketCategoryManager(client: Client): TicketCategoryManager {

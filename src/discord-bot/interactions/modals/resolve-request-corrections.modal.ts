@@ -8,7 +8,6 @@ export async function handleResolveRequestCorrectionsModal(interaction: ModalSub
     try {
         await interaction.deferReply({ ephemeral: true });
 
-        // Parse customId: resolve_corrections_modal_{issueId}_{orderId}
         const parts = interaction.customId.split("_");
         const issueId = parts[parts.length - 2];
         const orderId = parts[parts.length - 1];
@@ -17,7 +16,6 @@ export async function handleResolveRequestCorrectionsModal(interaction: ModalSub
 
         logger.info(`[RequestCorrections] Processing resolution for issue ${issueId}, order ${orderId}`);
 
-        // Validate user has admin or support role
         const hasPermission = await isAdminOrSupport(interaction.client, interaction.user.id);
         if (!hasPermission) {
             await interaction.editReply({
@@ -27,25 +25,21 @@ export async function handleResolveRequestCorrectionsModal(interaction: ModalSub
             return;
         }
 
-        // Note: Issue will be tracked through order status changes
         logger.info(`[RequestCorrections] Admin ${interaction.user.tag} requested corrections for issue ${issueId}`);
 
-        // Get order data
         const orderResponse: any = await discordApiClient.get(`/discord/orders/${orderId}`);
         const orderData = orderResponse.data || orderResponse;
 
-        // Update order status to IN_PROGRESS
         await discordApiClient.put(`/discord/orders/${orderId}/status`, {
             status: "IN_PROGRESS",
             changedByDiscordId: interaction.user.id,
             reason: `🔄 Issue Resolution by Admin - Corrections Requested`,
             notes: `Corrections Required:\n${fixInstructions}\n\nRequested by: ${interaction.user.tag}`,
-            isAdminOverride: true, // Admin/Support override - bypass worker validation
+            isAdminOverride: true, 
         });
 
         logger.info(`[RequestCorrections] Order ${orderId} status updated to IN_PROGRESS`);
 
-        // Success message to admin/support
         const successEmbed = new EmbedBuilder()
             .setTitle("🔄 Issue Resolved - Corrections Requested")
             .setDescription(
@@ -65,7 +59,7 @@ export async function handleResolveRequestCorrectionsModal(interaction: ModalSub
                     inline: false
                 },
             ])
-            .setColor(0x3498db) // Blue
+            .setColor(0x3498db) 
             .setTimestamp()
             .setFooter({ text: `Resolved by ${interaction.user.tag}` });
 
@@ -73,7 +67,6 @@ export async function handleResolveRequestCorrectionsModal(interaction: ModalSub
             embeds: [successEmbed.toJSON() as any],
         });
 
-        // Notify worker in order channel
         try {
             if (orderData.discordChannelId) {
                 const orderChannel = await interaction.client.channels.fetch(orderData.discordChannelId) as TextChannel;
@@ -95,7 +88,7 @@ export async function handleResolveRequestCorrectionsModal(interaction: ModalSub
                             inline: false
                         },
                     ])
-                    .setColor(0x3498db) // Blue
+                    .setColor(0x3498db) 
                     .setTimestamp()
                     .setFooter({ text: "Support has reviewed this case" });
 
@@ -110,7 +103,6 @@ export async function handleResolveRequestCorrectionsModal(interaction: ModalSub
             logger.error(`[RequestCorrections] Failed to send notification to order channel:`, channelError);
         }
 
-        // Notify customer in order channel
         try {
             if (orderData.discordChannelId) {
                 const orderChannel = await interaction.client.channels.fetch(orderData.discordChannelId) as TextChannel;
@@ -130,7 +122,7 @@ export async function handleResolveRequestCorrectionsModal(interaction: ModalSub
                             inline: false
                         },
                     ])
-                    .setColor(0x3498db) // Blue
+                    .setColor(0x3498db) 
                     .setTimestamp()
                     .setFooter({ text: "Support has reviewed this case" });
 
@@ -144,9 +136,8 @@ export async function handleResolveRequestCorrectionsModal(interaction: ModalSub
             logger.error(`[RequestCorrections] Failed to send notification to customer:`, channelError);
         }
 
-        // Update the issue in database and Discord message
         try {
-            // Mark issue as IN_REVIEW in database
+            
             await discordApiClient.put(`/discord/orders/issues/${issueId}`, {
                 status: "IN_REVIEW",
                 resolution: `🔄 Corrections Requested - Resume Work\n\n${fixInstructions}\n\nRequested by: ${interaction.user.tag}`,
@@ -155,7 +146,6 @@ export async function handleResolveRequestCorrectionsModal(interaction: ModalSub
 
             logger.info(`[RequestCorrections] Marked issue ${issueId} as IN_REVIEW in database`);
 
-            // Update Discord message in issues channel
             const issuesChannel = await interaction.client.channels.fetch(discordConfig.issuesChannelId);
             if (issuesChannel?.isTextBased()) {
                 const issueData = await discordApiClient.get(`/discord/orders/issues/${issueId}`);
@@ -165,7 +155,7 @@ export async function handleResolveRequestCorrectionsModal(interaction: ModalSub
                     const issueMessage = await issuesChannel.messages.fetch(issue.discordMessageId);
 
                     const updatedEmbed = new EmbedBuilder(issueMessage.embeds[0].data)
-                        .setColor(0x3498db) // Blue
+                        .setColor(0x3498db) 
                         .setTitle(`🔄 IN REVIEW - ${issueMessage.embeds[0].title}`);
 
                     updatedEmbed.addFields({
@@ -176,7 +166,7 @@ export async function handleResolveRequestCorrectionsModal(interaction: ModalSub
 
                     await issueMessage.edit({
                         embeds: [updatedEmbed.toJSON() as any],
-                        components: [], // Remove resolution buttons
+                        components: [], 
                     });
 
                     logger.info(`[RequestCorrections] Updated issue message in Discord`);
@@ -184,7 +174,7 @@ export async function handleResolveRequestCorrectionsModal(interaction: ModalSub
             }
         } catch (updateError) {
             logger.error(`[RequestCorrections] Failed to update issue:`, updateError);
-            // Don't fail the whole operation if we can't update the issue message
+            
         }
 
         logger.info(`[RequestCorrections] Resolution completed successfully`);

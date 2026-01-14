@@ -20,7 +20,6 @@ export default {
 
             logger.info(`[Onboarding] ${interaction.user.username} retrying onboarding completion`);
 
-            // Get user's answers from Redis
             const cacheKey = `${ONBOARDING_ANSWERS_PREFIX}${discordId}`;
             const userAnswers = await redis.get<any[]>(cacheKey);
 
@@ -34,11 +33,9 @@ export default {
                 return;
             }
 
-            // Get all active questions to extract user data
             const questionsResponse = await axios.get(`${discordConfig.apiBaseUrl}/onboarding/questions/active`);
             const allQuestions = questionsResponse.data.data;
 
-            // Extract user data from answers
             const userData = {
                 fullname: userAnswers.find(a => {
                     const q = allQuestions.find((q: any) => q.id === a.questionId);
@@ -56,7 +53,6 @@ export default {
                 })?.answer || null
             };
 
-            // Submit all answers to backend first (in case this step failed before)
             try {
                 await axios.post(`${discordConfig.apiBaseUrl}/onboarding/answers`, {
                     discordId,
@@ -65,10 +61,9 @@ export default {
                 logger.info(`[Onboarding] Retry - Answers submitted for ${interaction.user.username}`);
             } catch (apiError: any) {
                 logger.warn("[Onboarding] Retry - Failed to submit answers:", apiError.message);
-                // Continue anyway - might be duplicate submission
+                
             }
 
-            // Complete onboarding (create user, assign role)
             const onboardingManager = new OnboardingManagerService(interaction.client);
 
             try {
@@ -93,10 +88,8 @@ export default {
                 return;
             }
 
-            // Clear Redis cache after successful completion
             await redis.delete(cacheKey);
 
-            // Send success message
             const successEmbed = new EmbedBuilder()
                 .setTitle("✅ Registration Successful!")
                 .setDescription(

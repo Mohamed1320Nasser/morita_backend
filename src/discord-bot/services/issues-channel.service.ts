@@ -123,7 +123,6 @@ export class IssuesChannelService {
             .setColor(0xed4245 as ColorResolvable)
             .setTimestamp();
 
-        // Main details section - compact and organized
         embed.addFields(
             { name: "📦 Order:", value: `#${orderNumber}`, inline: true },
             { name: "👤 Customer:", value: `<@${customer.id}> (${customer.tag})`, inline: true },
@@ -143,14 +142,12 @@ export class IssuesChannelService {
             { name: "\u200b", value: "\u200b", inline: true }
         );
 
-        // Issue description
         embed.addFields({
             name: "📝 Issue Description",
             value: issue.issueDescription.substring(0, 1024),
             inline: false,
         });
 
-        // Links and IDs
         if (orderChannel) {
             embed.addFields({
                 name: "🔗 Order Channel",
@@ -165,7 +162,6 @@ export class IssuesChannelService {
             inline: true,
         });
 
-        // Required actions
         embed.addFields({
             name: "⚠️ Required Action",
             value:
@@ -194,7 +190,7 @@ export class IssuesChannelService {
     }
 
     private buildResolutionButtons(issueId: string, orderId: string): ActionRowBuilder<ButtonBuilder>[] {
-        // Using shorter customIds to stay under Discord's 100 character limit
+        
         const approveWorkCompleteButton = new ButtonBuilder()
             .setCustomId(`resolve_approve_work_${issueId}_${orderId}`)
             .setLabel("✅ Approve Work - Complete Order")
@@ -210,7 +206,6 @@ export class IssuesChannelService {
             .setLabel("❌ Approve Refund - Cancel Order")
             .setStyle(ButtonStyle.Danger);
 
-        // Return multiple rows for better vertical stacking
         return [
             new ActionRowBuilder<ButtonBuilder>().addComponents(approveWorkCompleteButton),
             new ActionRowBuilder<ButtonBuilder>().addComponents(requestCorrectionsButton),

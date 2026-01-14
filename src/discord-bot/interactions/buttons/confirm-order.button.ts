@@ -8,7 +8,6 @@ export async function handleConfirmOrder(
     try {
         await interaction.deferReply();
 
-        // This would typically process the order and create a ticket
         const embed = EmbedBuilder.createSuccessEmbed(
             "Order confirmed! A support ticket has been created for you.",
             "Order Confirmed"

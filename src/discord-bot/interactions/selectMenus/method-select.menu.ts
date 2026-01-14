@@ -18,7 +18,6 @@ export async function handleMethodSelect(
             return;
         }
 
-        // Fetch payment methods
         const paymentMethods =
             await interaction.client.apiService.getPaymentMethods();
 
@@ -29,7 +28,6 @@ export async function handleMethodSelect(
             return;
         }
 
-        // Create payment selection embed
         const embed = EmbedBuilder.createPricingCalculatorEmbed({} as any);
         embed.setDescription("Select a payment method to continue:");
 

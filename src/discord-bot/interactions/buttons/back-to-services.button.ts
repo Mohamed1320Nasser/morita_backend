@@ -8,13 +8,12 @@ export async function handleBackToServices(
     interaction: ButtonInteraction
 ): Promise<void> {
     try {
-        // Clear auto-delete timeout (user navigated away)
+        
         const messageId = `${interaction.id}`;
         pricingMessageTracker.clearTimeout(messageId);
 
         await interaction.deferReply();
 
-        // Fetch categories from API
         const categories = await interaction.client.apiService.getCategories();
 
         if (!categories || categories.length === 0) {
@@ -25,7 +24,6 @@ export async function handleBackToServices(
             return;
         }
 
-        // Create services embed and components
         const embed = EmbedBuilder.createServicesEmbed(categories);
         const categorySelectMenu =
             ComponentBuilder.createCategorySelectMenu(categories);

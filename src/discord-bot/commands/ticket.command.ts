@@ -17,12 +17,11 @@ export default {
 
     async execute(interaction: CommandInteraction) {
         try {
-            // Create the ticket details modal (without service/price info)
+            
             const modal = new ModalBuilder()
                 .setCustomId("ticket_create_modal_general_general_0")
                 .setTitle("Open Support Ticket");
 
-            // Service description input
             const descriptionInput = new TextInputBuilder()
                 .setCustomId("ticket_description")
                 .setLabel("Describe your request")
@@ -33,7 +32,6 @@ export default {
                 .setRequired(true)
                 .setMaxLength(1000);
 
-            // Optional OSRS username
             const usernameInput = new TextInputBuilder()
                 .setCustomId("ticket_osrs_username")
                 .setLabel("OSRS Username (Optional)")
@@ -42,7 +40,6 @@ export default {
                 .setRequired(false)
                 .setMaxLength(50);
 
-            // Contact preference
             const contactInput = new TextInputBuilder()
                 .setCustomId("ticket_contact")
                 .setLabel("Preferred Contact Method (Optional)")
@@ -51,7 +48,6 @@ export default {
                 .setRequired(false)
                 .setMaxLength(100);
 
-            // Add inputs to action rows
             const row1 =
                 new ActionRowBuilder<TextInputBuilder>().addComponents(
                     descriptionInput

@@ -11,10 +11,6 @@ import {
 import { discordConfig } from "../config/discord.config";
 import logger from "../../common/loggers";
 
-/**
- * Service for managing the Reviews Channel
- * Posts customer reviews publicly
- */
 export class ReviewsChannelService {
     private client: Client;
 
@@ -22,12 +18,9 @@ export class ReviewsChannelService {
         this.client = client;
     }
 
-    /**
-     * Get or create the Reviews channel
-     */
     async getOrCreateChannel(guild: Guild): Promise<TextChannel | null> {
         try {
-            // Try to find existing channel by ID
+            
             if (discordConfig.reviewsChannelId) {
                 const existing = guild.channels.cache.get(
                     discordConfig.reviewsChannelId
@@ -37,7 +30,6 @@ export class ReviewsChannelService {
                 }
             }
 
-            // Try to find by name
             const existingByName = guild.channels.cache.find(
                 (c) =>
                     c.name.toLowerCase() === "reviews" &&
@@ -47,7 +39,6 @@ export class ReviewsChannelService {
                 return existingByName as TextChannel;
             }
 
-            // Create new channel
             logger.info("[Reviews] Creating reviews channel");
             const channel = await guild.channels.create({
                 name: "reviews",
@@ -55,18 +46,18 @@ export class ReviewsChannelService {
                 topic: "⭐ Customer reviews and testimonials",
                 permissionOverwrites: [
                     {
-                        // Allow everyone to view and read
+                        
                         id: guild.id,
                         allow: [
                             PermissionFlagsBits.ViewChannel,
                             PermissionFlagsBits.ReadMessageHistory,
                         ],
                         deny: [
-                            PermissionFlagsBits.SendMessages, // Only bot can post
+                            PermissionFlagsBits.SendMessages, 
                         ],
                     },
                     {
-                        // Allow support role to send messages
+                        
                         id: discordConfig.supportRoleId,
                         allow: [
                             PermissionFlagsBits.ViewChannel,
@@ -75,7 +66,7 @@ export class ReviewsChannelService {
                         ],
                     },
                     {
-                        // Allow admin role
+                        
                         id: discordConfig.adminRoleId,
                         allow: [PermissionFlagsBits.Administrator],
                     },
@@ -90,9 +81,6 @@ export class ReviewsChannelService {
         }
     }
 
-    /**
-     * Post a review to the channel
-     */
     async postReview(
         order: any,
         review: any,
@@ -112,10 +100,8 @@ export class ReviewsChannelService {
                 return;
             }
 
-            // Create the embed
             const embed = this.formatReviewEmbed(order, review, customer, worker);
 
-            // Send the message
             await channel.send({
                 embeds: [embed.toJSON() as any],
             });
@@ -128,9 +114,6 @@ export class ReviewsChannelService {
         }
     }
 
-    /**
-     * Format the review embed
-     */
     private formatReviewEmbed(
         order: any,
         review: any,
@@ -140,21 +123,19 @@ export class ReviewsChannelService {
         const orderNumber = order.orderNumber.toString().padStart(4, "0");
         const rating = review.rating || 5;
 
-        // Generate star rating display
         const stars = "⭐".repeat(rating);
         const emptyStars = "☆".repeat(5 - rating);
         const starDisplay = `${stars}${emptyStars} ${rating}/5`;
 
-        // Determine embed color based on rating
         let embedColor: number;
         if (rating >= 5) {
-            embedColor = 0x57f287; // Green for 5 stars
+            embedColor = 0x57f287; 
         } else if (rating >= 4) {
-            embedColor = 0x5865f2; // Blue for 4 stars
+            embedColor = 0x5865f2; 
         } else if (rating >= 3) {
-            embedColor = 0xfee75c; // Yellow for 3 stars
+            embedColor = 0xfee75c; 
         } else {
-            embedColor = 0xed4245; // Red for low ratings
+            embedColor = 0xed4245; 
         }
 
         const embed = new EmbedBuilder()
@@ -162,7 +143,6 @@ export class ReviewsChannelService {
             .setColor(embedColor as ColorResolvable)
             .setTimestamp();
 
-        // Add service and participant info
         const detailsLines: string[] = [];
 
         if (order.service) {
@@ -172,28 +152,24 @@ export class ReviewsChannelService {
         detailsLines.push(`**👤 Customer:** <@${customer.id}>`);
         detailsLines.push(`**👷 Worker:** <@${worker.id}>`);
 
-        // Add completion date
         const completedAtRaw = order.completedAt || review.createdAt || new Date();
         const completedAt = completedAtRaw instanceof Date ? completedAtRaw : new Date(completedAtRaw);
         detailsLines.push(`**📅 Completed:** <t:${Math.floor(completedAt.getTime() / 1000)}:D>`);
 
-        // Add order value
         if (order.orderValue) {
             detailsLines.push(`**💰 Order Value:** $${order.orderValue.toFixed(2)}`);
         }
 
         embed.setDescription(detailsLines.join("\n"));
 
-        // Add review comment if exists
         if (review.comment && review.comment.trim().length > 0) {
             embed.addFields({
                 name: "💬 Review",
-                value: review.comment.substring(0, 1024), // Discord limit
+                value: review.comment.substring(0, 1024), 
                 inline: false,
             });
         }
 
-        // Add footer
         embed.setFooter({
             text: `Order #${orderNumber}`,
         });
@@ -202,7 +178,6 @@ export class ReviewsChannelService {
     }
 }
 
-// Singleton instance
 let reviewsChannelServiceInstance: ReviewsChannelService | null = null;
 
 export function getReviewsChannelService(client: Client): ReviewsChannelService {

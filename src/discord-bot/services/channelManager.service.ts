@@ -19,12 +19,10 @@ export class ChannelManagerService {
     private groupedMessages: Map<number, Message> = new Map();
     private serviceDetailMessages: Map<string, Message> = new Map();
 
-    // Cache for categories with services
     private categoriesCache: ServiceCategory[] | null = null;
     private cacheTimestamp: number = 0;
-    private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+    private readonly CACHE_TTL = 5 * 60 * 1000; 
 
-    // State management for expanded categories
     private categoryStates: Map<string, boolean> = new Map();
 
     constructor(client: Client) {
@@ -32,13 +30,9 @@ export class ChannelManagerService {
         this.apiService = new ApiService(discordConfig.apiBaseUrl);
     }
 
-    /**
-     * Get categories with services from cache or API
-     */
     private async getCategoriesWithServices(): Promise<ServiceCategory[]> {
         const now = Date.now();
 
-        // Check if cache is valid
         if (
             this.categoriesCache &&
             now - this.cacheTimestamp < this.CACHE_TTL
@@ -47,20 +41,15 @@ export class ChannelManagerService {
             return this.categoriesCache;
         }
 
-        // Fetch fresh data from API
         logger.debug("Fetching fresh categories data from API");
         const categories = await this.apiService.getCategoriesWithServices();
 
-        // Update cache
         this.categoriesCache = categories;
         this.cacheTimestamp = now;
 
         return categories;
     }
 
-    /**
-     * Refresh cache (called by pricing sync job)
-     */
     async refreshCache(): Promise<void> {
         logger.debug("Refreshing categories cache");
         this.categoriesCache = null;
@@ -68,16 +57,10 @@ export class ChannelManagerService {
         await this.getCategoriesWithServices();
     }
 
-    /**
-     * Get cached categories (for button handlers)
-     */
     getCachedCategories(): ServiceCategory[] | null {
         return this.categoriesCache;
     }
 
-    /**
-     * Toggle category expanded state
-     */
     toggleCategoryState(categoryId: string): boolean {
         const currentState = this.categoryStates.get(categoryId) || false;
         const newState = !currentState;
@@ -85,16 +68,10 @@ export class ChannelManagerService {
         return newState;
     }
 
-    /**
-     * Get category expanded state
-     */
     getCategoryState(categoryId: string): boolean {
         return this.categoryStates.get(categoryId) || false;
     }
 
-    /**
-     * Initialize pricing channel on bot startup
-     */
     async initializePricingChannel(): Promise<void> {
         try {
             if (!discordConfig.pricingChannelId) {
@@ -126,13 +103,10 @@ export class ChannelManagerService {
                 `Initializing pricing channel: ${this.pricingChannel.name}`
             );
 
-            // Clear existing messages in the channel
             await this.clearChannel();
 
-            // Create header message
             await this.createHeaderMessage();
 
-            // Create category messages
             await this.updateCategoryMessages();
 
             logger.info("Pricing channel initialized successfully");
@@ -141,9 +115,6 @@ export class ChannelManagerService {
         }
     }
 
-    /**
-     * Create/update category list messages (select menu approach)
-     */
     async updateCategoryMessages(): Promise<void> {
         try {
             if (!this.pricingChannel) {
@@ -157,25 +128,23 @@ export class ChannelManagerService {
                 return;
             }
 
-            // Create one select menu per category (12 messages)
             for (const category of categories) {
                 const { content, components } =
                     SelectMenuPricingBuilder.buildCategorySelectMenu(category);
 
-                // Check if category message already exists
                 const existingMessage = await this.getCategoryMessage(
                     category.id
                 );
 
                 if (existingMessage) {
-                    // Update existing message
+                    
                     await existingMessage.edit({
                         content,
                         components: components as any,
                     });
                     this.categoryMessages.set(category.id, existingMessage);
                 } else {
-                    // Create new message
+                    
                     const message = await this.pricingChannel.send({
                         content,
                         components: components as any,
@@ -197,9 +166,6 @@ export class ChannelManagerService {
         }
     }
 
-    /**
-     * Utility function to chunk array into groups
-     */
     private chunkArray<T>(array: T[], chunkSize: number): T[][] {
         const chunks: T[][] = [];
         for (let i = 0; i < array.length; i += chunkSize) {
@@ -208,9 +174,6 @@ export class ChannelManagerService {
         return chunks;
     }
 
-    /**
-     * Delete expired service detail messages
-     */
     async cleanupExpiredMessages(): Promise<void> {
         try {
             const expiredMessages = await prisma.discordMessage.findMany({
@@ -255,9 +218,6 @@ export class ChannelManagerService {
         }
     }
 
-    /**
-     * Rebuild all category messages from scratch
-     */
     async rebuildPricingChannel(): Promise<void> {
         try {
             logger.info("Rebuilding pricing channel...");
@@ -269,9 +229,6 @@ export class ChannelManagerService {
         }
     }
 
-    /**
-     * Clear all messages in the pricing channel
-     */
     private async clearChannel(): Promise<void> {
         if (!this.pricingChannel) return;
 
@@ -287,7 +244,6 @@ export class ChannelManagerService {
                 await this.pricingChannel.bulkDelete(botMessages);
             }
 
-            // Clear database records
             await prisma.discordMessage.deleteMany({
                 where: {
                     channelId: this.pricingChannel.id,
@@ -301,22 +257,15 @@ export class ChannelManagerService {
         }
     }
 
-    /**
-     * Create header message
-     */
     private async createHeaderMessage(): Promise<void> {
         if (!this.pricingChannel) return;
 
-        // Send only banner image
         const bannerPath = path.join(__dirname, "../../../public/discord banner 01.png");
         const bannerAttachment = new AttachmentBuilder(bannerPath);
         const message = await this.pricingChannel.send({ files: [bannerAttachment] });
         await this.saveMessageToDatabase(message, "HEADER");
     }
 
-    /**
-     * Get existing category message from database
-     */
     private async getCategoryMessage(
         categoryId: string
     ): Promise<Message | null> {
@@ -344,9 +293,6 @@ export class ChannelManagerService {
         }
     }
 
-    /**
-     * Get existing grouped message from database
-     */
     private async getGroupedMessage(
         groupIndex: number
     ): Promise<Message | null> {
@@ -374,9 +320,6 @@ export class ChannelManagerService {
         }
     }
 
-    /**
-     * Save message to database
-     */
     private async saveMessageToDatabase(
         message: Message,
         messageType: string,
@@ -402,9 +345,6 @@ export class ChannelManagerService {
         }
     }
 
-    /**
-     * Delete message from database
-     */
     private async deleteMessageFromDatabase(messageId: string): Promise<void> {
         try {
             await prisma.discordMessage.delete({

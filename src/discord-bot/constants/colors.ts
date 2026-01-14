@@ -1,52 +1,46 @@
-// Discord embed colors - Morita Brand
+
 export const COLORS = {
-    // Morita Brand colors
-    PRIMARY: "#c9a961", // Bronze/Gold from logo
-    SECONDARY: "#1a2744", // Navy Blue background
-    ACCENT: "#d4af37", // Lighter bronze for highlights
+    
+    PRIMARY: "#c9a961", 
+    SECONDARY: "#1a2744", 
+    ACCENT: "#d4af37", 
 
-    // Status colors (keeping Discord standards)
-    SUCCESS: "#57F287", // Green
-    WARNING: "#FEE75C", // Yellow
-    INFO: "#5865F2", // Blue
-    ERROR: "#ED4245", // Red
-    PREMIUM: "#9B59B6", // Purple
-    CRYPTO: "#F39C12", // Orange
+    SUCCESS: "#57F287", 
+    WARNING: "#FEE75C", 
+    INFO: "#5865F2", 
+    ERROR: "#ED4245", 
+    PREMIUM: "#9B59B6", 
+    CRYPTO: "#F39C12", 
 
-    // Text colors
-    TEXT_PRIMARY: "#e8e8e8", // Light gray for main text
-    TEXT_SECONDARY: "#b9bbbe", // Medium gray for secondary text
-    TEXT_MUTED: "#72767D", // Muted gray
+    TEXT_PRIMARY: "#e8e8e8", 
+    TEXT_SECONDARY: "#b9bbbe", 
+    TEXT_MUTED: "#72767D", 
 
-    // Background colors
-    BACKGROUND_PRIMARY: "#0d1b2a", // Dark navy background
-    BACKGROUND_SECONDARY: "#1a2744", // Navy blue for cards
-    BACKGROUND_TERTIARY: "#2c3e50", // Darker navy
+    BACKGROUND_PRIMARY: "#0d1b2a", 
+    BACKGROUND_SECONDARY: "#1a2744", 
+    BACKGROUND_TERTIARY: "#2c3e50", 
 
-    // Neutral colors
     WHITE: "#FFFFFF",
     BLACK: "#000000",
     GRAY: "#2C2F33",
     LIGHT_GRAY: "#99AAB5",
     DARK_GRAY: "#23272A",
 
-    // Service category colors (using brand palette)
-    MEGASCALE: "#c9a961", // Bronze
-    CAPES: "#d4af37", // Lighter bronze
-    BLOOD_TORVA: "#1a2744", // Navy blue
-    RAIDS: "#c9a961", // Bronze
-    BOSSING: "#d4af37", // Lighter bronze
-    COMBAT: "#c9a961", // Bronze
-    ACCOUNTS: "#1a2744", // Navy blue
-    QUESTS: "#d4af37", // Lighter bronze
-    MINIGAMES: "#c9a961", // Bronze
-    IRONMAN: "#1a2744", // Navy blue
-    SKILLS: "#d4af37", // Lighter bronze
+    MEGASCALE: "#c9a961", 
+    CAPES: "#d4af37", 
+    BLOOD_TORVA: "#1a2744", 
+    RAIDS: "#c9a961", 
+    BOSSING: "#d4af37", 
+    COMBAT: "#c9a961", 
+    ACCOUNTS: "#1a2744", 
+    QUESTS: "#d4af37", 
+    MINIGAMES: "#c9a961", 
+    IRONMAN: "#1a2744", 
+    SKILLS: "#d4af37", 
 } as const;
 
-// Color mapping for different contexts
 export const COLOR_MAPPING = {
-    // Service categories
+    
     megascale: COLORS.MEGASCALE,
     "capes-quiver": COLORS.CAPES,
     "blood-torva": COLORS.BLOOD_TORVA,
@@ -59,17 +53,14 @@ export const COLOR_MAPPING = {
     "ironman-gathering": COLORS.IRONMAN,
     skills: COLORS.SKILLS,
 
-    // Order status
     PENDING: COLORS.WARNING,
     IN_PROGRESS: COLORS.INFO,
     COMPLETED: COLORS.SUCCESS,
     CANCELLED: COLORS.ERROR,
 
-    // Payment types
     CRYPTO: COLORS.CRYPTO,
     NON_CRYPTO: COLORS.INFO,
 
-    // Pricing units
     FIXED: COLORS.PRIMARY,
     PER_LEVEL: COLORS.SUCCESS,
     PER_KILL: COLORS.ERROR,

@@ -2,7 +2,7 @@ import { ColorResolvable } from "discord.js";
 import { COLORS } from "../constants/colors";
 
 export const embedConfig = {
-    // Default embed settings
+    
     defaultColor: COLORS.PRIMARY as ColorResolvable,
     defaultThumbnail:
         process.env.BRAND_LOGO_URL ||
@@ -14,7 +14,6 @@ export const embedConfig = {
             "https://via.placeholder.com/16x16/c9a961/1a2744?text=🎮",
     },
 
-    // Brand settings
     brand: {
         name: "MORITA",
         website: "https://morita-gaming.com",
@@ -22,7 +21,6 @@ export const embedConfig = {
         poweredBy: "Powered by MORITA Bot",
     },
 
-    // Color schemes for different contexts
     colors: {
         primary: COLORS.PRIMARY,
         success: COLORS.SUCCESS,
@@ -33,7 +31,6 @@ export const embedConfig = {
         crypto: COLORS.CRYPTO,
     },
 
-    // Embed templates
     templates: {
         services: {
             title: "🎮 MORITA Gaming Services",
@@ -67,7 +64,6 @@ export const embedConfig = {
         },
     },
 
-    // Field limits
     limits: {
         maxFields: 25,
         maxFieldNameLength: 256,
@@ -77,23 +73,20 @@ export const embedConfig = {
         maxFooterTextLength: 2048,
     },
 
-    // Timestamp settings
     timestamps: {
         enabled: true,
-        format: "R", // Relative time format
+        format: "R", 
     },
 
-    // Thumbnail settings
     thumbnails: {
         enabled: true,
         defaultSize: 64,
         fallbackUrl: "https://via.placeholder.com/64x64/c9a961/1a2744?text=🎮",
     },
 
-    // Image settings
     images: {
         enabled: true,
-        maxSize: 8 * 1024 * 1024, // 8MB
+        maxSize: 8 * 1024 * 1024, 
         allowedFormats: ["png", "jpg", "jpeg", "gif", "webp"],
     },
 };

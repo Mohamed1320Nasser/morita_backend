@@ -18,7 +18,6 @@ export async function handleCategorySelect(
             return;
         }
 
-        // Fetch services in the selected category
         const services =
             await interaction.client.apiService.getServices(categoryId);
 
@@ -31,7 +30,6 @@ export async function handleCategorySelect(
             return;
         }
 
-        // Create service selection embed
         const embed = EmbedBuilder.createServicesEmbed([]);
         embed.setTitle("🎮 Available Services");
         embed.setDescription("Select a service to view details:");

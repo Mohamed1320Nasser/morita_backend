@@ -9,7 +9,6 @@ export async function handleResolveApproveWorkCompleteModal(interaction: ModalSu
     try {
         await interaction.deferReply({ ephemeral: true });
 
-        // Parse customId: resolve_approve_work_modal_{issueId}_{orderId}
         const parts = interaction.customId.split("_");
         const issueId = parts[parts.length - 2];
         const orderId = parts[parts.length - 1];
@@ -19,7 +18,6 @@ export async function handleResolveApproveWorkCompleteModal(interaction: ModalSu
 
         logger.info(`[ApproveWorkComplete] Processing resolution for issue ${issueId}, order ${orderId}`);
 
-        // Validate user has admin or support role
         const hasPermission = await isAdminOrSupport(interaction.client, interaction.user.id);
         if (!hasPermission) {
             await interaction.editReply({
@@ -29,7 +27,6 @@ export async function handleResolveApproveWorkCompleteModal(interaction: ModalSu
             return;
         }
 
-        // Validate confirmation (case-insensitive)
         if (confirmation !== "COMPLETE") {
             await interaction.editReply({
                 content: `❌ **Invalid confirmation.**\n\nYou typed: \`${confirmation}\`\nRequired: \`COMPLETE\` (exactly 8 characters)\n\nPlease try again.`,
@@ -37,14 +34,11 @@ export async function handleResolveApproveWorkCompleteModal(interaction: ModalSu
             return;
         }
 
-        // Note: Issue will be automatically marked as resolved when order is completed
         logger.info(`[ApproveWorkComplete] Admin ${interaction.user.tag} approved work for issue ${issueId}`);
 
-        // Get order data
         const orderResponse: any = await discordApiClient.get(`/discord/orders/${orderId}`);
         const orderData = orderResponse.data || orderResponse;
 
-        // Validate order has customer
         if (!orderData.customer?.discordId) {
             await interaction.editReply({
                 content: "❌ **Error:** Order has no customer assigned.",
@@ -52,7 +46,6 @@ export async function handleResolveApproveWorkCompleteModal(interaction: ModalSu
             return;
         }
 
-        // Step 1: If order is DISPUTED, first transition to AWAITING_CONFIRM
         if (orderData.status === "DISPUTED") {
             logger.info(`[ApproveWorkComplete] Order is DISPUTED, transitioning to AWAITING_CONFIRM first`);
             await discordApiClient.put(`/discord/orders/${orderId}/status`, {
@@ -60,12 +53,10 @@ export async function handleResolveApproveWorkCompleteModal(interaction: ModalSu
                 changedByDiscordId: interaction.user.id,
                 reason: `Admin approved work - Issue resolved in worker's favor`,
                 notes: `Resolution: ${resolutionNotes}\n\nResolved by: ${interaction.user.tag}`,
-                isAdminOverride: true, // Admin/Support override - bypass worker validation
+                isAdminOverride: true, 
             });
         }
 
-        // Step 2: Call /confirm endpoint to complete the order and trigger payouts
-        // Use customer's Discord ID (admin is confirming on behalf of customer)
         await discordApiClient.put(`/discord/orders/${orderId}/confirm`, {
             customerDiscordId: orderData.customer.discordId,
             feedback: `✅ Issue Resolved by Admin - Work Approved\n\nResolution: ${resolutionNotes}\n\nResolved by: ${interaction.user.tag}`,
@@ -73,17 +64,13 @@ export async function handleResolveApproveWorkCompleteModal(interaction: ModalSu
 
         logger.info(`[ApproveWorkComplete] Order ${orderId} confirmed via /confirm endpoint, payouts triggered`);
 
-        // Step 3: Get updated order data with completion info
         const updatedOrderResponse: any = await discordApiClient.get(`/discord/orders/${orderId}`);
         const updatedOrderData = updatedOrderResponse.data || updatedOrderResponse;
 
-        // Step 4: Get order channel for notifications
         const orderChannel = orderData.discordChannelId
             ? await interaction.client.channels.fetch(orderData.discordChannelId).catch(() => null)
             : null;
 
-        // Step 5: Handle all Discord notifications (customer/worker DMs, channel updates, support notifications)
-        // Also send review request to customer in order channel
         const confirmResult = await confirmOrderCompletion(
             interaction.client,
             orderId,
@@ -91,12 +78,11 @@ export async function handleResolveApproveWorkCompleteModal(interaction: ModalSu
             interaction.user.id,
             `✅ Issue Resolved by Admin - Work Approved\n\nResolution: ${resolutionNotes}\n\nResolved by: ${interaction.user.tag}`,
             orderChannel instanceof TextChannel ? orderChannel : undefined,
-            true // Send review request in order channel
+            true 
         );
 
         logger.info(`[ApproveWorkComplete] All Discord notifications sent for order ${orderId}`);
 
-        // Success message to admin/support
         const successEmbed = new EmbedBuilder()
             .setTitle("✅ Issue Resolved - Work Approved")
             .setDescription(
@@ -118,7 +104,7 @@ export async function handleResolveApproveWorkCompleteModal(interaction: ModalSu
                     inline: false
                 },
             ])
-            .setColor(0x57f287) // Green
+            .setColor(0x57f287) 
             .setTimestamp()
             .setFooter({ text: `Resolved by ${interaction.user.tag}` });
 
@@ -126,9 +112,8 @@ export async function handleResolveApproveWorkCompleteModal(interaction: ModalSu
             embeds: [successEmbed.toJSON() as any],
         });
 
-        // Update the issue in database and Discord message
         try {
-            // Mark issue as RESOLVED in database
+            
             await discordApiClient.put(`/discord/orders/issues/${issueId}`, {
                 status: "RESOLVED",
                 resolution: `✅ Worker Right - Order Completed\n\n${resolutionNotes}\n\nResolved by: ${interaction.user.tag}`,
@@ -137,7 +122,6 @@ export async function handleResolveApproveWorkCompleteModal(interaction: ModalSu
 
             logger.info(`[ApproveWorkComplete] Marked issue ${issueId} as RESOLVED in database`);
 
-            // Update Discord message in issues channel
             const issuesChannel = await interaction.client.channels.fetch(discordConfig.issuesChannelId);
             if (issuesChannel?.isTextBased()) {
                 const issueData = await discordApiClient.get(`/discord/orders/issues/${issueId}`);
@@ -147,7 +131,7 @@ export async function handleResolveApproveWorkCompleteModal(interaction: ModalSu
                     const issueMessage = await issuesChannel.messages.fetch(issue.discordMessageId);
 
                     const resolvedEmbed = new EmbedBuilder(issueMessage.embeds[0].data)
-                        .setColor(0x57f287) // Green
+                        .setColor(0x57f287) 
                         .setTitle(`✅ RESOLVED - ${issueMessage.embeds[0].title}`);
 
                     resolvedEmbed.addFields({
@@ -158,7 +142,7 @@ export async function handleResolveApproveWorkCompleteModal(interaction: ModalSu
 
                     await issueMessage.edit({
                         embeds: [resolvedEmbed.toJSON() as any],
-                        components: [], // Remove resolution buttons
+                        components: [], 
                     });
 
                     logger.info(`[ApproveWorkComplete] Updated issue message in Discord`);
@@ -166,7 +150,7 @@ export async function handleResolveApproveWorkCompleteModal(interaction: ModalSu
             }
         } catch (updateError) {
             logger.error(`[ApproveWorkComplete] Failed to update issue:`, updateError);
-            // Don't fail the whole operation if we can't update the issue message
+            
         }
 
         logger.info(`[ApproveWorkComplete] Resolution completed successfully`);

@@ -2,9 +2,7 @@ import { ButtonBuilder, ButtonStyle, ActionRowBuilder } from "discord.js";
 import { Service } from "../../types/discord.types";
 
 export class ServiceButtonComponent {
-    /**
-     * Create service detail button
-     */
+    
     static createServiceDetailButton(
         service: Service
     ): ActionRowBuilder<ButtonBuilder> {
@@ -16,9 +14,6 @@ export class ServiceButtonComponent {
         return new ActionRowBuilder<ButtonBuilder>().addComponents(button);
     }
 
-    /**
-     * Create "Click here for more information" button
-     */
     static createMoreInfoButton(
         serviceId: string
     ): ActionRowBuilder<ButtonBuilder> {
@@ -26,14 +21,11 @@ export class ServiceButtonComponent {
             .setCustomId(`pricing_service_${serviceId}_more_info`)
             .setLabel("Click here for more information")
             .setStyle(ButtonStyle.Link)
-            .setURL("https://morita-gaming.com"); // Replace with actual service page URL
+            .setURL("https://morita-gaming.com"); 
 
         return new ActionRowBuilder<ButtonBuilder>().addComponents(button);
     }
 
-    /**
-     * Create order now button
-     */
     static createOrderNowButton(
         serviceId: string
     ): ActionRowBuilder<ButtonBuilder> {

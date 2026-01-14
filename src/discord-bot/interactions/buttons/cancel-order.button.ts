@@ -10,22 +10,18 @@ export async function handleCancelOrder(
     try {
         await interaction.deferReply({ ephemeral: true });
 
-        // Check permission - only Support/Admin can cancel orders
         const hasPermission = await requireSupportOrAdmin(interaction);
         if (!hasPermission) {
             return;
         }
 
-        // Extract orderId from customId: cancel_order_{orderId}
         const orderId = interaction.customId.replace("cancel_order_", "");
 
         logger.info(`[CancelOrder] Support ${interaction.user.tag} cancelling order ${orderId}`);
 
-        // Get order details
         const orderResponse: any = await discordApiClient.get(`/discord/orders/${orderId}`);
         const orderData = orderResponse.data || orderResponse;
 
-        // Cancel the order via API
         await discordApiClient.put(`/discord/orders/${orderId}/status`, {
             status: "CANCELLED",
             supportDiscordId: interaction.user.id,
@@ -42,7 +38,6 @@ export async function handleCancelOrder(
             embeds: [embed as any],
         });
 
-        // Notify in channel
         if (interaction.channel) {
             await interaction.channel.send({
                 content: `⚠️ **Order #${orderData.orderNumber} Cancelled**\n\nCancelled by <@${interaction.user.id}>`,

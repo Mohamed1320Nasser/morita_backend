@@ -13,10 +13,6 @@ export class TosManagerService {
         this.client = client;
     }
 
-    /**
-     * Setup only - validates channel exists but doesn't publish
-     * Used for manual publish mode
-     */
     async setupOnly(): Promise<void> {
         try {
             if (!onboardingConfig.tosChannelId) {
@@ -37,10 +33,6 @@ export class TosManagerService {
         }
     }
 
-    /**
-     * Publish TOS to Discord channel
-     * Call this via API endpoint for manual publishing
-     */
     async publishTos(): Promise<void> {
         await this.initializeTosChannel();
     }
@@ -82,7 +74,6 @@ export class TosManagerService {
                 throw new Error("TOS content is required and must be a string");
             }
 
-            // Build embed
             const embed = new EmbedBuilder()
                 .setTitle(activeTos.title.substring(0, 256))
                 .setDescription(activeTos.content.substring(0, 4096))
@@ -100,7 +91,6 @@ export class TosManagerService {
                 embed.setFooter({ text: activeTos.footerText });
             }
 
-            // Build button
             const acceptButton = new ButtonBuilder()
                 .setCustomId(onboardingConfig.acceptTosButtonId)
                 .setLabel(activeTos.buttonLabel || "Accept Terms")
@@ -110,7 +100,6 @@ export class TosManagerService {
             const row = new ActionRowBuilder<ButtonBuilder>()
                 .addComponents(acceptButton);
 
-            // Use message persistence to create or edit existing message
             const messagePersistence = getMessagePersistence(this.client);
             await messagePersistence.ensureMessage(
                 onboardingConfig.tosChannelId,
@@ -120,7 +109,7 @@ export class TosManagerService {
                     components: [row as any]
                 },
                 {
-                    pin: false  // Don't pin TOS message
+                    pin: false  
                 }
             );
 

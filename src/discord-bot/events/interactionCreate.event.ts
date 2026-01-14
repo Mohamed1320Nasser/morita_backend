@@ -19,7 +19,7 @@ export default {
                 await handleModal(interaction);
             }
         } catch (error) {
-            // Handle "Unknown interaction" and "already acknowledged" errors gracefully
+            
             if (
                 error instanceof Error &&
                 (error.message === "Unknown interaction" ||
@@ -37,7 +37,6 @@ export default {
             const errorMessage =
                 "An error occurred while processing your request. Please try again later.";
 
-            // Only attempt to reply if interaction is still repliable and hasn't been handled
             if (!interaction.isRepliable()) {
                 logger.debug(
                     "Interaction is no longer repliable in outer handler"
@@ -47,20 +46,20 @@ export default {
 
             try {
                 if (interaction.replied || interaction.deferred) {
-                    // Try followUp if already replied/deferred
+                    
                     await interaction.followUp({
                         content: errorMessage,
                         ephemeral: true,
                     });
                 } else {
-                    // Try reply if not yet handled
+                    
                     await interaction.reply({
                         content: errorMessage,
                         ephemeral: true,
                     });
                 }
             } catch (replyError) {
-                // Handle specific Discord errors gracefully
+                
                 if (
                     replyError instanceof Error &&
                     (replyError.message === "Unknown interaction" ||
@@ -140,7 +139,6 @@ async function handleSelectMenu(interaction: any) {
         `Select menu interaction: ${customId} by ${interaction.user.tag}`
     );
 
-    // Handler now handles all errors internally
     await handleSelectMenuInteraction(interaction);
 }
 
@@ -148,6 +146,5 @@ async function handleModal(interaction: any) {
     const customId = interaction.customId;
     logger.info(`Modal interaction: ${customId} by ${interaction.user.tag}`);
 
-    // Use the centralized modal handler which supports pattern matching
     await handleModalInteraction(interaction);
 }
