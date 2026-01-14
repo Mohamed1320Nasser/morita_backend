@@ -24,13 +24,21 @@ export default {
             }
 
             // 2. Check session status - allow re-entry if TOS accepted but not completed
+            let existingSession = null;
             try {
                 const sessionResponse = await axios.get(`${discordConfig.apiBaseUrl}/onboarding/sessions/${discordId}`);
-                const session = sessionResponse.data.data;
+                existingSession = sessionResponse.data.data;
 
-                // If session is completed, user should have role already (checked above)
+                // If session is completed, tell user they already registered
+                if (existingSession?.completed) {
+                    return await interaction.reply({
+                        content: "✅ You have already accepted the Terms of Service and completed registration!\n\nIf you don't have access to channels, please contact an administrator.",
+                        ephemeral: true
+                    });
+                }
+
                 // If TOS accepted but not completed, allow them to continue
-                if (session?.tosAccepted && !session?.completed) {
+                if (existingSession?.tosAccepted && !existingSession?.completed) {
                     logger.info(`[Onboarding] ${username} re-attempting registration after previous partial completion`);
                 }
             } catch (sessionError) {
@@ -106,28 +114,33 @@ export default {
 
             // 5. Record TOS acceptance BEFORE showing modal
             // If modal fails to show, user can try again
-            try {
-                await axios.post(`${discordConfig.apiBaseUrl}/onboarding/tos/accept`, {
-                    discordId,
-                    discordUsername: username,
-                    tosId: activeTos.id,
-                    ipAddress: null
-                });
-                logger.info(`[Onboarding] TOS accepted by ${username}`);
-            } catch (tosError: any) {
-                // If 500 error, likely already accepted - continue anyway
-                if (tosError.response?.status === 500) {
-                    logger.warn(`[Onboarding] TOS already accepted by ${username}, continuing...`);
-                } else {
-                    logger.error(`[Onboarding] Failed to record TOS acceptance: ${tosError.message}`);
-                    return await interaction.reply({
-                        content:
-                            `❌ **Failed to Record Acceptance**\n\n` +
-                            `Could not save your TOS acceptance. This may be a temporary issue.\n\n` +
-                            `Please try clicking "Accept Terms" again.`,
-                        ephemeral: true
+            // Skip if user already has an existing session with TOS accepted
+            if (!existingSession?.tosAccepted) {
+                try {
+                    await axios.post(`${discordConfig.apiBaseUrl}/onboarding/tos/accept`, {
+                        discordId,
+                        discordUsername: username,
+                        tosId: activeTos.id,
+                        ipAddress: null
                     });
+                    logger.info(`[Onboarding] TOS accepted by ${username}`);
+                } catch (tosError: any) {
+                    // If 409 conflict or 500 error, likely already accepted - continue anyway
+                    if (tosError.response?.status === 409 || tosError.response?.status === 500) {
+                        logger.warn(`[Onboarding] TOS already accepted by ${username}, continuing...`);
+                    } else {
+                        logger.error(`[Onboarding] Failed to record TOS acceptance: ${tosError.message}`);
+                        return await interaction.reply({
+                            content:
+                                `❌ **Failed to Record Acceptance**\n\n` +
+                                `Could not save your TOS acceptance. This may be a temporary issue.\n\n` +
+                                `Please try clicking "Accept Terms" again.`,
+                            ephemeral: true
+                        });
+                    }
                 }
+            } else {
+                logger.info(`[Onboarding] TOS already accepted for ${username}, skipping acceptance recording`);
             }
 
             // 6. Show questionnaire modal (first batch - max 5 questions)
