@@ -134,6 +134,7 @@ async function createOrder(orderData: any, ticketId: string | null, jobDetails: 
     const response: any = await discordApiClient.post("/discord/orders/create", createOrderData);
     const outerData = response.data || response;
     const order = outerData.data || outerData;
+    
 
     return {
         orderNumber: order.orderNumber,
