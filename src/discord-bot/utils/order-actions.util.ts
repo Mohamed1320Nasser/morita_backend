@@ -250,6 +250,51 @@ export async function completeWorkOnOrder(
         notes: completionNotes,
     });
 
+    // Send DM to customer notifying them that work is complete
+    try {
+        const customerUser = await client.users.fetch(orderData.customer.discordId);
+
+        const customerDmEmbed = new EmbedBuilder()
+            .setTitle("🎉 Your Order is Ready!")
+            .setDescription(
+                `Great news! The worker has completed your order.\n\n` +
+                `Please review the work and confirm if everything looks good.`
+            )
+            .addFields([
+                { name: "📦 Order", value: `#${orderData.orderNumber}`, inline: true },
+                { name: "💰 Value", value: `$${orderValue.toFixed(2)} USD`, inline: true },
+                { name: "📊 Status", value: "Awaiting Your Confirmation", inline: true },
+            ])
+            .addFields([
+                {
+                    name: "📋 What to do next",
+                    value:
+                        "1. Go to the order channel in Discord\n" +
+                        "2. Check the completion review thread\n" +
+                        "3. Click **Confirm Complete** if satisfied\n" +
+                        "4. Or click **Report Issue** if there's a problem",
+                    inline: false
+                },
+            ])
+            .setColor(0xf59e0b)
+            .setTimestamp()
+            .setFooter({ text: "Thank you for choosing our service!" });
+
+        if (completionNotes) {
+            customerDmEmbed.addFields([
+                { name: "📝 Notes from Worker", value: completionNotes.substring(0, 1024), inline: false }
+            ]);
+        }
+
+        await customerUser.send({
+            embeds: [customerDmEmbed.toJSON() as any],
+        });
+
+        logger.info(`[CompleteWorkUtil] Sent DM to customer ${orderData.customer.discordId}`);
+    } catch (dmError) {
+        logger.warn(`[CompleteWorkUtil] Could not send DM to customer:`, dmError);
+    }
+
     logger.info(`[CompleteWorkUtil] Successfully completed work on order #${orderData.orderNumber}`);
 
     return {
