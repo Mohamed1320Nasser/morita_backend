@@ -242,6 +242,8 @@ model Service {
   orders           Order[]           @relation("serviceOrders")
   tickets          Ticket[]          @relation("serviceTickets")
 
+  shortcuts Json?
+
   @@unique([categoryId, slug])
   @@index([categoryId])
   @@index([active])
@@ -288,6 +290,8 @@ model PricingMethod {
   modifiers    PricingModifier[] @relation("pricingMethodModifiers")
   methodPrices MethodPrice[]     @relation("pricingMethodPrices")
   orders       Order[]           @relation("pricingMethodOrders")
+
+  shortcuts Json?
 
   @@index([serviceId])
   @@index([active])

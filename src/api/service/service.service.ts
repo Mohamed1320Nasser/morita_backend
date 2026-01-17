@@ -100,6 +100,7 @@ export default class ServiceService {
                             basePrice: true,
                             pricingUnit: true,
                             active: true,
+                            shortcuts: true,
                         },
                     },
                 },
@@ -142,6 +143,7 @@ export default class ServiceService {
                         startLevel: true,
                         endLevel: true,
                         displayOrder: true,
+                        shortcuts: true,
                         methodPrices: {
                             include: {
                                 paymentMethod: {
@@ -261,6 +263,7 @@ export default class ServiceService {
                 description: true,
                 emoji: true,
                 displayOrder: true,
+                shortcuts: true,
                 category: {
                     select: {
                         id: true,
@@ -380,6 +383,7 @@ export default class ServiceService {
                 imageUrl: true,
                 active: true,
                 displayOrder: true,
+                shortcuts: true,
                 category: {
                     select: {
                         id: true,
@@ -414,6 +418,7 @@ export default class ServiceService {
                         startLevel: true,
                         endLevel: true,
                         displayOrder: true,
+                        shortcuts: true,
                         active: true,
                         modifiers: {
                             where: { active: true },

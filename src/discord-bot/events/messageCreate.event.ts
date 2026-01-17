@@ -80,13 +80,43 @@ export default {
 
 async function handleSkillsCommand(message: Message, apiService: ApiService) {
     const prefix = discordConfig.prefix;
-    const args = message.content.slice(prefix.length + 2).trim().split(/\s+/);
+    const content = message.content.slice(prefix.length + 2).trim();
+
+    if (!content) {
+        await sendValidationError(
+            message,
+            "!s <service> <start-level>-<end-level>\nExample: !s agility 70-99",
+            "Missing parameters"
+        );
+        return;
+    }
+
+    // Split by comma for batch processing
+    const requests = content.split(',').map(s => s.trim()).filter(s => s.length > 0);
+
+    if (requests.length === 0) {
+        await sendValidationError(
+            message,
+            "!s <service> <start-level>-<end-level>\nExample: !s agility 70-99",
+            "Missing parameters"
+        );
+        return;
+    }
+
+    // Process each request sequentially
+    for (const request of requests) {
+        await processSingleSkillRequest(message, request, apiService);
+    }
+}
+
+async function processSingleSkillRequest(message: Message, requestString: string, apiService: ApiService) {
+    const args = requestString.split(/\s+/);
 
     if (args.length < 2) {
         await sendValidationError(
             message,
             "!s <service> <start-level>-<end-level>\nExample: !s agility 70-99",
-            "Missing service name or level range"
+            `Invalid format for request: "${requestString}"`
         );
         return;
     }
@@ -95,10 +125,11 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
     const levelMatch = lastArg.match(/^(\d+)-(\d+)$/);
 
     if (!levelMatch) {
+         // Try to see if the user put the service name last e.g. "1-99 Cooking" - though we stick to standard format for now
         await sendValidationError(
             message,
             "!s <service> <start-level>-<end-level>\nExample: !s agility 70-99",
-            "Invalid level range format. Use format: 70-99"
+            `Invalid level range format in "${requestString}". Use format: 70-99`
         );
         return;
     }
@@ -107,6 +138,7 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
     const endLevel = parseInt(levelMatch[2]);
 
     const serviceName = args.slice(0, -1).join(" ").toLowerCase();
+    
     if (startLevel < 1 || startLevel > 99 || endLevel < 1 || endLevel > 99) {
         await sendInvalidParameterError(
             message,
@@ -127,19 +159,21 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
         return;
     }
 
-    const thinkingMsg = await message.reply("🔢 Calculating price...");
+    const thinkingMsg = await message.reply(`🔢 Calculating price for **${serviceName}** (${startLevel}-${endLevel})...`);
 
     const services = await apiService.getAllServicesWithPricing();
 
     let service = services.find((s: any) =>
         s.name.toLowerCase() === serviceName ||
-        s.slug.toLowerCase() === serviceName
+        s.slug.toLowerCase() === serviceName ||
+        (s.shortcuts && Array.isArray(s.shortcuts) && s.shortcuts.some((alias: string) => alias.toLowerCase() === serviceName))
     );
 
     if (!service) {
         service = services.find((s: any) =>
             s.name.toLowerCase().includes(serviceName) ||
-            s.slug.toLowerCase().includes(serviceName)
+            s.slug.toLowerCase().includes(serviceName) ||
+            (s.shortcuts && Array.isArray(s.shortcuts) && s.shortcuts.some((alias: string) => alias.toLowerCase().includes(serviceName)))
         );
     }
 
@@ -314,7 +348,7 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
                             name: `📊 ${range.startLevel}-${range.endLevel}`,
                             value: segmentDisplay,
                             inline: false,
-                        });
+                            });
                     }
                 }
 
@@ -440,7 +474,8 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
     // 1. Exact service name match
     service = pvmServices.find((s: any) =>
         s.name.toLowerCase() === serviceName ||
-        s.slug.toLowerCase() === serviceName
+        s.slug.toLowerCase() === serviceName ||
+        (s.shortcuts && Array.isArray(s.shortcuts) && s.shortcuts.some((alias: string) => alias.toLowerCase() === serviceName))
     );
 
     // 2. Exact method name match (e.g., "duke sucellus", "yama")
@@ -448,7 +483,8 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
         for (const s of pvmServices) {
             const method = s.pricingMethods?.find((m: any) =>
                 m.pricingUnit === 'PER_KILL' &&
-                m.name.toLowerCase() === serviceName
+                (m.name.toLowerCase() === serviceName ||
+                (m.shortcuts && Array.isArray(m.shortcuts) && m.shortcuts.some((alias: string) => alias.toLowerCase() === serviceName)))
             );
             if (method) {
                 service = s;
@@ -464,7 +500,7 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
             const methodWithGroup = s.pricingMethods?.find((m: any) =>
                 m.pricingUnit === 'PER_KILL' &&
                 m.groupName &&
-                m.groupName.toLowerCase() === serviceName
+                m.groupName.trim().toLowerCase() === serviceName
             );
             if (methodWithGroup) {
                 service = s;
@@ -478,7 +514,8 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
     if (!service) {
         service = pvmServices.find((s: any) =>
             s.name.toLowerCase().includes(serviceName) ||
-            s.slug.toLowerCase().includes(serviceName)
+            s.slug.toLowerCase().includes(serviceName) ||
+            (s.shortcuts && Array.isArray(s.shortcuts) && s.shortcuts.some((alias: string) => alias.toLowerCase().includes(serviceName)))
         );
     }
 
@@ -487,7 +524,8 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
         for (const s of pvmServices) {
             const method = s.pricingMethods?.find((m: any) =>
                 m.pricingUnit === 'PER_KILL' &&
-                m.name.toLowerCase().includes(serviceName)
+                (m.name.toLowerCase().includes(serviceName) ||
+                (m.shortcuts && Array.isArray(m.shortcuts) && m.shortcuts.some((alias: string) => alias.toLowerCase().includes(serviceName))))
             );
             if (method) {
                 service = s;
@@ -503,7 +541,7 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
             const methodWithGroup = s.pricingMethods?.find((m: any) =>
                 m.pricingUnit === 'PER_KILL' &&
                 m.groupName &&
-                m.groupName.toLowerCase().includes(serviceName)
+                m.groupName.trim().toLowerCase().includes(serviceName)
             );
             if (methodWithGroup) {
                 service = s;
@@ -539,8 +577,21 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
 
         let allMethods = service.pricingMethods.filter((m: any) => m.pricingUnit === 'PER_KILL');
 
+        // logger.info(`[PvM] Found ${allMethods.length} PER_KILL methods for service "${service.name}":`);
+        // allMethods.forEach((m: any) => {
+        //     logger.info(`[PvM] - Method: "${m.name}", Group: "${m.groupName}"`);
+        // });
+
         if (groupNameFilter) {
-            allMethods = allMethods.filter((m: any) => m.groupName === groupNameFilter);
+            const normalizedFilter = groupNameFilter.trim().toLowerCase();
+            logger.info(`[PvM] Filtering for group: "${normalizedFilter}" (Original: "${groupNameFilter}")`);
+            
+            allMethods = allMethods.filter((m: any) => {
+                const normalizedGroup = m.groupName ? m.groupName.trim().toLowerCase() : '';
+                const match = normalizedGroup === normalizedFilter;
+                logger.info(`[PvM] Checking method "${m.name}": Group="${m.groupName}" -> Match=${match}`);
+                return match;
+            });
         }
 
         // If a specific method was matched, filter to only that method
@@ -715,7 +766,8 @@ function findMinigameItem(services: any[], searchTerm: string): {
 
         const method = service.pricingMethods.find((m: any) =>
             m.pricingUnit === 'PER_ITEM' &&
-            (m.name.toLowerCase() === normalized || m.slug?.toLowerCase() === normalized)
+            (m.name.toLowerCase() === normalized || m.slug?.toLowerCase() === normalized ||
+            (m.shortcuts && Array.isArray(m.shortcuts) && m.shortcuts.some((alias: string) => alias.toLowerCase() === normalized)))
         );
 
         if (method) {
@@ -730,7 +782,8 @@ function findMinigameItem(services: any[], searchTerm: string): {
 
     const exactServiceMatch = minigameServices.find((s: any) =>
         s.name.toLowerCase() === normalized ||
-        s.slug.toLowerCase() === normalized
+        s.slug.toLowerCase() === normalized ||
+        (s.shortcuts && Array.isArray(s.shortcuts) && s.shortcuts.some((alias: string) => alias.toLowerCase() === normalized))
     );
 
     if (exactServiceMatch) {
@@ -767,7 +820,8 @@ function findMinigameItem(services: any[], searchTerm: string): {
 
         const method = service.pricingMethods.find((m: any) =>
             m.pricingUnit === 'PER_ITEM' &&
-            m.name.toLowerCase().includes(normalized)
+            (m.name.toLowerCase().includes(normalized) ||
+            (m.shortcuts && Array.isArray(m.shortcuts) && m.shortcuts.some((alias: string) => alias.toLowerCase().includes(normalized))))
         );
 
         if (method) {
@@ -782,7 +836,8 @@ function findMinigameItem(services: any[], searchTerm: string): {
 
     const partialServiceMatch = minigameServices.find((s: any) =>
         s.name.toLowerCase().includes(normalized) ||
-        s.slug.toLowerCase().includes(normalized)
+        s.slug.toLowerCase().includes(normalized) ||
+        (s.shortcuts && Array.isArray(s.shortcuts) && s.shortcuts.some((alias: string) => alias.toLowerCase().includes(normalized)))
     );
 
     if (partialServiceMatch) {

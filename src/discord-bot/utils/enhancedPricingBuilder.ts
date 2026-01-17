@@ -1221,11 +1221,13 @@ export class EnhancedPricingBuilder {
         const result: Record<string, PricingMethod[]> = {};
 
         for (const entry of entries) {
-            if (entry.type === 'group') {
-                result[entry.name] = entry.methods;
+            const key = entry.type === 'group' ? entry.name : entry.method.name;
+            const methodsToAdd = entry.type === 'group' ? entry.methods : [entry.method];
+
+            if (result[key]) {
+                result[key].push(...methodsToAdd);
             } else {
-                
-                result[entry.method.name] = [entry.method];
+                result[key] = [...methodsToAdd];
             }
         }
 

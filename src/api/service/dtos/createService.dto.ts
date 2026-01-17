@@ -45,4 +45,8 @@ export class CreateServiceDto {
     @IsInt()
     @Min(0)
     displayOrder?: number = 0;
+
+    @IsOptional()
+    @IsString({ each: true })
+    shortcuts?: string[];
 }

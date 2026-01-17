@@ -48,4 +48,8 @@ export class UpdateServiceDto {
     @IsInt()
     @Min(0)
     displayOrder?: number;
+
+    @IsOptional()
+    @IsString({ each: true })
+    shortcuts?: string[];
 }

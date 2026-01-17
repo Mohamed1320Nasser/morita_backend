@@ -78,6 +78,7 @@ export default class PricingMethodService {
                     endLevel: true,
                     active: true,
                     displayOrder: true,
+                    shortcuts: true,
                     createdAt: true,
                     service: {
                         select: {
@@ -147,6 +148,7 @@ export default class PricingMethodService {
                 endLevel: true,
                 active: true,
                 displayOrder: true,
+                shortcuts: true,
                 serviceId: true,
                 createdAt: true,
                 service: {

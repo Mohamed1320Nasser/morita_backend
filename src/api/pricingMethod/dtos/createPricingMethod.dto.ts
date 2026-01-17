@@ -63,4 +63,8 @@ export class CreatePricingMethodDto {
     @Transform(({ value }) => (value === "string" ? Boolean(value) : value))
     @IsBoolean({ message: "Active must be a boolean" })
     active?: boolean = true;
+
+    @IsOptional()
+    @IsString({ each: true })
+    shortcuts?: string[];
 }
