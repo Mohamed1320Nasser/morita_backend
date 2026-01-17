@@ -12,6 +12,7 @@ import logger from "../../common/loggers";
 import { discordApiClient } from "../clients/DiscordApiClient";
 import { getOrderChannelService } from "../services/orderChannel.service";
 import { notifySupportOrderUpdate } from "./notification.util";
+import { getCompletedOrdersChannelService } from "../services/completed-orders-channel.service";
 
 export async function startWorkOnOrder(
     client: Client,
@@ -176,9 +177,9 @@ export async function completeWorkOnOrder(
 
             const thread = await orderChannel.threads.create({
                 name: `Order #${orderData.orderNumber} - Completion Review`,
-                autoArchiveDuration: 1440, 
+                autoArchiveDuration: 1440,
                 reason: 'Order completion review thread',
-                type: 11, 
+                type: 11,
             });
 
             const orderInfoEmbed = new EmbedBuilder()
@@ -485,6 +486,24 @@ export async function confirmOrderCompletion(
                 logger.error(`[ConfirmOrderUtil] Failed to send review request:`, reviewError);
             }
         }
+    }
+
+    // Post to completed orders channel
+    try {
+        const customerUser = await client.users.fetch(orderData.customer.discordId);
+        const workerUser = await client.users.fetch(orderData.worker.discordId);
+
+        const completedOrdersService = getCompletedOrdersChannelService(client);
+        await completedOrdersService.postCompletedOrder(
+            orderData,
+            workerUser,
+            customerUser,
+            orderChannel
+        );
+
+        logger.info(`[ConfirmOrderUtil] Posted order #${orderData.orderNumber} to completed-orders channel`);
+    } catch (completedOrdersError) {
+        logger.error(`[ConfirmOrderUtil] Failed to post to completed-orders channel:`, completedOrdersError);
     }
 
     logger.info(`[ConfirmOrderUtil] Order #${orderData.orderNumber} confirmation completed successfully`);

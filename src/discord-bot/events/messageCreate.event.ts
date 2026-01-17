@@ -27,11 +27,19 @@ export default {
 
         const commandType = commandMatch[1];
 
-        if (discordConfig.calculatorChannelId) {
-            if (message.channelId !== discordConfig.calculatorChannelId) {
-                return;
-            }
-        }
+        // Channel restriction for calculator commands (currently disabled - commands work everywhere)
+        // Uncomment the block below to restrict commands to specific channels:
+        //
+        // if (discordConfig.calculatorChannelId) {
+        //     const channel = message.channel;
+        //     const isCalculatorChannel = message.channelId === discordConfig.calculatorChannelId;
+        //     const isTicketChannel = 'parentId' in channel && discordConfig.ticketCategoryId && channel.parentId === discordConfig.ticketCategoryId;
+        //     const isOrderChannel = 'parentId' in channel && discordConfig.ordersCategoryId && channel.parentId === discordConfig.ordersCategoryId;
+        //
+        //     if (!isCalculatorChannel && !isTicketChannel && !isOrderChannel) {
+        //         return;
+        //     }
+        // }
 
         try {
             switch (commandType) {

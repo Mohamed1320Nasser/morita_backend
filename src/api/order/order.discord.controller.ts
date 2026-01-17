@@ -14,7 +14,6 @@ import {
     GetOrderListDto,
     ClaimOrderDto,
 } from "./dtos";
-import logger from "../../common/loggers";
 
 @JsonController("/discord/orders")
 @Service()

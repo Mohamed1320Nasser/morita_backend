@@ -1,7 +1,8 @@
-import { ButtonInteraction, EmbedBuilder, TextChannel, ButtonBuilder, ButtonStyle, ActionRowBuilder } from "discord.js";
+import { ButtonInteraction, EmbedBuilder, TextChannel, ButtonBuilder, ButtonStyle, ActionRowBuilder, GuildMember } from "discord.js";
 import logger from "../../../common/loggers";
 import { discordApiClient } from "../../clients/DiscordApiClient";
 import { confirmOrderCompletion } from "../../utils/order-actions.util";
+import { discordConfig } from "../../config/discord.config";
 
 export async function handleConfirmCompleteButton(interaction: ButtonInteraction): Promise<void> {
     try {
@@ -15,11 +16,28 @@ export async function handleConfirmCompleteButton(interaction: ButtonInteraction
         
         const orderData = orderResponse.data || orderResponse;
 
-        if (!orderData.customer || orderData.customer.discordId !== interaction.user.id) {
+        // Check if user is customer, support, or admin
+        const isCustomer = orderData.customer && orderData.customer.discordId === interaction.user.id;
+
+        // Check if user has support or admin role
+        let isSupportOrAdmin = false;
+        if (interaction.member instanceof GuildMember) {
+            const memberRoles = interaction.member.roles.cache;
+            const hasSupport = discordConfig.supportRoleId ? memberRoles.has(discordConfig.supportRoleId) : false;
+            const hasAdmin = discordConfig.adminRoleId ? memberRoles.has(discordConfig.adminRoleId) : false;
+            isSupportOrAdmin = hasSupport || hasAdmin;
+        }
+
+        if (!isCustomer && !isSupportOrAdmin) {
             await interaction.editReply({
-                content: "❌ You are not the customer for this order.",
+                content: "❌ Only the customer, support team, or admins can confirm this order.",
             });
             return;
+        }
+
+        // Log who is confirming the order
+        if (isSupportOrAdmin && !isCustomer) {
+            logger.info(`[ConfirmComplete] Support/Admin ${interaction.user.id} confirming order on behalf of customer`);
         }
 
         if (orderData.status !== "AWAITING_CONFIRMATION" && orderData.status !== "AWAITING_CONFIRM") {
