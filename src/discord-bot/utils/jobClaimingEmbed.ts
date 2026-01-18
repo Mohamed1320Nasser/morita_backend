@@ -66,46 +66,30 @@ export function createJobClaimingEmbed(data: JobClaimingData): EmbedBuilder {
         logger.error(`[JobClaimingEmbed] Missing orderNumber!`, data);
     }
 
-    const workerPayout = data.orderValue * 0.8; 
     const tierInfo = getDepositTier(data.depositAmount);
 
     const embed = new EmbedBuilder()
-        .setTitle(`${tierInfo.emoji} NEW JOB AVAILABLE - ${tierInfo.label}`)
+        .setTitle(`${tierInfo.emoji} New Job Available`)
         .setDescription(
-            data.orderNumber ?
-                `Order #${data.orderNumber} is ready to be claimed!` :
-                `A new order is ready to be claimed!`
+            `**Order #${data.orderNumber || 'N/A'}** is ready to be claimed!`
         )
         .addFields([
             {
-                name: "📦 Order Details",
-                value: data.serviceName || "Service order",
-                inline: false,
-            },
-            {
-                name: "💰 Your Payout",
-                value: `$${workerPayout.toFixed(2)} ${data.currency} (80% of order value)`,
+                name: "💵 Order Value",
+                value: `**$${data.orderValue.toFixed(2)} ${data.currency}**`,
                 inline: true,
             },
             {
-                name: `${tierInfo.emoji} Deposit Required`,
-                value: `$${data.depositAmount.toFixed(2)} ${data.currency}`,
-                inline: true,
-            },
-            {
-                name: "👤 Customer",
-                value: `<@${data.customerDiscordId}>`,
+                name: "💰 Required Deposit",
+                value: `**$${data.depositAmount.toFixed(2)} ${data.currency}**`,
                 inline: true,
             },
         ])
-        .setColor(tierInfo.color) 
+        .setColor(tierInfo.color)
         .setTimestamp()
-        .setFooter({
-            text: data.orderId ?
-                `Order ID: ${data.orderId}` :
-                `New Job Available`
-        });
+        .setFooter({ text: `Order #${data.orderNumber || 'N/A'}` });
 
+    // Add job details if provided
     if (data.jobDetails) {
         embed.addFields([
             {
@@ -115,37 +99,6 @@ export function createJobClaimingEmbed(data: JobClaimingData): EmbedBuilder {
             },
         ]);
     }
-
-    let tierDescription = "";
-    switch (tierInfo.tier) {
-        case DepositTier.LOW:
-            tierDescription = "✅ **Entry Level** - Most workers can claim this job";
-            break;
-        case DepositTier.MEDIUM:
-            tierDescription = "⚡ **Standard** - Requires some wallet balance";
-            break;
-        case DepositTier.HIGH:
-            tierDescription = "⚠️ **High Value** - Requires significant wallet balance";
-            break;
-        case DepositTier.VERY_HIGH:
-            tierDescription = "🔥 **Premium** - Requires very high wallet balance";
-            break;
-    }
-
-    embed.addFields([
-        {
-            name: `${tierInfo.emoji} Eligibility Tier`,
-            value: tierDescription,
-            inline: false,
-        },
-        {
-            name: "ℹ️ Requirements",
-            value: `You must have at least **$${data.depositAmount.toFixed(2)} ${data.currency}** available (deposit + free balance) to claim this job.\n\n` +
-                `**Deposit Tiers:**\n` +
-                `🟢 Low: <$50 | 🟡 Medium: $50-$99 | 🟠 High: $100-$199 | 🔴 Very High: $200+`,
-            inline: false,
-        },
-    ]);
 
     return embed;
 }

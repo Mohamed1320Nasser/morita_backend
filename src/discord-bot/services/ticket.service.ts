@@ -14,6 +14,7 @@ import {
     ColorResolvable,
 } from "discord.js";
 import { discordConfig } from "../config/discord.config";
+import { onboardingConfig } from "../config/onboarding.config";
 import { ApiService } from "./api.service";
 import logger from "../../common/loggers";
 import axios, { AxiosInstance } from "axios";
@@ -360,6 +361,9 @@ export class TicketService {
                                 : "TBD",
                             currency: ticket.currency || "USD",
                             ticketId: ticketNumber,
+                            termsChannel: onboardingConfig.termsChannelId
+                                ? `<#${onboardingConfig.termsChannelId}>`
+                                : "#terms-of-service",
                         },
                     }
                 );
@@ -405,6 +409,15 @@ export class TicketService {
                 embed.setFooter({
                     text: `Ticket #${ticketNumber}`,
                     iconURL: "https://i.imgur.com/4M34hi2.png",
+                });
+            }
+
+            // Add customer Q&A if provided
+            if (customerNotes && customerNotes.trim()) {
+                embed.addFields({
+                    name: "📝 Customer Information",
+                    value: customerNotes.substring(0, 1024),
+                    inline: false,
                 });
             }
 

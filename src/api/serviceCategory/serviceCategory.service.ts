@@ -337,6 +337,7 @@ export default class ServiceCategoryService {
                         emoji: true,
                         description: true,
                         displayOrder: true,
+                        shortcuts: true,
                         pricingMethods: {
                             where: { active: true, deletedAt: null },
                             select: {
@@ -349,6 +350,7 @@ export default class ServiceCategoryService {
                                 startLevel: true,
                                 endLevel: true,
                                 description: true,
+                                shortcuts: true,
                             },
                             orderBy: { displayOrder: "asc" },
                         },

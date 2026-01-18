@@ -85,7 +85,8 @@ export class ReviewsChannelService {
         order: any,
         review: any,
         customer: User,
-        worker: User
+        worker: User,
+        isAnonymous: boolean = false
     ): Promise<void> {
         try {
             const guild = this.client.guilds.cache.get(discordConfig.guildId);
@@ -100,7 +101,7 @@ export class ReviewsChannelService {
                 return;
             }
 
-            const embed = this.formatReviewEmbed(order, review, customer, worker);
+            const embed = this.formatReviewEmbed(order, review, customer, worker, isAnonymous);
 
             await channel.send({
                 embeds: [embed.toJSON() as any],
@@ -118,57 +119,53 @@ export class ReviewsChannelService {
         order: any,
         review: any,
         customer: User,
-        worker: User
+        worker: User,
+        isAnonymous: boolean = false
     ): EmbedBuilder {
         const orderNumber = order.orderNumber.toString().padStart(4, "0");
         const rating = review.rating || 5;
 
         const stars = "⭐".repeat(rating);
-        const emptyStars = "☆".repeat(5 - rating);
-        const starDisplay = `${stars}${emptyStars} ${rating}/5`;
 
         let embedColor: number;
         if (rating >= 5) {
-            embedColor = 0x57f287; 
+            embedColor = 0x57f287; // Green
         } else if (rating >= 4) {
-            embedColor = 0x5865f2; 
+            embedColor = 0x5865f2; // Blue
         } else if (rating >= 3) {
-            embedColor = 0xfee75c; 
+            embedColor = 0xfee75c; // Yellow
         } else {
-            embedColor = 0xed4245; 
+            embedColor = 0xed4245; // Red
         }
 
         const embed = new EmbedBuilder()
-            .setTitle(starDisplay)
             .setColor(embedColor as ColorResolvable)
             .setTimestamp();
 
-        const detailsLines: string[] = [];
+        // Build description with review text highlighted at top
+        const descriptionParts: string[] = [];
 
-        if (order.service) {
-            detailsLines.push(`**📦 Service:** ${order.service.emoji || ""} ${order.service.name}`);
-        }
-
-        detailsLines.push(`**👤 Customer:** <@${customer.id}>`);
-        detailsLines.push(`**👷 Worker:** <@${worker.id}>`);
-
-        const completedAtRaw = order.completedAt || review.createdAt || new Date();
-        const completedAt = completedAtRaw instanceof Date ? completedAtRaw : new Date(completedAtRaw);
-        detailsLines.push(`**📅 Completed:** <t:${Math.floor(completedAt.getTime() / 1000)}:D>`);
-
-        if (order.orderValue) {
-            detailsLines.push(`**💰 Order Value:** $${order.orderValue.toFixed(2)}`);
-        }
-
-        embed.setDescription(detailsLines.join("\n"));
-
+        // Add highlighted review text at top (if exists)
         if (review.comment && review.comment.trim().length > 0) {
-            embed.addFields({
-                name: "💬 Review",
-                value: review.comment.substring(0, 1024), 
-                inline: false,
-            });
+            descriptionParts.push(`## "${review.comment.substring(0, 900)}"`);
+            descriptionParts.push("");
         }
+
+        // Rating display
+        descriptionParts.push(`${stars} **${rating}/5**`);
+        descriptionParts.push("");
+
+        // Service info
+        if (order.service) {
+            const serviceEmoji = order.service.emoji || "📦";
+            descriptionParts.push(`${serviceEmoji} ${order.service.name}`);
+        }
+
+        // Customer and Worker on same line (display names, not mentions)
+        const customerDisplay = isAnonymous ? "Anonymous" : customer.displayName;
+        descriptionParts.push(`👤 ${customerDisplay} → 👷 ${worker.displayName}`);
+
+        embed.setDescription(descriptionParts.join("\n"));
 
         embed.setFooter({
             text: `Order #${orderNumber}`,

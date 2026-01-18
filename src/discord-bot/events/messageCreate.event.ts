@@ -11,6 +11,9 @@ import {
     sendCalculationError,
     deleteThinkingMessage,
 } from "../utils/messageHelpers";
+import { discordApiClient } from "../clients/DiscordApiClient";
+import { createBalanceEmbed, createTransactionsEmbed } from "../utils/wallet-embeds.util";
+import { getMentionTrackerService } from "../services/mention-tracker.service";
 
 const apiService = new ApiService(discordConfig.apiBaseUrl);
 
@@ -19,47 +22,85 @@ export default {
     async execute(message: Message) {
         if (message.author.bot) return;
 
-        const prefix = discordConfig.prefix;
-        const content = message.content.toLowerCase();
+        // Track mentions for reminder system (only track NEW mentions from this message)
+        const mentionTracker = getMentionTrackerService(message.client);
 
+        // First mark the message author as responded (if they were previously mentioned in this channel)
+        // This should happen BEFORE tracking new mentions from this message
+        mentionTracker.markAsResponded(message.channelId, message.author.id).catch(err =>
+            logger.error("[MessageCreate] Error marking as responded:", err)
+        );
+
+        // Then track any NEW mentions in this message
+        mentionTracker.trackMention(message).catch(err =>
+            logger.error("[MessageCreate] Error tracking mention:", err)
+        );
+
+        const prefix = discordConfig.prefix;
+        const content = message.content.toLowerCase().trim();
+
+        // Handle wallet commands (!w and !t) - no parameters needed
+        if (content === '!w' || content === '!wallet') {
+            await handleWalletCommand(message);
+            return;
+        }
+        if (content === '!t' || content === '!transactions') {
+            await handleTransactionsCommand(message);
+            return;
+        }
+
+        // Handle calculator commands - supports batch commands separated by comma
+        // Examples: "!s agi 70-99" or "!s agi 70-99, !p cox 10, !m ba 100"
         const commandMatch = content.match(/^!([spmiq])\s+/);
         if (!commandMatch) return;
 
-        const commandType = commandMatch[1];
+        // Split by comma and check for multiple commands
+        const parts = message.content.split(',').map(s => s.trim()).filter(s => s.length > 0);
 
-        // Channel restriction for calculator commands (currently disabled - commands work everywhere)
-        // Uncomment the block below to restrict commands to specific channels:
-        //
-        // if (discordConfig.calculatorChannelId) {
-        //     const channel = message.channel;
-        //     const isCalculatorChannel = message.channelId === discordConfig.calculatorChannelId;
-        //     const isTicketChannel = 'parentId' in channel && discordConfig.ticketCategoryId && channel.parentId === discordConfig.ticketCategoryId;
-        //     const isOrderChannel = 'parentId' in channel && discordConfig.ordersCategoryId && channel.parentId === discordConfig.ordersCategoryId;
-        //
-        //     if (!isCalculatorChannel && !isTicketChannel && !isOrderChannel) {
-        //         return;
-        //     }
-        // }
+        // Check if we have mixed commands (multiple !x prefixes) or single command type batch
+        const hasMixedCommands = parts.some((part, index) => {
+            if (index === 0) return false; // First part always has command
+            return /^!([spmiq])\s+/.test(part.toLowerCase());
+        });
 
         try {
-            switch (commandType) {
-                case 's':
-                    await handleSkillsCommand(message, apiService);
-                    break;
-                case 'p':
-                    await handleBossingCommand(message, apiService);
-                    break;
-                case 'm':
-                    await handleMinigamesCommand(message, apiService);
-                    break;
-                case 'i':
-                    await handleIronmanCommand(message, apiService);
-                    break;
-                case 'q':
-                    await handleQuoteCommand(message, apiService);
-                    break;
-                default:
-                    return;
+            if (hasMixedCommands) {
+                // Process each command separately (mixed command mode)
+                for (const part of parts) {
+                    const partLower = part.toLowerCase().trim();
+                    const partMatch = partLower.match(/^!([spmiq])\s+/);
+
+                    if (partMatch) {
+                        const cmdType = partMatch[1];
+                        // Create a fake message content for the single command
+                        const singleCommandContent = part.trim();
+
+                        await processSingleCommand(message, singleCommandContent, cmdType, apiService);
+                    }
+                }
+            } else {
+                // Original behavior - single command type (may have batch like "!s agi 70-99, cooking 1-99")
+                const commandType = commandMatch[1];
+
+                switch (commandType) {
+                    case 's':
+                        await handleSkillsCommand(message, apiService);
+                        break;
+                    case 'p':
+                        await handleBossingCommand(message, apiService);
+                        break;
+                    case 'm':
+                        await handleMinigamesCommand(message, apiService);
+                        break;
+                    case 'i':
+                        await handleIronmanCommand(message, apiService);
+                        break;
+                    case 'q':
+                        await handleQuoteCommand(message, apiService);
+                        break;
+                    default:
+                        return;
+                }
             }
         } catch (error) {
             logger.error('[PriceCalculator] Error handling command:', error);
@@ -77,6 +118,41 @@ export default {
         }
     },
 };
+
+/**
+ * Process a single command from a batch (for mixed commands like "!s agi 70-99, !p cox 10")
+ * Creates a proxy message with modified content to reuse existing handlers
+ */
+async function processSingleCommand(
+    message: Message,
+    commandContent: string,
+    commandType: string,
+    apiService: ApiService
+) {
+    // Create a proxy object that overrides the content but keeps everything else
+    const proxyMessage = Object.create(message);
+    proxyMessage.content = commandContent;
+
+    switch (commandType) {
+        case 's':
+            // For skills, extract args and use processSingleSkillRequest directly
+            const skillArgs = commandContent.replace(/^!s\s+/i, '').trim();
+            await processSingleSkillRequest(message, skillArgs, apiService);
+            break;
+        case 'p':
+            await handleBossingCommand(proxyMessage, apiService);
+            break;
+        case 'm':
+            await handleMinigamesCommand(proxyMessage, apiService);
+            break;
+        case 'i':
+            await handleIronmanCommand(proxyMessage, apiService);
+            break;
+        case 'q':
+            await handleQuoteCommand(proxyMessage, apiService);
+            break;
+    }
+}
 
 async function handleSkillsCommand(message: Message, apiService: ApiService) {
     const prefix = discordConfig.prefix;
@@ -2120,12 +2196,68 @@ function normalizeQuestName(name: string): string {
     return name
         .toLowerCase()
         .trim()
-        .replace(/\bi\b/g, '1')     
-        .replace(/\bii\b/g, '2')    
-        .replace(/\biii\b/g, '3')   
-        .replace(/\biv\b/g, '4')    
-        .replace(/\bv\b/g, '5')     
+        .replace(/\bi\b/g, '1')
+        .replace(/\bii\b/g, '2')
+        .replace(/\biii\b/g, '3')
+        .replace(/\biv\b/g, '4')
+        .replace(/\bv\b/g, '5')
         .replace(/[^a-z0-9\s']/g, '') // Remove special chars BUT keep apostrophes
         .replace(/\s+/g, ' ')       // Normalize spaces
-        .replace(/'+/g, "'");       
+        .replace(/'+/g, "'");
+}
+
+// ==================== WALLET COMMANDS ====================
+
+async function handleWalletCommand(message: Message) {
+    try {
+        const discordId = message.author.id;
+
+        const response: any = await discordApiClient.get(
+            `/discord/wallets/balance/${discordId}`
+        );
+
+        const responseData = response.data || response;
+        const data = responseData.data || responseData;
+
+        const embed = createBalanceEmbed(data, {
+            isAdminView: false,
+        });
+
+        await message.reply({ embeds: [embed.toJSON() as any] });
+
+        logger.info(`[Wallet] Balance viewed by ${message.author.tag}`);
+    } catch (error) {
+        logger.error("[Wallet] Error fetching balance:", error);
+        await message.reply({
+            content: "❌ Failed to fetch wallet information. Please try again later.",
+        });
+    }
+}
+
+async function handleTransactionsCommand(message: Message) {
+    try {
+        const discordId = message.author.id;
+
+        const response: any = await discordApiClient.get(
+            `/discord/wallets/transactions/${discordId}`,
+            { params: { limit: 10 } }
+        );
+
+        const responseData = response.data || response;
+        const data = responseData.data || responseData;
+        const transactions = data.list || [];
+
+        const embed = createTransactionsEmbed(transactions, {
+            isAdminView: false,
+        });
+
+        await message.reply({ embeds: [embed.toJSON() as any] });
+
+        logger.info(`[Wallet] Transactions viewed by ${message.author.tag}`);
+    } catch (error) {
+        logger.error("[Wallet] Error fetching transactions:", error);
+        await message.reply({
+            content: "❌ Failed to fetch transaction history. Please try again later.",
+        });
+    }
 }

@@ -50,7 +50,7 @@ export async function handleCompleteOrder(interaction: ButtonInteraction): Promi
             .setCustomId("confirmation_text")
             .setLabel(`Confirm you've completed Order #${orderData.orderNumber}`)
             .setStyle(TextInputStyle.Short)
-            .setPlaceholder(`Type "COMPLETE" to confirm`)
+            .setPlaceholder(`Type "DONE" to confirm`)
             .setRequired(true)
             .setMaxLength(10);
 

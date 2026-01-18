@@ -319,6 +319,7 @@ export class ApiService {
     async healthCheck(): Promise<boolean> {
         try {
             const response = await this.client.get("/health");
+            logger.info("Health check response:", response.data);
             return response.status === 200;
         } catch (error) {
             logger.error("Health check failed:", error);

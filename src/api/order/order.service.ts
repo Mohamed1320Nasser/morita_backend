@@ -869,23 +869,40 @@ export default class OrderService {
     }
 
     /**
-     * Customer confirms order completion (triggers payout)
+     * Customer or support/admin confirms order completion (triggers payout)
      */
     async confirmOrderCompletion(data: ConfirmOrderDto) {
         const order = await this.getOrderById(data.orderId);
 
-        if (order.customerId !== data.customerId) {
-            throw new BadRequestError("Only customer can confirm order completion");
+        // Get user to check their role
+        const confirmingUser = await prisma.user.findUnique({
+            where: { id: data.customerId },
+        });
+
+        if (!confirmingUser) {
+            throw new NotFoundError("User not found");
+        }
+
+        // Allow customer, support, or admin to confirm
+        const isCustomer = order.customerId === data.customerId;
+        const isSupportOrAdmin = confirmingUser.discordRole === "support" || confirmingUser.discordRole === "admin";
+
+        if (!isCustomer && !isSupportOrAdmin) {
+            throw new BadRequestError("Only customer, support, or admin can confirm order completion");
         }
 
         if (order.status !== OrderStatus.AWAITING_CONFIRM) {
             throw new BadRequestError("Order must be AWAITING_CONFIRM to confirm");
         }
 
+        const reason = isCustomer
+            ? "Customer confirmed completion"
+            : `${confirmingUser.discordRole} confirmed completion on behalf of customer`;
+
         await this.updateOrderStatus(data.orderId, {
             status: OrderStatus.COMPLETED,
             changedById: data.customerId,
-            reason: "Customer confirmed completion",
+            reason,
             notes: data.feedback,
         });
 

@@ -4,7 +4,8 @@ import { discordConfig } from "../../config/discord.config";
 import { EnhancedPricingBuilder } from "../../utils/enhancedPricingBuilder";
 import {
     parsePaginationButtonId,
-    calculateNewPage
+    calculateNewPage,
+    getTotalGroups
 } from "../../utils/pricingPagination";
 import logger from "../../../common/loggers";
 import { handleInteractionError } from "../../utils/errorHandler";
@@ -68,8 +69,9 @@ export async function handlePricingPagination(
         }
 
         const itemsPerPage = DISCORD_LIMITS.PAGINATION.PRICING_ITEMS_PER_PAGE;
-        const totalPricingMethods = service.pricingMethods?.length || 0;
-        const totalPages = Math.ceil(totalPricingMethods / itemsPerPage);
+        // Use group count for pagination, not individual method count
+        const totalGroups = service.pricingMethods ? getTotalGroups(service.pricingMethods) : 0;
+        const totalPages = Math.ceil(totalGroups / itemsPerPage);
         const newPage = calculateNewPage(action, currentPage, totalPages);
 
         logger.info(
@@ -81,10 +83,10 @@ export async function handlePricingPagination(
             itemsPerPage,
         });
 
-        const paginationOptions = totalPricingMethods > itemsPerPage ? {
+        const paginationOptions = totalGroups > itemsPerPage ? {
             currentPage: newPage,
             itemsPerPage,
-            totalItems: totalPricingMethods,
+            totalItems: totalGroups,
             serviceId,
             categoryId,
         } : undefined;

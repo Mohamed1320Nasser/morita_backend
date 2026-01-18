@@ -12,9 +12,9 @@ export async function handleCompleteOrderModal(interaction: ModalSubmitInteracti
         const confirmationText = interaction.fields.getTextInputValue("confirmation_text").trim().toUpperCase();
         const completionNotes = interaction.fields.getTextInputValue("completion_notes")?.trim() || undefined;
 
-        if (confirmationText !== "COMPLETE") {
+        if (confirmationText !== "DONE") {
             await interaction.editReply({
-                content: `❌ **Invalid confirmation.**\n\nYou typed: \`${confirmationText}\`\nRequired: \`COMPLETE\` (exactly 8 characters)\n\nPlease try again.`,
+                content: `❌ **Invalid confirmation.**\n\nYou typed: \`${confirmationText}\`\nRequired: \`DONE\`\n\nPlease try again.`,
             });
             return;
         }

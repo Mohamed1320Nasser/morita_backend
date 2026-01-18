@@ -17,10 +17,25 @@ import {
     getPaginatedPricingMethods,
     addPaginationFooter,
     createServiceActionButtonsWithPagination,
-    PaginationOptions
+    PaginationOptions,
+    getTotalGroups
 } from "./pricingPagination";
 import { DISCORD_LIMITS } from "../constants/discord-limits";
 import { toNumber, formatPrice as formatPriceUtil, formatLargeNumber } from "../../common/utils/decimal.util";
+
+/**
+ * Format shortcuts for display - returns first shortcut or empty string
+ * @param shortcuts - JSON array of shortcuts or null
+ * @returns Formatted shortcut string like "(agi)" or ""
+ */
+function formatShortcut(shortcuts: any): string {
+    if (!shortcuts || !Array.isArray(shortcuts) || shortcuts.length === 0) {
+        return "";
+    }
+    // Get first shortcut, lowercase
+    const shortcut = shortcuts[0]?.toString().toLowerCase();
+    return shortcut ? ` (${shortcut})` : "";
+}
 
 export interface BuildOptions {
     compact?: boolean; 
@@ -32,7 +47,77 @@ export interface BuildOptions {
 }
 
 export class EnhancedPricingBuilder {
-    
+
+    /**
+     * Generate example calculator commands for methods with shortcuts (max 3)
+     * Returns array of example commands like ["!s gn 1-20", "!s fr 50-60"]
+     */
+    private static generateExampleCommands(service: Service): string[] {
+        const commands: string[] = [];
+        const MAX_COMMANDS = 3;
+
+        if (!service.pricingMethods || service.pricingMethods.length === 0) {
+            return commands;
+        }
+
+        // Determine command prefix based on pricing unit
+        const getCommandPrefix = (pricingUnit: string): string => {
+            switch (pricingUnit) {
+                case 'PER_LEVEL':
+                    return '!s'; // Skills
+                case 'PER_KILL':
+                    return '!p'; // PvM/Bossing
+                case 'PER_ITEM':
+                    return '!m'; // Minigames
+                case 'FIXED':
+                    return '!q'; // Quests
+                default:
+                    return '!s';
+            }
+        };
+
+        // Generate example value based on pricing unit and method
+        const getExampleValue = (method: any): string => {
+            if (method.startLevel && method.endLevel) {
+                return `${method.startLevel}-${method.endLevel}`;
+            }
+            switch (method.pricingUnit) {
+                case 'PER_LEVEL':
+                    return '70-99';
+                case 'PER_KILL':
+                    return '10';
+                case 'PER_ITEM':
+                    return '100';
+                case 'FIXED':
+                    return '';
+                default:
+                    return '1';
+            }
+        };
+
+        for (const method of service.pricingMethods) {
+            if (commands.length >= MAX_COMMANDS) break;
+
+            // Get shortcut - prefer method shortcut, fallback to service shortcut
+            const shortcut = formatShortcut(method.shortcuts).replace(/[() ]/g, '') ||
+                             formatShortcut(service.shortcuts).replace(/[() ]/g, '');
+
+            if (!shortcut) continue;
+
+            const prefix = getCommandPrefix(method.pricingUnit);
+            const value = getExampleValue(method);
+
+            const command = value ? `${prefix} ${shortcut} ${value}` : `${prefix} ${shortcut}`;
+
+            // Avoid duplicate commands
+            if (!commands.includes(command)) {
+                commands.push(command);
+            }
+        }
+
+        return commands;
+    }
+
     private static formatEmojiForDiscord(emoji: string | null | undefined): string {
         if (!emoji) return "";
 
@@ -115,10 +200,13 @@ export class EnhancedPricingBuilder {
 
         for (let i = 0; i < maxServices; i++) {
             const service = services[i];
+            // Add shortcut to service name if available
+            const shortcut = formatShortcut(service.shortcuts);
+            const nameWithShortcut = `${service.name}${shortcut}`;
             const label =
-                service.name.length > 100
-                    ? service.name.substring(0, 97) + "..."
-                    : service.name;
+                nameWithShortcut.length > 100
+                    ? nameWithShortcut.substring(0, 97) + "..."
+                    : nameWithShortcut;
 
             const option = new StringSelectMenuOptionBuilder()
                 .setLabel(label)
@@ -212,14 +300,16 @@ export class EnhancedPricingBuilder {
         }
 
         if (service.pricingMethods && service.pricingMethods.length > 0) {
-            
+            // Get paginated methods - now paginates by GROUPS, not individual methods
             const pricingToShow = getPaginatedPricingMethods(
                 service.pricingMethods,
                 page,
                 itemsPerPage
             );
 
-            const totalPages = Math.ceil(service.pricingMethods.length / itemsPerPage);
+            // Calculate total pages based on GROUP count, not method count
+            const totalGroups = getTotalGroups(service.pricingMethods);
+            const totalPages = Math.ceil(totalGroups / itemsPerPage);
             const hasMultiplePages = totalPages > 1;
 
             this.addPricingSectionsToEmbed(embed, pricingToShow);
@@ -229,7 +319,7 @@ export class EnhancedPricingBuilder {
                     embed,
                     page,
                     totalPages,
-                    service.pricingMethods.length
+                    totalGroups // Show group count, not method count
                 );
             }
         }
@@ -309,6 +399,16 @@ export class EnhancedPricingBuilder {
                     inline: false,
                 });
             }
+        }
+
+        // Add example calculator commands (max 3)
+        const exampleCommands = this.generateExampleCommands(service);
+        if (exampleCommands.length > 0) {
+            embed.addFields({
+                name: "🧮 Calculator Commands",
+                value: exampleCommands.map(cmd => `\`${cmd}\``).join(', '),
+                inline: false,
+            });
         }
 
             return embed;
@@ -444,8 +544,12 @@ export class EnhancedPricingBuilder {
 
                 const fieldValue = items.join('\n');
                 if (fieldValue.length <= DISCORD_LIMITS.EMBED.MAX_FIELD_VALUE) {
+                    // Add shortcut to group/method name if available
+                    const methodShortcut = methods[0]?.shortcuts ? formatShortcut(methods[0].shortcuts) : "";
+                    const displayName = `# ${groupName}${methodShortcut}`;
+
                     embed.addFields({
-                        name: `# ${groupName}`, 
+                        name: displayName,
                         value: fieldValue,
                         inline: false
                     });

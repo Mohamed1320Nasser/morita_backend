@@ -174,6 +174,16 @@ export async function handleButtonInteraction(
             return;
         }
 
+        if (customId.startsWith("public_review_")) {
+            await handleLeaveReviewButton(interaction);
+            return;
+        }
+
+        if (customId.startsWith("anonymous_review_")) {
+            await handleLeaveReviewButton(interaction);
+            return;
+        }
+
         if (customId.startsWith("back_to_category_")) {
             await handleBackToCategory(interaction);
             return;

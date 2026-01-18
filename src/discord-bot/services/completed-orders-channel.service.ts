@@ -114,112 +114,65 @@ export class CompletedOrdersChannelService {
         customer: User,
         orderChannel?: TextChannel
     ): EmbedBuilder {
-        const orderNumber = order.orderNumber?.toString() || "Unknown";
-        const orderValue = parseFloat(order.orderValue?.toString() || "0");
-
-        const workerPayout = orderValue * 0.8;
-        const platformFee = orderValue * 0.2;
+        const orderNumber = order.orderNumber?.toString().padStart(4, "0") || "Unknown";
+        const createdAt = order.createdAt ? new Date(order.createdAt) : null;
+        const completedAt = order.completedAt ? new Date(order.completedAt) : new Date();
+        const completedTimestamp = Math.floor(completedAt.getTime() / 1000);
 
         const embed = new EmbedBuilder()
-            .setColor(0x57f287 as ColorResolvable) 
+            .setColor(0x57f287 as ColorResolvable)
             .setTimestamp();
 
+        // Build description
+        const descriptionParts: string[] = [];
+
+        // Service info
         if (order.service) {
-            embed.setTitle(`${order.service.emoji || "✅"} ORDER COMPLETED - #${orderNumber}`);
-            embed.setDescription(`**Service:** ${order.service.name}`);
-        } else {
-            embed.setTitle(`✅ ORDER COMPLETED - #${orderNumber}`);
+            const serviceEmoji = order.service.emoji || "📦";
+            descriptionParts.push(`${serviceEmoji} **${order.service.name}**`);
+            descriptionParts.push("");
         }
 
+        // Worker info
+        descriptionParts.push(`👷 <@${worker.id}>`);
+        descriptionParts.push("");
+
+        // Timeline
+        descriptionParts.push(`✅ Completed <t:${completedTimestamp}:R>`);
+
+        // Duration
+        if (createdAt && completedAt) {
+            const durationMs = completedAt.getTime() - createdAt.getTime();
+            const days = Math.floor(durationMs / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((durationMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+
+            let durationStr = "";
+            if (days > 0) {
+                durationStr = `${days}d ${hours}h ${minutes}m`;
+            } else if (hours > 0) {
+                durationStr = `${hours}h ${minutes}m`;
+            } else {
+                durationStr = `${minutes}m`;
+            }
+            descriptionParts.push(`⏱️ Duration: **${durationStr}**`);
+        }
+
+        // Completion notes (if any)
+        if (order.completionNotes) {
+            descriptionParts.push("");
+            descriptionParts.push(`> *"${order.completionNotes.substring(0, 200)}"*`);
+        }
+
+        embed.setDescription(descriptionParts.join("\n"));
+
+        // Worker avatar as thumbnail
         if (worker.displayAvatarURL) {
             embed.setThumbnail(worker.displayAvatarURL({ size: 128 }));
         }
 
-        embed.addFields(
-            {
-                name: "👤 Customer",
-                value: `<@${customer.id}>\n\`${customer.tag}\``,
-                inline: true,
-            },
-            {
-                name: "👷 Worker",
-                value: `<@${worker.id}>\n\`${worker.tag}\``,
-                inline: true,
-            },
-            {
-                name: "\u200b",
-                value: "\u200b",
-                inline: true,
-            }
-        );
-
-        embed.addFields({
-            name: "━━━━━━━━ 💰 FINANCIAL SUMMARY ━━━━━━━━",
-            value:
-                `**Order Value:** \`$${orderValue.toFixed(2)}\`\n` +
-                `**Worker Payout:** \`$${workerPayout.toFixed(2)}\` (80%)\n` +
-                `**Platform Fee:** \`$${platformFee.toFixed(2)}\` (20%)`,
-            inline: false,
-        });
-
-        const createdAt = order.createdAt ? new Date(order.createdAt) : null;
-        const completedAt = order.completedAt ? new Date(order.completedAt) : new Date();
-
-        const createdTimestamp = createdAt ? Math.floor(createdAt.getTime() / 1000) : null;
-        const completedTimestamp = Math.floor(completedAt.getTime() / 1000);
-
-        let timelineValue = "";
-        if (createdTimestamp) {
-            timelineValue += `**📅 Created:** <t:${createdTimestamp}:R>\n`;
-        }
-        timelineValue += `**✅ Completed:** <t:${completedTimestamp}:F>`;
-
-        if (createdAt && completedAt) {
-            const durationMs = completedAt.getTime() - createdAt.getTime();
-            const hours = Math.floor(durationMs / (1000 * 60 * 60));
-            const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
-
-            if (hours > 0) {
-                timelineValue += `\n**⏱️ Duration:** ${hours}h ${minutes}m`;
-            } else {
-                timelineValue += `\n**⏱️ Duration:** ${minutes}m`;
-            }
-        }
-
-        embed.addFields({
-            name: "━━━━━━━━ ⏰ TIMELINE ━━━━━━━━",
-            value: timelineValue,
-            inline: false,
-        });
-
-        if (order.jobDetails?.description) {
-            embed.addFields({
-                name: "━━━━━━━━ 📋 JOB DETAILS ━━━━━━━━",
-                value: `\`\`\`${order.jobDetails.description.substring(0, 950)}\`\`\``,
-                inline: false,
-            });
-        }
-
-        if (order.completionNotes) {
-            embed.addFields({
-                name: "━━━━━━━━ 📝 COMPLETION NOTES ━━━━━━━━",
-                value: `\`\`\`${order.completionNotes.substring(0, 950)}\`\`\``,
-                inline: false,
-            });
-        }
-
-        if (orderChannel) {
-            embed.addFields({
-                name: "🔗 Order Channel",
-                value: orderChannel.toString(),
-                inline: false,
-            });
-        }
-
-        const footerText = `Order ID: ${order.id || "Unknown"} • Completed on ${completedAt.toLocaleDateString()}`;
         embed.setFooter({
-            text: footerText,
-            iconURL: customer.displayAvatarURL({ size: 32 }),
+            text: `Order #${orderNumber}`,
         });
 
         return embed;

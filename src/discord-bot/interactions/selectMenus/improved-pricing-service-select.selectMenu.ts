@@ -8,6 +8,7 @@ import {
     APIMessageActionRowComponent
 } from "discord.js";
 import { EnhancedPricingBuilder } from "../../utils/enhancedPricingBuilder";
+import { getTotalGroups } from "../../utils/pricingPagination";
 import { ApiService } from "../../services/api.service";
 import { discordConfig } from "../../config/discord.config";
 import logger from "../../../common/loggers";
@@ -172,11 +173,12 @@ export async function handleImprovedPricingServiceSelect(
                 itemsPerPage
             });
 
-            const totalPricingMethods = service.pricingMethods?.length || 0;
-            const paginationOptions = totalPricingMethods > itemsPerPage ? {
+            // Use group count for pagination, not individual method count
+            const totalGroups = service.pricingMethods ? getTotalGroups(service.pricingMethods) : 0;
+            const paginationOptions = totalGroups > itemsPerPage ? {
                 currentPage: page,
                 itemsPerPage,
-                totalItems: totalPricingMethods,
+                totalItems: totalGroups,
                 serviceId,
                 categoryId
             } : undefined;

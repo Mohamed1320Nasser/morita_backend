@@ -5,12 +5,14 @@ import {
     EmbedBuilder,
     TextChannel,
     User,
+    GuildMember,
 } from "discord.js";
 import { Command } from "../types/discord.types";
 import { getTicketService } from "../services/ticket.service";
 import { discordConfig } from "../config/discord.config";
 import logger from "../../common/loggers";
 import { discordApiClient } from "../clients/DiscordApiClient";
+import { syncUserDiscordRole, getHighestDiscordRole, getWalletTypeFromRole } from "../utils/role-sync.util";
 
 export default {
     data: new SlashCommandBuilder()
@@ -136,32 +138,45 @@ function extractOptions(interaction: CommandInteraction) {
 }
 
 async function getTargetUser(interaction: CommandInteraction, specifiedUser: User | null) {
+    let targetUser: User | null = null;
+    let discordId: string | null = null;
+    let member: GuildMember | null = null;
+
     if (specifiedUser) {
-        return {
-            user: specifiedUser,
-            discordId: specifiedUser.id,
-        };
-    }
+        targetUser = specifiedUser;
+        discordId = specifiedUser.id;
+    } else {
+        const channel = interaction.channel;
+        const isTicketChannel = channel instanceof TextChannel &&
+            (channel.name.startsWith(discordConfig.ticketChannelPrefix) || channel.name.startsWith("closed-"));
 
-    const channel = interaction.channel;
-    const isTicketChannel = channel instanceof TextChannel &&
-        (channel.name.startsWith(discordConfig.ticketChannelPrefix) || channel.name.startsWith("closed-"));
+        if (isTicketChannel) {
+            const ticketService = getTicketService(interaction.client);
+            const ticket = await ticketService.getTicketByChannelId(channel.id);
 
-    if (isTicketChannel) {
-        const ticketService = getTicketService(interaction.client);
-        const ticket = await ticketService.getTicketByChannelId(channel.id);
-
-        if (ticket) {
-            try {
-                const user = await interaction.client.users.fetch(ticket.customerDiscordId);
-                return { user, discordId: ticket.customerDiscordId };
-            } catch {
-                return { user: null, discordId: ticket.customerDiscordId };
+            if (ticket) {
+                discordId = ticket.customerDiscordId;
+                try {
+                    targetUser = await interaction.client.users.fetch(ticket.customerDiscordId);
+                } catch {
+                    targetUser = null;
+                }
             }
         }
     }
 
-    return { user: null, discordId: null };
+    // Try to get guild member and sync their Discord role
+    if (discordId && interaction.guild) {
+        try {
+            member = await interaction.guild.members.fetch(discordId);
+            // Sync user's Discord role to database
+            await syncUserDiscordRole(member);
+        } catch (err) {
+            logger.debug(`[AddBalance] Could not fetch member ${discordId} for role sync`);
+        }
+    }
+
+    return { user: targetUser, discordId, member };
 }
 
 async function getSupportUserId(interaction: CommandInteraction): Promise<number> {

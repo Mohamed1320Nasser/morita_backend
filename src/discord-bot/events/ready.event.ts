@@ -2,6 +2,7 @@ import { Events, Client } from "discord.js";
 import { ChannelManagerService } from "../services/channelManager.service";
 import { startPricingSyncJob } from "../jobs/pricingSync.job";
 import { startCleanupJob } from "../jobs/cleanup.job";
+import { getMentionTrackerService } from "../services/mention-tracker.service";
 
 import logger from "../../common/loggers";
 
@@ -25,6 +26,15 @@ export default {
             }
         } catch (error) {
             logger.error("❌ Backend API health check error:", error);
+        }
+
+        // Start mention tracker service for auto-reminders
+        try {
+            const mentionTracker = getMentionTrackerService(client);
+            mentionTracker.start();
+            logger.info("✅ Mention tracker service started");
+        } catch (error) {
+            logger.error("❌ Failed to start mention tracker service:", error);
         }
 
     },

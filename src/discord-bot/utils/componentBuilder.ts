@@ -17,8 +17,22 @@ import {
     PaymentMethod,
 } from "../types/discord.types";
 
+/**
+ * Format shortcuts for display - returns first shortcut or empty string
+ * @param shortcuts - JSON array of shortcuts or null
+ * @returns Formatted shortcut string like "(agi)" or ""
+ */
+function formatShortcut(shortcuts: any): string {
+    if (!shortcuts || !Array.isArray(shortcuts) || shortcuts.length === 0) {
+        return "";
+    }
+    // Get first shortcut, lowercase
+    const shortcut = shortcuts[0]?.toString().toLowerCase();
+    return shortcut ? ` (${shortcut})` : "";
+}
+
 export class ComponentBuilder {
-    
+
     static createCategorySelectMenu(
         categories: ServiceCategory[]
     ): ActionRowBuilder<StringSelectMenuBuilder> {
@@ -72,10 +86,13 @@ export class ComponentBuilder {
         const limitedServices = services.slice(0, 25);
 
         limitedServices.forEach(service => {
-            
-            const label = service.name.length > 100
-                ? service.name.substring(0, 97) + "..."
-                : service.name;
+            // Add shortcut to service name if available
+            const shortcut = formatShortcut(service.shortcuts);
+            const nameWithShortcut = `${service.name}${shortcut}`;
+
+            const label = nameWithShortcut.length > 100
+                ? nameWithShortcut.substring(0, 97) + "..."
+                : nameWithShortcut;
 
             const description = service.description
                 ? (service.description.length > 100

@@ -7,7 +7,22 @@ export async function handleOrderReviewModal(interaction: ModalSubmitInteraction
     try {
         await interaction.deferReply({ ephemeral: true });
 
-        const orderId = interaction.customId.replace("order_review_", "");
+        // Parse customId: order_review_anon_<orderId> or order_review_public_<orderId>
+        let orderId: string;
+        let isAnonymous = false;
+
+        const customId = interaction.customId;
+        if (customId.startsWith("order_review_anon_")) {
+            orderId = customId.replace("order_review_anon_", "");
+            isAnonymous = true;
+        } else if (customId.startsWith("order_review_public_")) {
+            orderId = customId.replace("order_review_public_", "");
+            isAnonymous = false;
+        } else {
+            // Legacy support for old order_review_<orderId> format
+            orderId = customId.replace("order_review_", "");
+            isAnonymous = false;
+        }
 
         const ratingStr = interaction.fields.getTextInputValue("rating").trim();
         const review = interaction.fields.getTextInputValue("review")?.trim() || null;
@@ -20,7 +35,7 @@ export async function handleOrderReviewModal(interaction: ModalSubmitInteraction
             return;
         }
 
-        logger.info(`[OrderReview] Processing review for order ${orderId} - Rating: ${rating} stars`);
+        logger.info(`[OrderReview] Processing ${isAnonymous ? 'anonymous' : 'public'} review for order ${orderId} - Rating: ${rating} stars`);
 
         const orderResponse: any = await discordApiClient.get(`/discord/orders/${orderId}`);
         const orderData = orderResponse.data || orderResponse;
@@ -49,13 +64,15 @@ export async function handleOrderReviewModal(interaction: ModalSubmitInteraction
                 rating,
                 comment: review,
                 createdAt: new Date(),
+                isAnonymous,
             };
 
             await reviewsService.postReview(
                 orderData,
                 reviewData,
                 customerUser,
-                workerUser
+                workerUser,
+                isAnonymous
             );
 
             logger.info(`[OrderReview] Posted review for order ${orderId} to reviews channel`);

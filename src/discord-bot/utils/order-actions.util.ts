@@ -138,22 +138,18 @@ export async function completeWorkOnOrder(
 
     if (orderChannel) {
         try {
-            
+            // Update pinned message if exists
             if (orderData.pinnedMessageId) {
                 try {
                     const pinnedMessage = await orderChannel.messages.fetch(orderData.pinnedMessageId);
 
                     const updatedEmbed = new EmbedBuilder()
-                        .setTitle(`📦 ORDER #${orderData.orderNumber} - ⚠️ AWAITING CONFIRMATION`)
-                        .setDescription(
-                            `The worker has marked this order as complete.\n` +
-                            `Customer is reviewing the work.`
-                        )
+                        .setTitle(`📦 Order #${orderData.orderNumber} - Awaiting Confirmation`)
+                        .setDescription(`The worker has marked this order as complete.`)
                         .addFields([
                             { name: "👤 Customer", value: `<@${orderData.customer.discordId}>`, inline: true },
                             { name: "👷 Worker", value: `<@${orderData.worker.discordId}>`, inline: true },
-                            { name: "💰 Order Value", value: `$${orderValue.toFixed(2)} USD`, inline: true },
-                            { name: "📊 Status", value: "🟠 **AWAITING CONFIRMATION**", inline: false },
+                            { name: "📊 Status", value: "🟠 **AWAITING CONFIRMATION**", inline: true },
                         ])
                         .setColor(0xf59e0b)
                         .setTimestamp();
@@ -166,7 +162,7 @@ export async function completeWorkOnOrder(
 
                     await pinnedMessage.edit({
                         embeds: [updatedEmbed.toJSON() as any],
-                        components: [], 
+                        components: [],
                     });
 
                     logger.info(`[CompleteWorkUtil] Updated pinned message ${orderData.pinnedMessageId}`);
@@ -175,64 +171,43 @@ export async function completeWorkOnOrder(
                 }
             }
 
-            const thread = await orderChannel.threads.create({
-                name: `Order #${orderData.orderNumber} - Completion Review`,
-                autoArchiveDuration: 1440,
-                reason: 'Order completion review thread',
-                type: 11,
-            });
-
-            const orderInfoEmbed = new EmbedBuilder()
-                .setTitle(`📦 Order #${orderData.orderNumber} Completed`)
-                .setDescription(`<@${orderData.customer.discordId}>, the worker has finished your order!`)
+            // Send completion message in main channel (no thread)
+            const completionEmbed = new EmbedBuilder()
+                .setTitle(`✅ Order #${orderData.orderNumber} - Work Completed`)
+                .setDescription(`<@${orderData.customer.discordId}>, the worker has finished your order!\n\nPlease review and confirm below.`)
                 .addFields([
-                    { name: "👤 Customer", value: `<@${orderData.customer.discordId}>`, inline: true },
                     { name: "👷 Worker", value: `<@${orderData.worker.discordId}>`, inline: true },
-                    { name: "💰 Order Value", value: `$${orderValue.toFixed(2)} USD`, inline: true },
-                    { name: "📊 Status", value: "🟠 **Awaiting Your Confirmation**", inline: false },
+                    { name: "📊 Status", value: "🟠 Awaiting Confirmation", inline: true },
                 ])
                 .setColor(0xf59e0b)
                 .setTimestamp();
 
             if (completionNotes) {
-                orderInfoEmbed.addFields([
-                    { name: "📝 Completion Notes from Worker", value: completionNotes.substring(0, 1024), inline: false }
+                completionEmbed.addFields([
+                    { name: "📝 Worker Notes", value: completionNotes.substring(0, 1024), inline: false }
                 ]);
             }
 
-            await thread.send({
-                content: `🔔 <@${orderData.customer.discordId}>`,
-                embeds: [orderInfoEmbed.toJSON() as any],
-            });
-
             const confirmButton = new ButtonBuilder()
                 .setCustomId(`confirm_complete_${orderId}`)
-                .setLabel("✅ Confirm Complete")
+                .setLabel("Confirm Complete")
                 .setStyle(ButtonStyle.Success);
 
             const issueButton = new ButtonBuilder()
                 .setCustomId(`report_issue_${orderId}`)
-                .setLabel("❌ Report Issue")
+                .setLabel("Report Issue")
                 .setStyle(ButtonStyle.Danger);
 
-            const infoButton = new ButtonBuilder()
-                .setCustomId(`order_info_${orderId}`)
-                .setLabel("📊 Order Details")
-                .setStyle(ButtonStyle.Primary);
-
             const buttonRow = new ActionRowBuilder<ButtonBuilder>()
-                .addComponents(confirmButton, issueButton, infoButton);
+                .addComponents(confirmButton, issueButton);
 
-            await thread.send({
-                content: `**Please review the work and take action:**`,
+            await orderChannel.send({
+                content: `<@${orderData.customer.discordId}>`,
+                embeds: [completionEmbed.toJSON() as any],
                 components: [buttonRow.toJSON() as any],
             });
 
-            await orderChannel.send({
-                content: `✅ <@${orderData.worker.discordId}> has completed Order #${orderData.orderNumber}\n\n📋 Review thread: ${thread.toString()}`,
-            });
-
-            logger.info(`[CompleteWorkUtil] Created thread and sent completion messages`);
+            logger.info(`[CompleteWorkUtil] Sent completion message to main channel`);
         } catch (channelError) {
             logger.error("[CompleteWorkUtil] Failed to send channel messages:", channelError);
         }
@@ -252,7 +227,18 @@ export async function completeWorkOnOrder(
 
     // Send DM to customer notifying them that work is complete
     try {
+        if (!orderData.customer?.discordId) {
+            logger.warn(`[CompleteWorkUtil] No customer discordId found for order #${orderData.orderNumber}`);
+        } else {
+            logger.info(`[CompleteWorkUtil] Sending DM to customer ${orderData.customer.discordId}...`);
+        }
+
         const customerUser = await client.users.fetch(orderData.customer.discordId);
+
+        // Build channel link if available
+        const channelLink = orderData.discordChannelId
+            ? `<#${orderData.discordChannelId}>`
+            : "your ticket channel";
 
         const customerDmEmbed = new EmbedBuilder()
             .setTitle("🎉 Your Order is Ready!")
@@ -269,10 +255,9 @@ export async function completeWorkOnOrder(
                 {
                     name: "📋 What to do next",
                     value:
-                        "1. Go to the order channel in Discord\n" +
-                        "2. Check the completion review thread\n" +
-                        "3. Click **Confirm Complete** if satisfied\n" +
-                        "4. Or click **Report Issue** if there's a problem",
+                        `1. Go to ${channelLink}\n` +
+                        "2. Click **Confirm Complete** if satisfied\n" +
+                        "3. Or click **Report Issue** if there's a problem",
                     inline: false
                 },
             ])
@@ -497,13 +482,18 @@ export async function confirmOrderCompletion(
             try {
                 const { ButtonBuilder, ButtonStyle, ActionRowBuilder } = await import("discord.js");
 
-                const reviewButton = new ButtonBuilder()
-                    .setCustomId(`leave_review_${orderId}`)
-                    .setLabel("⭐ Leave Review")
-                    .setStyle(ButtonStyle.Primary);
+                const publicReviewButton = new ButtonBuilder()
+                    .setCustomId(`public_review_${orderId}`)
+                    .setLabel("Public Review")
+                    .setStyle(ButtonStyle.Success);
+
+                const anonymousReviewButton = new ButtonBuilder()
+                    .setCustomId(`anonymous_review_${orderId}`)
+                    .setLabel("Anonymous Review")
+                    .setStyle(ButtonStyle.Secondary);
 
                 const buttonRow = new ActionRowBuilder<ButtonBuilder>()
-                    .addComponents(reviewButton);
+                    .addComponents(publicReviewButton, anonymousReviewButton);
 
                 const reviewRequestEmbed = new EmbedBuilder()
                     .setTitle("⭐ Rate Your Experience")

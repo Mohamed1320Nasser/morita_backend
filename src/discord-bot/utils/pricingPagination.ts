@@ -83,14 +83,123 @@ export function createServiceActionButtonsWithPagination(
   return rows;
 }
 
+/**
+ * Group pricing methods by groupName, keeping methods with same groupName together
+ */
+function groupMethodsByGroupName(methods: PricingMethod[]): { groupKey: string; methods: PricingMethod[] }[] {
+  const withGroup: PricingMethod[] = [];
+  const withoutGroup: PricingMethod[] = [];
+
+  for (const method of methods) {
+    if (method.groupName && method.groupName.trim()) {
+      withGroup.push(method);
+    } else {
+      withoutGroup.push(method);
+    }
+  }
+
+  const groupMap: Map<string, PricingMethod[]> = new Map();
+  const groupMinOrder: Map<string, number> = new Map();
+
+  for (const method of withGroup) {
+    const groupName = method.groupName!.trim();
+    const order = method.displayOrder ?? 999;
+
+    if (!groupMap.has(groupName)) {
+      groupMap.set(groupName, []);
+      groupMinOrder.set(groupName, order);
+    } else {
+      const currentMin = groupMinOrder.get(groupName)!;
+      if (order < currentMin) {
+        groupMinOrder.set(groupName, order);
+      }
+    }
+    groupMap.get(groupName)!.push(method);
+  }
+
+  // Sort methods within each group
+  for (const [, groupMethods] of groupMap) {
+    groupMethods.sort((a, b) => (a.displayOrder ?? 999) - (b.displayOrder ?? 999));
+  }
+
+  withoutGroup.sort((a, b) => (a.displayOrder ?? 999) - (b.displayOrder ?? 999));
+
+  // Create entries for sorting
+  type Entry =
+    | { type: 'group'; name: string; methods: PricingMethod[]; minOrder: number }
+    | { type: 'individual'; method: PricingMethod; order: number };
+
+  const entries: Entry[] = [];
+
+  for (const [groupName, groupMethods] of groupMap) {
+    entries.push({
+      type: 'group',
+      name: groupName,
+      methods: groupMethods,
+      minOrder: groupMinOrder.get(groupName)!
+    });
+  }
+
+  for (const method of withoutGroup) {
+    entries.push({
+      type: 'individual',
+      method,
+      order: method.displayOrder ?? 999
+    });
+  }
+
+  // Sort by order
+  entries.sort((a, b) => {
+    const orderA = a.type === 'group' ? a.minOrder : a.order;
+    const orderB = b.type === 'group' ? b.minOrder : b.order;
+    return orderA - orderB;
+  });
+
+  // Convert to result format
+  const result: { groupKey: string; methods: PricingMethod[] }[] = [];
+  for (const entry of entries) {
+    if (entry.type === 'group') {
+      result.push({ groupKey: entry.name, methods: entry.methods });
+    } else {
+      result.push({ groupKey: entry.method.name, methods: [entry.method] });
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Get paginated pricing methods - keeps methods with same groupName together
+ * Pagination is by GROUPS, not individual methods
+ */
 export function getPaginatedPricingMethods(
   pricingMethods: PricingMethod[],
   page: number,
   itemsPerPage: number
 ): PricingMethod[] {
+  // Group methods by groupName first
+  const groups = groupMethodsByGroupName(pricingMethods);
+
+  // Paginate by groups, not individual methods
   const startIndex = page * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  return pricingMethods.slice(startIndex, endIndex);
+  const paginatedGroups = groups.slice(startIndex, endIndex);
+
+  // Flatten the groups back to methods
+  const result: PricingMethod[] = [];
+  for (const group of paginatedGroups) {
+    result.push(...group.methods);
+  }
+
+  return result;
+}
+
+/**
+ * Get total number of groups (for pagination calculation)
+ */
+export function getTotalGroups(pricingMethods: PricingMethod[]): number {
+  const groups = groupMethodsByGroupName(pricingMethods);
+  return groups.length;
 }
 
 export function addPaginationFooter(

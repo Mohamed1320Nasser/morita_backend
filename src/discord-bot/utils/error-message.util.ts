@@ -1,80 +1,48 @@
-
+/**
+ * Extract error message from various error types (Axios, Error, string, etc.)
+ */
 export function extractErrorMessage(error: any): string {
-    
-    if (!error) {
-        return "Unknown error occurred";
+    if (!error) return "Unknown error occurred";
+
+    // Axios error - get message from response
+    const data = error?.response?.data;
+    if (data) {
+        // API returns: { msg, status, data: { message }, error }
+        const msg = data.msg || data.message || data.data?.message || data.error;
+        if (typeof msg === 'string') return msg;
+        if (typeof data === 'string') return data;
     }
 
-    if (error?.response?.data?.message && typeof error.response.data.message === 'string') {
-        return error.response.data.message;
-    }
-
-    if (error?.response?.data?.error && typeof error.response.data.error === 'string') {
-        return error.response.data.error;
-    }
-
-    if (error?.message && typeof error.message === 'string') {
-        
-        if (!error.message.includes("status code")) {
-            return error.message;
-        }
-
-        if (error.message.includes("status code 500")) {
-            return "Internal server error. Please try again or contact support.";
-        }
-
-        if (error.message.includes("status code 404")) {
-            return "Resource not found.";
-        }
-
-        if (error.message.includes("status code 401")) {
-            return "Unauthorized. Please check your permissions.";
-        }
-
-        if (error.message.includes("status code 403")) {
-            return "Forbidden. You don't have permission to perform this action.";
-        }
-
+    // Regular error message (skip generic axios "status code" messages)
+    if (typeof error.message === 'string' && !error.message.includes("status code")) {
         return error.message;
     }
 
-    if (error instanceof Error) {
-        return error.message || "Unknown error occurred";
-    }
-
-    if (typeof error === 'string') {
-        return error;
-    }
+    // String error
+    if (typeof error === 'string') return error;
 
     return "Unknown error occurred";
 }
 
+/**
+ * Check if error is related to insufficient balance
+ */
 export function isInsufficientBalanceError(error: any): boolean {
-    try {
-        const message = extractErrorMessage(error);
-        return message.toLowerCase().includes("insufficient balance");
-    } catch (err) {
-        return false;
-    }
+    return extractErrorMessage(error).toLowerCase().includes("insufficient balance");
 }
 
+/**
+ * Check if error is a 404 not found
+ */
 export function isNotFoundError(error: any): boolean {
-    try {
-        return error?.response?.status === 404 ||
-               extractErrorMessage(error).toLowerCase().includes("not found");
-    } catch (err) {
-        return false;
-    }
+    return error?.response?.status === 404 ||
+           extractErrorMessage(error).toLowerCase().includes("not found");
 }
 
+/**
+ * Check if error is unauthorized/forbidden
+ */
 export function isUnauthorizedError(error: any): boolean {
-    try {
-        const message = extractErrorMessage(error);
-        return error?.response?.status === 401 ||
-               error?.response?.status === 403 ||
-               message.toLowerCase().includes("unauthorized") ||
-               message.toLowerCase().includes("permission");
-    } catch (err) {
-        return false;
-    }
+    const status = error?.response?.status;
+    return status === 401 || status === 403;
 }

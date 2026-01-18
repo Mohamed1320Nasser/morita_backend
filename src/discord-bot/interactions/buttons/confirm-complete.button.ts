@@ -97,7 +97,7 @@ export async function handleConfirmCompleteButton(interaction: ButtonInteraction
     } catch (error: any) {
         logger.error("[ConfirmComplete] Error confirming order completion:", error);
 
-        const errorMessage = error?.response?.data?.message || error?.message || "Unknown error";
+        const errorMessage = error?.response?.data?.msg || error?.response?.data?.message || error?.message || "Unknown error";
 
         try {
             if (interaction.replied || interaction.deferred) {

@@ -880,3 +880,38 @@ model DiscordChannelPublishStatus {
   @@index([channelType])
   @@index([status])
 }
+
+// Mention Tracker - Track mentions for auto-reminder system
+model MentionTracker {
+  id                  String    @id @default(uuid())
+  channelId           String    // Discord channel where mention happened
+  messageId           String    // Original message ID
+  messageUrl          String?   // Link to the message
+  mentionedUserId     String    // Discord ID of mentioned user
+  mentionedByUserId   String    // Discord ID of who mentioned
+  mentionedAt         DateTime  @default(now()) @db.DateTime(0)
+
+  // Response tracking
+  hasResponded        Boolean   @default(false)
+  respondedAt         DateTime? @db.DateTime(0)
+
+  // Reminder tracking
+  channelReminderSent     Boolean   @default(false)
+  channelReminderSentAt   DateTime? @db.DateTime(0)
+  dmReminderSent          Boolean   @default(false)
+  dmReminderSentAt        DateTime? @db.DateTime(0)
+
+  // Config
+  reminderDelayMinutes    Int       @default(15)
+  isActive                Boolean   @default(true)
+
+  createdAt           DateTime  @default(now()) @db.DateTime(0)
+  updatedAt           DateTime  @default(now()) @updatedAt @db.DateTime(0)
+
+  @@unique([channelId, messageId, mentionedUserId])
+  @@index([mentionedUserId])
+  @@index([channelId])
+  @@index([hasResponded])
+  @@index([isActive, hasResponded, channelReminderSent])
+  @@index([isActive, hasResponded, dmReminderSent])
+}

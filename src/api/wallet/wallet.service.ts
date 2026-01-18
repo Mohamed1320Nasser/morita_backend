@@ -340,13 +340,41 @@ export default class WalletService {
      * Add balance via Discord (creates user/wallet if needed)
      */
     async addBalanceByDiscord(data: DiscordAddBalanceDto) {
-        // Get or create wallet for customer
+        // Determine wallet type based on transaction type
+        // WORKER_DEPOSIT -> WORKER wallet, otherwise CUSTOMER wallet
+        const walletType = data.transactionType === "WORKER_DEPOSIT"
+            ? WalletType.WORKER
+            : WalletType.CUSTOMER;
+
+        // Get or create wallet with correct type
         const wallet = await this.getOrCreateWalletByDiscordId(
             data.customerDiscordId,
             data.customerDiscordUsername || data.customerDiscordId,
-            WalletType.CUSTOMER,
+            walletType,
             data.customerDiscordDisplayName
         );
+
+        // If wallet exists but has wrong type, update it
+        if (wallet.walletType !== walletType) {
+            await prisma.wallet.update({
+                where: { id: wallet.id },
+                data: { walletType },
+            });
+            logger.info(`[addBalanceByDiscord] Updated wallet ${wallet.id} type: ${wallet.walletType} -> ${walletType}`);
+            wallet.walletType = walletType;
+        }
+
+        // Also update user's discordRole if adding worker deposit
+        if (data.transactionType === "WORKER_DEPOSIT" && wallet.user) {
+            const user = await prisma.user.findUnique({ where: { id: wallet.userId } });
+            if (user && user.discordRole !== "worker") {
+                await prisma.user.update({
+                    where: { id: wallet.userId },
+                    data: { discordRole: "worker" },
+                });
+                logger.info(`[addBalanceByDiscord] Updated user ${wallet.userId} discordRole to worker`);
+            }
+        }
 
         // Add balance
         const result = await this.addBalance(

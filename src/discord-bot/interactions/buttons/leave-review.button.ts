@@ -4,10 +4,23 @@ import { discordApiClient } from "../../clients/DiscordApiClient";
 
 export async function handleLeaveReviewButton(interaction: ButtonInteraction): Promise<void> {
     try {
-        
-        const orderId = interaction.customId.replace("leave_review_", "");
+        // Determine review type (public or anonymous) and extract orderId
+        let orderId: string;
+        let isAnonymous = false;
 
-        logger.info(`[LeaveReview] Customer ${interaction.user.id} requesting review modal for order ${orderId}`);
+        if (interaction.customId.startsWith("public_review_")) {
+            orderId = interaction.customId.replace("public_review_", "");
+            isAnonymous = false;
+        } else if (interaction.customId.startsWith("anonymous_review_")) {
+            orderId = interaction.customId.replace("anonymous_review_", "");
+            isAnonymous = true;
+        } else {
+            // Legacy support for old leave_review_ prefix
+            orderId = interaction.customId.replace("leave_review_", "");
+            isAnonymous = false;
+        }
+
+        logger.info(`[LeaveReview] Customer ${interaction.user.id} requesting ${isAnonymous ? 'anonymous' : 'public'} review modal for order ${orderId}`);
 
         const orderResponse: any = await discordApiClient.get(`/discord/orders/${orderId}`);
         const orderData = orderResponse.data || orderResponse;
@@ -30,9 +43,11 @@ export async function handleLeaveReviewButton(interaction: ButtonInteraction): P
             return;
         }
 
+        // Include anonymous flag in customId: order_review_anon_<orderId> or order_review_public_<orderId>
+        const reviewType = isAnonymous ? 'anon' : 'public';
         const reviewModal = new ModalBuilder()
-            .setCustomId(`order_review_${orderId}`)
-            .setTitle(`Review Order #${orderData.orderNumber}`);
+            .setCustomId(`order_review_${reviewType}_${orderId}`)
+            .setTitle(`${isAnonymous ? 'Anonymous' : 'Public'} Review #${orderData.orderNumber}`);
 
         const ratingInput = new TextInputBuilder()
             .setCustomId('rating')
@@ -58,7 +73,7 @@ export async function handleLeaveReviewButton(interaction: ButtonInteraction): P
 
         await interaction.showModal(reviewModal.toJSON() as any);
 
-        logger.info(`[LeaveReview] Showed review modal to customer for order ${orderId}`);
+        logger.info(`[LeaveReview] Showed ${isAnonymous ? 'anonymous' : 'public'} review modal to customer for order ${orderId}`);
     } catch (error: any) {
         logger.error("[LeaveReview] Error showing review modal:", error);
 

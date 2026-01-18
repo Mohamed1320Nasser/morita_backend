@@ -3,8 +3,9 @@ import { config } from "dotenv";
 config();
 
 export const onboardingConfig = {
-    
+
     tosChannelId: process.env.DISCORD_TOS_CHANNEL_ID || "",
+    termsChannelId: process.env.DISCORD_TERMS_CHANNEL_ID || process.env.DISCORD_TOS_CHANNEL_ID || "",
     generalChannelId: process.env.DISCORD_GENERAL_CHANNEL_ID || "",
 
     customerRoleId: process.env.DISCORD_CUSTOMER_ROLE_ID || "",

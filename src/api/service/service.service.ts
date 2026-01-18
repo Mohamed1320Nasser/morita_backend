@@ -295,6 +295,7 @@ export default class ServiceService {
                         pricingUnit: true,
                         startLevel: true,
                         endLevel: true,
+                        shortcuts: true,
                         methodPrices: {
                             include: {
                                 paymentMethod: {

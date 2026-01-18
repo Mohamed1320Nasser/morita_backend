@@ -79,6 +79,7 @@ export interface Service {
     imageUrl?: string;
     active: boolean;
     displayOrder: number;
+    shortcuts?: string[];
     category?: ServiceCategory;
     serviceModifiers?: ServiceModifier[];
     pricingMethods?: PricingMethod[];
@@ -87,14 +88,15 @@ export interface Service {
 export interface PricingMethod {
     id: string;
     name: string;
-    groupName?: string; 
+    groupName?: string;
     description?: string;
     basePrice: number;
     pricingUnit: "FIXED" | "PER_LEVEL" | "PER_KILL" | "PER_ITEM" | "PER_HOUR";
-    startLevel?: number; 
-    endLevel?: number; 
+    startLevel?: number;
+    endLevel?: number;
     displayOrder: number;
     active: boolean;
+    shortcuts?: string[];
     modifiers?: PricingModifier[];
     methodPrices?: MethodPrice[];
 }

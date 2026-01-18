@@ -58,6 +58,12 @@ export const discordConfig = {
 
     logLevel: process.env.LOG_LEVEL || "info",
 
+    // Mention Reminder Settings
+    mentionChannelReminderDelayMinutes: parseInt(process.env.MENTION_CHANNEL_REMINDER_DELAY_MINUTES || "15") || 15,
+    mentionDmReminderDelayMinutes: parseInt(process.env.MENTION_DM_REMINDER_DELAY_MINUTES || "30") || 30,
+    mentionCheckIntervalMinutes: parseInt(process.env.MENTION_CHECK_INTERVAL_MINUTES || "5") || 5,
+    mentionTrackAllChannels: process.env.MENTION_TRACK_ALL_CHANNELS === "true",
+
     validate(): boolean {
         if (!this.token || !this.clientId || !this.guildId) {
             logger.error(
