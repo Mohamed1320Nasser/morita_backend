@@ -32,9 +32,9 @@ export default class DiscordChannelsService {
      * Publish all channels
      * Proxies request to bot API
      */
-    async publishAllChannels(userId?: number): Promise<any> {
+    async publishAllChannels(userId?: number, clearAllMessages: boolean = false): Promise<any> {
         try {
-            const response = await axios.post(`${BOT_API_URL}/discord/channels/publish/all`, { userId });
+            const response = await axios.post(`${BOT_API_URL}/discord/channels/publish/all`, { userId, clearAllMessages });
             return response.data;
         } catch (error: any) {
             logger.error("[DiscordChannelsService] Error publishing all channels:", error.message);
@@ -46,9 +46,9 @@ export default class DiscordChannelsService {
      * Publish pricing channel
      * Proxies request to bot API
      */
-    async publishPricingChannel(userId?: number): Promise<any> {
+    async publishPricingChannel(userId?: number, clearAllMessages: boolean = false): Promise<any> {
         try {
-            const response = await axios.post(`${BOT_API_URL}/discord/channels/publish/pricing`, { userId });
+            const response = await axios.post(`${BOT_API_URL}/discord/channels/publish/pricing`, { userId, clearAllMessages });
             return response.data;
         } catch (error: any) {
             logger.error("[DiscordChannelsService] Error publishing pricing channel:", error.message);
@@ -60,9 +60,9 @@ export default class DiscordChannelsService {
      * Publish TOS channel
      * Proxies request to bot API
      */
-    async publishTosChannel(userId?: number): Promise<any> {
+    async publishTosChannel(userId?: number, clearAllMessages: boolean = false): Promise<any> {
         try {
-            const response = await axios.post(`${BOT_API_URL}/discord/channels/publish/tos`, { userId });
+            const response = await axios.post(`${BOT_API_URL}/discord/channels/publish/tos`, { userId, clearAllMessages });
             return response.data;
         } catch (error: any) {
             logger.error("[DiscordChannelsService] Error publishing TOS channel:", error.message);
@@ -74,9 +74,9 @@ export default class DiscordChannelsService {
      * Publish ticket channels
      * Proxies request to bot API
      */
-    async publishTicketChannels(userId?: number): Promise<any> {
+    async publishTicketChannels(userId?: number, clearAllMessages: boolean = false): Promise<any> {
         try {
-            const response = await axios.post(`${BOT_API_URL}/discord/channels/publish/tickets`, { userId });
+            const response = await axios.post(`${BOT_API_URL}/discord/channels/publish/tickets`, { userId, clearAllMessages });
             return response.data;
         } catch (error: any) {
             logger.error("[DiscordChannelsService] Error publishing ticket channels:", error.message);

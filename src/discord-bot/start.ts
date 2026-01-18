@@ -189,8 +189,9 @@ app.post("/discord/channels/publish/pricing", async (req, res) => {
             return res.status(400).json({ success: false, error: "Pricing channel manager not initialized" });
         }
 
-        logger.info("[Bot API] Publishing pricing channel...");
-        await discordClient.improvedChannelManager.rebuildChannel();
+        const clearAllMessages = req.body.clearAllMessages === true;
+        logger.info(`[Bot API] Publishing pricing channel (clearAll: ${clearAllMessages})...`);
+        await discordClient.improvedChannelManager.rebuildChannel(clearAllMessages);
 
         const manager = discordClient.improvedChannelManager as any;
         const messageCount = manager.categoryMessages?.size || 0;
@@ -222,8 +223,9 @@ app.post("/discord/channels/publish/tos", async (req, res) => {
             return res.status(400).json({ success: false, error: "TOS manager not initialized" });
         }
 
-        logger.info("[Bot API] Publishing TOS channel...");
-        await discordClient.tosManager.publishTos();
+        const clearAllMessages = req.body.clearAllMessages === true;
+        logger.info(`[Bot API] Publishing TOS channel (clearAll: ${clearAllMessages})...`);
+        await discordClient.tosManager.publishTos(clearAllMessages);
 
         await updateChannelStatus("TOS", {
             status: "published",
@@ -252,8 +254,9 @@ app.post("/discord/channels/publish/tickets", async (req, res) => {
             return res.status(400).json({ success: false, error: "Ticket category manager not initialized" });
         }
 
-        logger.info("[Bot API] Publishing ticket channels...");
-        await discordClient.ticketCategoryManager.publishTickets();
+        const clearAllMessages = req.body.clearAllMessages === true;
+        logger.info(`[Bot API] Publishing ticket channels (clearAll: ${clearAllMessages})...`);
+        await discordClient.ticketCategoryManager.publishTickets(clearAllMessages);
 
         await updateChannelStatus("TICKETS", {
             status: "published",
@@ -274,10 +277,13 @@ app.post("/discord/channels/publish/tickets", async (req, res) => {
 
 app.post("/discord/channels/publish/all", async (req, res) => {
     const results: { channel: string; success: boolean; error?: string }[] = [];
+    const clearAllMessages = req.body.clearAllMessages === true;
+
+    logger.info(`[Bot API] Publishing all channels (clearAll: ${clearAllMessages})...`);
 
     try {
         if (discordClient.isReady() && discordClient.improvedChannelManager) {
-            await discordClient.improvedChannelManager.rebuildChannel();
+            await discordClient.improvedChannelManager.rebuildChannel(clearAllMessages);
             const manager = discordClient.improvedChannelManager as any;
             const messageCount = manager.categoryMessages?.size || 0;
             await updateChannelStatus("PRICING", {
@@ -298,7 +304,7 @@ app.post("/discord/channels/publish/all", async (req, res) => {
 
     try {
         if (discordClient.isReady() && discordClient.tosManager) {
-            await discordClient.tosManager.publishTos();
+            await discordClient.tosManager.publishTos(clearAllMessages);
             await updateChannelStatus("TOS", {
                 status: "published",
                 lastPublishedAt: new Date(),
@@ -317,7 +323,7 @@ app.post("/discord/channels/publish/all", async (req, res) => {
 
     try {
         if (discordClient.isReady() && discordClient.ticketCategoryManager) {
-            await discordClient.ticketCategoryManager.publishTickets();
+            await discordClient.ticketCategoryManager.publishTickets(clearAllMessages);
             await updateChannelStatus("TICKETS", {
                 status: "published",
                 lastPublishedAt: new Date(),

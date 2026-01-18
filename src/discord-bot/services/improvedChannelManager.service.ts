@@ -15,7 +15,6 @@ import {
 import { discordConfig } from "../config/discord.config";
 import logger from "../../common/loggers";
 import path from "path";
-import prisma from "../../common/prisma/client";
 
 export class ImprovedChannelManager {
     private client: Client;
@@ -200,7 +199,7 @@ export class ImprovedChannelManager {
         return categories;
     }
 
-    async rebuildChannel(): Promise<void> {
+    async rebuildChannel(clearAllMessages: boolean = false): Promise<void> {
         if (!this.pricingChannel) {
             logger.error(
                 "[ImprovedChannelManager] Cannot rebuild: channel not initialized"
@@ -211,7 +210,7 @@ export class ImprovedChannelManager {
         try {
             logger.info("[ImprovedChannelManager] Rebuilding pricing channel");
 
-            await this.clearChannel();
+            await this.clearChannel(clearAllMessages);
 
             await new Promise(resolve => setTimeout(resolve, 2000));
 
@@ -231,18 +230,19 @@ export class ImprovedChannelManager {
         }
     }
 
-    private async clearChannel(): Promise<void> {
+    private async clearChannel(clearAllMessages: boolean = false): Promise<void> {
         if (!this.pricingChannel) return;
 
         try {
-            
+            logger.info(`[ImprovedChannelManager] Clearing channel (clearAll: ${clearAllMessages})`);
+
             let allMessages: Message[] = [];
             let lastMessageId: string | undefined = undefined;
 
             while (true) {
                 const fetchOptions: { limit: number; before?: string; cache?: boolean } = {
                     limit: 100,
-                    cache: false 
+                    cache: false
                 };
                 if (lastMessageId) {
                     fetchOptions.before = lastMessageId;
@@ -257,32 +257,31 @@ export class ImprovedChannelManager {
                 if (messagesCollection.size < 100) break;
             }
 
-            const botMessages = allMessages.filter(
-                msg => msg.author.id === this.client.user?.id
-            );
+            // Filter messages based on clearAllMessages flag
+            const messagesToDelete = clearAllMessages
+                ? allMessages
+                : allMessages.filter(msg => msg.author.id === this.client.user?.id);
 
-            for (const msg of botMessages) {
+            logger.info(`[ImprovedChannelManager] Found ${allMessages.length} total messages, deleting ${messagesToDelete.length} messages`);
+
+            for (const msg of messagesToDelete) {
                 try {
                     await msg.delete();
                 } catch (err: any) {
-                    
+
                     if (err.code !== 10008) {
                         logger.warn(`[ImprovedChannelManager] Could not delete message ${msg.id}: ${err}`);
                     }
                 }
             }
 
-            await prisma.discordMessage.deleteMany({
-                where: {
-                    channelId: this.pricingChannel.id,
-                },
-            });
-
             this.headerMessage = null;
             this.categoryMessages.clear();
             this.footerMessage = null;
 
             this.pricingChannel.messages.cache.clear();
+
+            logger.info(`[ImprovedChannelManager] Successfully cleared ${messagesToDelete.length} messages`);
         } catch (error) {
             logger.error(
                 "[ImprovedChannelManager] Error clearing channel:",
@@ -479,13 +478,6 @@ export class ImprovedChannelManager {
                 await message.delete();
                 this.categoryMessages.delete(categoryId);
 
-                await prisma.discordMessage.deleteMany({
-                    where: {
-                        categoryId: categoryId,
-                        messageType: "CATEGORY_SELECT",
-                    },
-                });
-
                 logger.info(
                     `[ImprovedChannelManager] Category message removed: ${categoryId}`
                 );
@@ -522,22 +514,10 @@ export class ImprovedChannelManager {
         categoryId?: string,
         serviceId?: string
     ): Promise<void> {
-        try {
-            await prisma.discordMessage.create({
-                data: {
-                    messageId: message.id,
-                    channelId: message.channel.id,
-                    messageType,
-                    categoryId,
-                    serviceId,
-                },
-            });
-        } catch (error) {
-            logger.error(
-                "[ImprovedChannelManager] Error saving message to database:",
-                error
-            );
-        }
+        // Database operations handled by API layer
+        logger.debug(
+            `[ImprovedChannelManager] Message created: ${message.id} (type: ${messageType})`
+        );
     }
 
     async manualRefresh(): Promise<void> {

@@ -1,4 +1,4 @@
-import { Client, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, TextChannel } from "discord.js";
+import { Client, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, TextChannel, Message } from "discord.js";
 import { onboardingConfig } from "../config/onboarding.config";
 import { discordConfig } from "../config/discord.config";
 import axios from "axios";
@@ -33,11 +33,63 @@ export class TosManagerService {
         }
     }
 
-    async publishTos(): Promise<void> {
-        await this.initializeTosChannel();
+    async publishTos(clearAllMessages: boolean = false): Promise<void> {
+        await this.initializeTosChannel(clearAllMessages);
     }
 
-    async initializeTosChannel() {
+    private async clearChannel(clearAllMessages: boolean = false): Promise<void> {
+        if (!this.tosChannel) return;
+
+        try {
+            logger.info(`[TosManager] Clearing channel (clearAll: ${clearAllMessages})`);
+
+            let allMessages: Message[] = [];
+            let lastMessageId: string | undefined = undefined;
+
+            while (true) {
+                const fetchOptions: { limit: number; before?: string; cache?: boolean } = {
+                    limit: 100,
+                    cache: false
+                };
+                if (lastMessageId) {
+                    fetchOptions.before = lastMessageId;
+                }
+
+                const messagesCollection = await this.tosChannel.messages.fetch(fetchOptions);
+                if (messagesCollection.size === 0) break;
+
+                allMessages.push(...Array.from(messagesCollection.values()));
+                lastMessageId = messagesCollection.last()?.id;
+
+                if (messagesCollection.size < 100) break;
+            }
+
+            // Filter messages based on clearAllMessages flag
+            const messagesToDelete = clearAllMessages
+                ? allMessages
+                : allMessages.filter(msg => msg.author.id === this.client.user?.id);
+
+            logger.info(`[TosManager] Found ${allMessages.length} total messages, deleting ${messagesToDelete.length} messages`);
+
+            for (const msg of messagesToDelete) {
+                try {
+                    await msg.delete();
+                } catch (err: any) {
+                    if (err.code !== 10008) {
+                        logger.warn(`[TosManager] Could not delete message ${msg.id}: ${err}`);
+                    }
+                }
+            }
+
+            this.tosChannel.messages.cache.clear();
+
+            logger.info(`[TosManager] Successfully cleared ${messagesToDelete.length} messages`);
+        } catch (error) {
+            logger.error("[TosManager] Error clearing channel:", error);
+        }
+    }
+
+    async initializeTosChannel(clearAllMessages: boolean = false) {
         try {
             if (!onboardingConfig.tosChannelId) {
                 logger.error("TOS channel ID not configured");
@@ -54,6 +106,14 @@ export class TosManagerService {
             if (!channel.isTextBased()) {
                 logger.error("TOS channel is not a text channel");
                 return;
+            }
+
+            this.tosChannel = channel;
+
+            // Clear channel before publishing if requested
+            if (clearAllMessages) {
+                await this.clearChannel(clearAllMessages);
+                await new Promise(resolve => setTimeout(resolve, 2000));
             }
 
             const response = await axios.get(`${discordConfig.apiBaseUrl}/onboarding/tos/active`);

@@ -1,4 +1,4 @@
-import { JsonController, Post, Get, Authorized, CurrentUser } from "routing-controllers";
+import { JsonController, Post, Get, Authorized, CurrentUser, Body } from "routing-controllers";
 import { Service } from "typedi";
 import DiscordChannelsService from "./discord.channels.service";
 import logger from "../../common/loggers";
@@ -40,10 +40,11 @@ export default class DiscordChannelsController {
      * Publish all channels to Discord
      */
     @Post("/publish/all")
-    async publishAllChannels(@CurrentUser() user?: any) {
+    async publishAllChannels(@CurrentUser() user?: any, @Body() body?: { clearAllMessages?: boolean }) {
         try {
             const userId = user?.id;
-            return await this.discordChannelsService.publishAllChannels(userId);
+            const clearAllMessages = body?.clearAllMessages === true;
+            return await this.discordChannelsService.publishAllChannels(userId, clearAllMessages);
         } catch (error: any) {
             logger.error("[DiscordChannelsController] Error publishing all channels:", error);
             return {
@@ -57,10 +58,11 @@ export default class DiscordChannelsController {
      * Publish pricing/services channel
      */
     @Post("/publish/pricing")
-    async publishPricingChannel(@CurrentUser() user?: any) {
+    async publishPricingChannel(@CurrentUser() user?: any, @Body() body?: { clearAllMessages?: boolean }) {
         try {
             const userId = user?.id;
-            return await this.discordChannelsService.publishPricingChannel(userId);
+            const clearAllMessages = body?.clearAllMessages === true;
+            return await this.discordChannelsService.publishPricingChannel(userId, clearAllMessages);
         } catch (error: any) {
             logger.error("[DiscordChannelsController] Error publishing pricing channel:", error);
             return {
@@ -74,10 +76,11 @@ export default class DiscordChannelsController {
      * Publish TOS channel
      */
     @Post("/publish/tos")
-    async publishTosChannel(@CurrentUser() user?: any) {
+    async publishTosChannel(@CurrentUser() user?: any, @Body() body?: { clearAllMessages?: boolean }) {
         try {
             const userId = user?.id;
-            return await this.discordChannelsService.publishTosChannel(userId);
+            const clearAllMessages = body?.clearAllMessages === true;
+            return await this.discordChannelsService.publishTosChannel(userId, clearAllMessages);
         } catch (error: any) {
             logger.error("[DiscordChannelsController] Error publishing TOS channel:", error);
             return {
@@ -91,10 +94,11 @@ export default class DiscordChannelsController {
      * Publish ticket channels (4 channels)
      */
     @Post("/publish/tickets")
-    async publishTicketChannels(@CurrentUser() user?: any) {
+    async publishTicketChannels(@CurrentUser() user?: any, @Body() body?: { clearAllMessages?: boolean }) {
         try {
             const userId = user?.id;
-            return await this.discordChannelsService.publishTicketChannels(userId);
+            const clearAllMessages = body?.clearAllMessages === true;
+            return await this.discordChannelsService.publishTicketChannels(userId, clearAllMessages);
         } catch (error: any) {
             logger.error("[DiscordChannelsController] Error publishing ticket channels:", error);
             return {
