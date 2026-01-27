@@ -10,15 +10,24 @@ export async function handleCalculatorModal(
     interaction: ModalSubmitInteraction
 ): Promise<void> {
     try {
-        
-        await interaction.deferReply({ ephemeral: false });
-
         let serviceId = interaction.customId.replace("calculator_modal_", "");
         const isFromTicket = serviceId.startsWith("inticket_");
 
         if (isFromTicket) {
             serviceId = serviceId.replace("inticket_", "");
         }
+
+        // Determine if we should show ephemeral or public
+        // Public only in calculator channel and ticket channels
+        const channelId = interaction.channelId;
+        const isCalculatorChannel = channelId === discordConfig.calculatorChannelId;
+        const isTicketChannel = isFromTicket || (interaction.channel && 'name' in interaction.channel &&
+            (interaction.channel.name.startsWith(discordConfig.ticketChannelPrefix) || interaction.channel.name.startsWith("closed-")));
+
+        // Calculator is public in calculator channel and ticket channels, ephemeral elsewhere
+        const shouldBeEphemeral = !isCalculatorChannel && !isTicketChannel;
+
+        await interaction.deferReply({ ephemeral: shouldBeEphemeral });
 
         if (!serviceId) {
             await interaction.editReply({

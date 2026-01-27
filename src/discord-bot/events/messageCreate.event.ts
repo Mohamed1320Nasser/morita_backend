@@ -12,8 +12,34 @@ import {
     deleteThinkingMessage,
 } from "../utils/messageHelpers";
 import { discordApiClient } from "../clients/DiscordApiClient";
-import { createBalanceEmbed, createTransactionsEmbed } from "../utils/wallet-embeds.util";
+// Wallet embeds moved to slash commands /w and /t
 import { getMentionTrackerService } from "../services/mention-tracker.service";
+
+/**
+ * Check if a channel is allowed for calculator commands
+ * Only allowed in: Calculator channel OR any channel under Ticket category
+ */
+function isCalculatorAllowedChannel(message: Message): boolean {
+    const channel = message.channel;
+
+    // Check if it's the calculator channel
+    if (channel.id === discordConfig.calculatorChannelId) {
+        return true;
+    }
+
+    // Check if it's a channel under the ticket category (open or closed tickets)
+    if ('parentId' in channel && channel.parentId) {
+        const parentId = channel.parentId;
+
+        // Check both open tickets category and closed tickets category
+        if (parentId === discordConfig.ticketCategoryId ||
+            parentId === discordConfig.closedTicketsCategoryId) {
+            return true;
+        }
+    }
+
+    return false;
+}
 
 const apiService = new ApiService(discordConfig.apiBaseUrl);
 
@@ -39,20 +65,19 @@ export default {
         const prefix = discordConfig.prefix;
         const content = message.content.toLowerCase().trim();
 
-        // Handle wallet commands (!w and !t) - no parameters needed
-        if (content === '!w' || content === '!wallet') {
-            await handleWalletCommand(message);
-            return;
-        }
-        if (content === '!t' || content === '!transactions') {
-            await handleTransactionsCommand(message);
-            return;
-        }
+        // Wallet commands moved to slash commands /w and /t for ephemeral support
+        // Users should use /w for balance and /t for transactions
 
         // Handle calculator commands - supports batch commands separated by comma
         // Examples: "!s agi 70-99" or "!s agi 70-99, !p cox 10, !m ba 100"
         const commandMatch = content.match(/^!([spmiq])\s+/);
         if (!commandMatch) return;
+
+        // Calculator commands only work in calculator channel and ticket channels
+        if (!isCalculatorAllowedChannel(message)) {
+            // Silently ignore - don't respond in other channels
+            return;
+        }
 
         // Split by comma and check for multiple commands
         const parts = message.content.split(',').map(s => s.trim()).filter(s => s.length > 0);
@@ -476,6 +501,142 @@ async function processSingleSkillRequest(message: Message, requestString: string
     }
 }
 
+/**
+ * Find PvM service/method by search term
+ * Search priority: service name → groupName → method name (with shortcuts support)
+ * Returns showAllMethods: true when matched by service/group, false when matched by specific method
+ */
+function findPvmItem(services: any[], searchTerm: string): {
+    service: any;
+    method: any | null;
+    showAllMethods: boolean;
+    groupName?: string;
+} | null {
+    const normalized = searchTerm.toLowerCase().trim();
+
+    // Filter to only services with PER_KILL pricing
+    const pvmServices = services.filter((s: any) =>
+        s.pricingMethods?.some((m: any) => m.pricingUnit === 'PER_KILL')
+    );
+
+    // 1. Exact service name/slug/shortcut match → show ALL methods
+    const exactServiceMatch = pvmServices.find((s: any) =>
+        s.name.toLowerCase() === normalized ||
+        s.slug?.toLowerCase() === normalized ||
+        (s.shortcuts && Array.isArray(s.shortcuts) && s.shortcuts.some((alias: string) => alias.toLowerCase() === normalized))
+    );
+
+    if (exactServiceMatch) {
+        logger.info(`[PvM] ✅ Exact service match: "${exactServiceMatch.name}"`);
+        return {
+            service: exactServiceMatch,
+            method: null,
+            showAllMethods: true
+        };
+    }
+
+    // 2. Exact groupName match → show ALL methods in that group
+    for (const service of pvmServices) {
+        if (!service.pricingMethods) continue;
+
+        const methodsInGroup = service.pricingMethods.filter((m: any) =>
+            m.pricingUnit === 'PER_KILL' &&
+            m.groupName &&
+            m.groupName.trim().toLowerCase() === normalized
+        );
+
+        if (methodsInGroup.length > 0) {
+            logger.info(`[PvM] ✅ Exact groupName match: "${methodsInGroup[0].groupName}" in service "${service.name}" (${methodsInGroup.length} methods)`);
+            return {
+                service,
+                method: null,
+                showAllMethods: true,
+                groupName: methodsInGroup[0].groupName
+            };
+        }
+    }
+
+    // 3. Exact method name/shortcut match → show ONLY this method
+    for (const service of pvmServices) {
+        if (!service.pricingMethods) continue;
+
+        const method = service.pricingMethods.find((m: any) =>
+            m.pricingUnit === 'PER_KILL' &&
+            (m.name.toLowerCase() === normalized ||
+            (m.shortcuts && Array.isArray(m.shortcuts) && m.shortcuts.some((alias: string) => alias.toLowerCase() === normalized)))
+        );
+
+        if (method) {
+            logger.info(`[PvM] ✅ Exact method match: "${method.name}" in service "${service.name}"`);
+            return {
+                service,
+                method,
+                showAllMethods: false
+            };
+        }
+    }
+
+    // 4. Partial service name/slug/shortcut match → show ALL methods
+    const partialServiceMatch = pvmServices.find((s: any) =>
+        s.name.toLowerCase().includes(normalized) ||
+        s.slug?.toLowerCase().includes(normalized) ||
+        (s.shortcuts && Array.isArray(s.shortcuts) && s.shortcuts.some((alias: string) => alias.toLowerCase().includes(normalized)))
+    );
+
+    if (partialServiceMatch) {
+        logger.info(`[PvM] ✅ Partial service match: "${partialServiceMatch.name}"`);
+        return {
+            service: partialServiceMatch,
+            method: null,
+            showAllMethods: true
+        };
+    }
+
+    // 5. Partial groupName match → show ALL methods in that group
+    for (const service of pvmServices) {
+        if (!service.pricingMethods) continue;
+
+        const methodsInGroup = service.pricingMethods.filter((m: any) =>
+            m.pricingUnit === 'PER_KILL' &&
+            m.groupName &&
+            m.groupName.trim().toLowerCase().includes(normalized)
+        );
+
+        if (methodsInGroup.length > 0) {
+            logger.info(`[PvM] ✅ Partial groupName match: "${methodsInGroup[0].groupName}" in service "${service.name}" (${methodsInGroup.length} methods)`);
+            return {
+                service,
+                method: null,
+                showAllMethods: true,
+                groupName: methodsInGroup[0].groupName
+            };
+        }
+    }
+
+    // 6. Partial method name/shortcut match → show ONLY this method
+    for (const service of pvmServices) {
+        if (!service.pricingMethods) continue;
+
+        const method = service.pricingMethods.find((m: any) =>
+            m.pricingUnit === 'PER_KILL' &&
+            (m.name.toLowerCase().includes(normalized) ||
+            (m.shortcuts && Array.isArray(m.shortcuts) && m.shortcuts.some((alias: string) => alias.toLowerCase().includes(normalized))))
+        );
+
+        if (method) {
+            logger.info(`[PvM] ✅ Partial method match: "${method.name}" in service "${service.name}"`);
+            return {
+                service,
+                method,
+                showAllMethods: false
+            };
+        }
+    }
+
+    logger.warn(`[PvM] ❌ No match found for: "${searchTerm}"`);
+    return null;
+}
+
 async function handleBossingCommand(message: Message, apiService: ApiService) {
     if (message.author.bot) {
         return;
@@ -538,99 +699,24 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
 
     const services = await apiService.getAllServicesWithPricing();
 
-    // Filter to only services with PER_KILL pricing
-    const pvmServices = services.filter((s: any) =>
-        s.pricingMethods?.some((m: any) => m.pricingUnit === 'PER_KILL')
-    );
+    // Use helper function to find PvM service/methods (same pattern as minigames)
+    const searchResult = findPvmItem(services, serviceName);
 
-    let service: any = null;
-    let groupNameFilter: string | undefined = undefined;
-    let specificMethodName: string | undefined = undefined;
-
-    // 1. Exact service name match
-    service = pvmServices.find((s: any) =>
-        s.name.toLowerCase() === serviceName ||
-        s.slug.toLowerCase() === serviceName ||
-        (s.shortcuts && Array.isArray(s.shortcuts) && s.shortcuts.some((alias: string) => alias.toLowerCase() === serviceName))
-    );
-
-    // 2. Exact method name match (e.g., "duke sucellus", "yama")
-    if (!service) {
-        for (const s of pvmServices) {
-            const method = s.pricingMethods?.find((m: any) =>
-                m.pricingUnit === 'PER_KILL' &&
-                (m.name.toLowerCase() === serviceName ||
-                (m.shortcuts && Array.isArray(m.shortcuts) && m.shortcuts.some((alias: string) => alias.toLowerCase() === serviceName)))
-            );
-            if (method) {
-                service = s;
-                specificMethodName = method.name;
-                break;
-            }
-        }
-    }
-
-    // 3. Exact groupName match
-    if (!service) {
-        for (const s of pvmServices) {
-            const methodWithGroup = s.pricingMethods?.find((m: any) =>
-                m.pricingUnit === 'PER_KILL' &&
-                m.groupName &&
-                m.groupName.trim().toLowerCase() === serviceName
-            );
-            if (methodWithGroup) {
-                service = s;
-                groupNameFilter = methodWithGroup.groupName;
-                break;
-            }
-        }
-    }
-
-    // 4. Partial service name match
-    if (!service) {
-        service = pvmServices.find((s: any) =>
-            s.name.toLowerCase().includes(serviceName) ||
-            s.slug.toLowerCase().includes(serviceName) ||
-            (s.shortcuts && Array.isArray(s.shortcuts) && s.shortcuts.some((alias: string) => alias.toLowerCase().includes(serviceName)))
+    if (!searchResult) {
+        await deleteThinkingMessage(thinkingMsg);
+        await sendServiceNotFoundError(
+            message,
+            serviceName,
+            "PvM",
+            ["!p kraken 10", "!p cox 120", "!p zulrah 100", "!p nex 50"]
         );
+        return;
     }
 
-    // 5. Partial method name match
-    if (!service) {
-        for (const s of pvmServices) {
-            const method = s.pricingMethods?.find((m: any) =>
-                m.pricingUnit === 'PER_KILL' &&
-                (m.name.toLowerCase().includes(serviceName) ||
-                (m.shortcuts && Array.isArray(m.shortcuts) && m.shortcuts.some((alias: string) => alias.toLowerCase().includes(serviceName))))
-            );
-            if (method) {
-                service = s;
-                specificMethodName = method.name;
-                break;
-            }
-        }
-    }
+    const { service: foundService, method: specificMethod, showAllMethods, groupName: groupNameFilter } = searchResult;
 
-    // 6. Partial groupName match
-    if (!service) {
-        for (const s of pvmServices) {
-            const methodWithGroup = s.pricingMethods?.find((m: any) =>
-                m.pricingUnit === 'PER_KILL' &&
-                m.groupName &&
-                m.groupName.trim().toLowerCase().includes(serviceName)
-            );
-            if (methodWithGroup) {
-                service = s;
-                groupNameFilter = methodWithGroup.groupName;
-                break;
-            }
-        }
-    }
-
-    if (service) {
-        const fullService = await apiService.getServiceWithPricing(service.id);
-        service = fullService;
-    }
+    // Get full service data
+    const service = await apiService.getServiceWithPricing(foundService.id);
 
     if (!service) {
         await deleteThinkingMessage(thinkingMsg);
@@ -638,13 +724,12 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
             message,
             serviceName,
             "PvM",
-            ["!p yama 10", "!p duke sucellus 10", "!p cox 120", "!p zulrah 100"]
+            ["!p kraken 10", "!p cox 120", "!p zulrah 100", "!p nex 50"]
         );
         return;
     }
 
     try {
-
         const pricingService = new PricingCalculatorService();
 
         if (!service.pricingMethods || service.pricingMethods.length === 0) {
@@ -653,33 +738,27 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
 
         let allMethods = service.pricingMethods.filter((m: any) => m.pricingUnit === 'PER_KILL');
 
-        // logger.info(`[PvM] Found ${allMethods.length} PER_KILL methods for service "${service.name}":`);
-        // allMethods.forEach((m: any) => {
-        //     logger.info(`[PvM] - Method: "${m.name}", Group: "${m.groupName}"`);
-        // });
-
+        // Filter by groupName if matched by group
         if (groupNameFilter) {
             const normalizedFilter = groupNameFilter.trim().toLowerCase();
-            logger.info(`[PvM] Filtering for group: "${normalizedFilter}" (Original: "${groupNameFilter}")`);
-            
+            logger.info(`[PvM] Filtering for group: "${normalizedFilter}"`);
+
             allMethods = allMethods.filter((m: any) => {
                 const normalizedGroup = m.groupName ? m.groupName.trim().toLowerCase() : '';
-                const match = normalizedGroup === normalizedFilter;
-                logger.info(`[PvM] Checking method "${m.name}": Group="${m.groupName}" -> Match=${match}`);
-                return match;
+                return normalizedGroup === normalizedFilter;
             });
         }
 
-        // If a specific method was matched, filter to only that method
-        if (specificMethodName) {
-            allMethods = allMethods.filter((m: any) => m.name === specificMethodName);
+        // If specific method was matched (not showAllMethods), filter to only that method
+        if (!showAllMethods && specificMethod) {
+            allMethods = allMethods.filter((m: any) => m.name === specificMethod.name);
         }
 
         if (allMethods.length === 0) {
             throw new Error(groupNameFilter
                 ? `No PER_KILL pricing methods found with groupName "${groupNameFilter}"`
-                : specificMethodName
-                    ? `No PER_KILL pricing method found with name "${specificMethodName}"`
+                : specificMethod
+                    ? `No PER_KILL pricing method found with name "${specificMethod.name}"`
                     : 'No PER_KILL pricing method found for this service'
             );
         }
@@ -2206,58 +2285,5 @@ function normalizeQuestName(name: string): string {
         .replace(/'+/g, "'");
 }
 
-// ==================== WALLET COMMANDS ====================
-
-async function handleWalletCommand(message: Message) {
-    try {
-        const discordId = message.author.id;
-
-        const response: any = await discordApiClient.get(
-            `/discord/wallets/balance/${discordId}`
-        );
-
-        const responseData = response.data || response;
-        const data = responseData.data || responseData;
-
-        const embed = createBalanceEmbed(data, {
-            isAdminView: false,
-        });
-
-        await message.reply({ embeds: [embed.toJSON() as any] });
-
-        logger.info(`[Wallet] Balance viewed by ${message.author.tag}`);
-    } catch (error) {
-        logger.error("[Wallet] Error fetching balance:", error);
-        await message.reply({
-            content: "❌ Failed to fetch wallet information. Please try again later.",
-        });
-    }
-}
-
-async function handleTransactionsCommand(message: Message) {
-    try {
-        const discordId = message.author.id;
-
-        const response: any = await discordApiClient.get(
-            `/discord/wallets/transactions/${discordId}`,
-            { params: { limit: 10 } }
-        );
-
-        const responseData = response.data || response;
-        const data = responseData.data || responseData;
-        const transactions = data.list || [];
-
-        const embed = createTransactionsEmbed(transactions, {
-            isAdminView: false,
-        });
-
-        await message.reply({ embeds: [embed.toJSON() as any] });
-
-        logger.info(`[Wallet] Transactions viewed by ${message.author.tag}`);
-    } catch (error) {
-        logger.error("[Wallet] Error fetching transactions:", error);
-        await message.reply({
-            content: "❌ Failed to fetch transaction history. Please try again later.",
-        });
-    }
-}
+// Wallet commands (!w, !t) have been moved to slash commands /w and /t
+// This allows ephemeral messages that only the user can see
