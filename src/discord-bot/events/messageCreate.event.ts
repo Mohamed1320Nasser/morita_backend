@@ -781,8 +781,8 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
             sum + Math.abs(Number(mod.value)), 0
         );
 
-        // Use specific method name if matched, otherwise use service name
-        const displayName = specificMethodName || service.name;
+        // Use specific method name if matched, otherwise use groupName or service name
+        const displayName = specificMethod?.name || groupNameFilter || service.name;
 
         let tableText = "```ansi\n";
         tableText += `\u001b[0;37mMonster:                   Amount  Discount\u001b[0m\n`;
