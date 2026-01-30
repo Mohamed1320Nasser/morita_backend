@@ -254,7 +254,7 @@ export class EnhancedAccountBuilder {
 
     /**
      * Build account detail embeds for ephemeral reply
-     * Shows full account details with all images
+     * Shows full account details with all images - Professional UI
      */
     static buildAccountDetailEmbeds(account: AccountDetail): {
         embeds: EmbedBuilder[];
@@ -265,88 +265,101 @@ export class EnhancedAccountBuilder {
             this.CATEGORY_COLORS[account.category] || 0xc9a961;
         const categoryEmoji =
             this.CATEGORY_EMOJIS[account.category] || "📦";
+        const categoryLabel =
+            this.CATEGORY_LABELS[account.category] || account.category;
+
+        // Build stats line
+        const stats = account.stats || {};
+        const statsLine = [
+            stats.combatLevel ? `⚔️ CB ${stats.combatLevel}` : null,
+            stats.totalLevel ? `📊 Total ${stats.totalLevel}` : null,
+            stats.questPoints ? `📜 QP ${stats.questPoints}` : null,
+        ].filter(Boolean).join("  •  ");
+
+        // Build features/highlights from accountData
+        const highlights = (account as any).accountData?.highlights || [];
+        const highlightsText = highlights.length > 0
+            ? highlights.map((h: string) => `✅ ${h}`).join("\n")
+            : null;
+
+        // Build description from accountData
+        const accountDescription = (account as any).accountData?.description || null;
+
+        // Create professional description
+        let description = ``;
+        description += `\n\`\`\`\n`;
+        description += `💎 PREMIUM ACCOUNT\n`;
+        description += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+        description += `\`\`\`\n`;
+
+        // Price banner
+        description += `\n> 💰 **PRICE: $${account.price.toFixed(2)} USD**\n\n`;
+
+        // Stats section
+        if (statsLine) {
+            description += `**📈 Account Stats**\n`;
+            description += `> ${statsLine}\n\n`;
+        }
+
+        // Category
+        description += `**${categoryEmoji} Category**\n`;
+        description += `> ${categoryLabel}\n\n`;
+
+        // Description if available
+        if (accountDescription) {
+            description += `**📋 Description**\n`;
+            description += `> ${accountDescription}\n\n`;
+        }
+
+        // Highlights/Features
+        if (highlightsText) {
+            description += `**🎯 Highlights & Features**\n`;
+            description += highlightsText + `\n\n`;
+        }
+
+        // Stock info
+        if (account.quantity && account.quantity > 1) {
+            description += `**📦 Stock:** ${account.quantity} available\n\n`;
+        }
+
+        // Guarantee section
+        description += `\`\`\`\n`;
+        description += `✅ Instant Delivery\n`;
+        description += `✅ Full Credentials Provided\n`;
+        description += `✅ 24/7 Support\n`;
+        description += `\`\`\``;
 
         // Main info embed
         const mainEmbed = new EmbedBuilder()
-            .setTitle(`${categoryEmoji} ${account.name}`)
+            .setTitle(`${categoryEmoji}  ${account.name}`)
+            .setDescription(description)
             .setColor(categoryColor)
             .setTimestamp()
             .setFooter({
-                text: "MORITA Gaming • Account Details",
+                text: "MORITA Gaming • Premium Account Store",
                 iconURL: process.env.BRAND_LOGO_URL || undefined,
             });
 
-        // Price field (prominent)
-        mainEmbed.addFields({
-            name: "💰 Price",
-            value: `**$${account.price.toFixed(2)}**`,
-            inline: true,
-        });
-
-        // Category field
-        mainEmbed.addFields({
-            name: "📁 Category",
-            value: this.CATEGORY_LABELS[account.category] || account.category,
-            inline: true,
-        });
-
-        // Quantity if available
-        if (account.quantity && account.quantity > 1) {
-            mainEmbed.addFields({
-                name: "📦 Stock",
-                value: `${account.quantity} available`,
-                inline: true,
-            });
-        }
-
-        // Stats section
-        const statsText = this.formatAccountStatsDetailed(account.stats);
-        if (statsText) {
-            mainEmbed.addFields({
-                name: "📊 Account Stats",
-                value: statsText,
-                inline: false,
-            });
-        }
-
-        // Features section
-        if (account.features && account.features.length > 0) {
-            const featuresText = account.features
-                .map((f) => {
-                    const icon = f.available ? "✅" : "❌";
-                    return `${icon} ${f.name}`;
-                })
-                .join("\n");
-
-            mainEmbed.addFields({
-                name: "🎯 Features & Unlocks",
-                value: featuresText,
-                inline: false,
-            });
-        }
-
-        // Source info if available
-        if (account.source) {
-            mainEmbed.addFields({
-                name: "📝 Notes",
-                value: account.source,
-                inline: false,
-            });
+        // Set thumbnail if available (first image as thumbnail)
+        if (account.images && account.images.length > 0) {
+            const thumbUrl = account.images[0]?.file?.url || account.images[0]?.url;
+            if (thumbUrl) {
+                mainEmbed.setThumbnail(thumbUrl);
+            }
         }
 
         embeds.push(mainEmbed);
 
         // Add image embeds (Discord allows up to 10 embeds per message)
-        if (account.images && account.images.length > 0) {
-            const maxImages = Math.min(account.images.length, 9); // 1 main + 9 images = 10 max
+        // Skip first image if used as thumbnail, start from index 1
+        if (account.images && account.images.length > 1) {
+            const maxImages = Math.min(account.images.length - 1, 8); // -1 for thumbnail, max 8 more
             let addedImages = 0;
 
-            for (let i = 0; i < account.images.length && addedImages < maxImages; i++) {
+            for (let i = 1; i < account.images.length && addedImages < maxImages; i++) {
                 const img = account.images[i];
                 // Try multiple paths to find the URL (API returns file.url after normalization)
                 const imageUrl = img?.file?.url || img?.url || (img?.file as any)?.title;
-
-                logger.debug(`[EnhancedAccountBuilder] Image ${i}: ${JSON.stringify(img)}`);
 
                 if (imageUrl) {
                     const imageEmbed = new EmbedBuilder()
@@ -356,7 +369,7 @@ export class EnhancedAccountBuilder {
                     // Add footer to last image
                     if (addedImages === maxImages - 1 || i === account.images.length - 1) {
                         imageEmbed.setFooter({
-                            text: `Image ${addedImages + 1} of ${account.images.length}`,
+                            text: `📸 Screenshot ${addedImages + 1} of ${account.images.length - 1}`,
                         });
                     }
 
@@ -364,27 +377,33 @@ export class EnhancedAccountBuilder {
                     addedImages++;
                 }
             }
+        } else if (account.images && account.images.length === 1) {
+            // If only one image, show it as main image (not just thumbnail)
+            const img = account.images[0];
+            const imageUrl = img?.file?.url || img?.url;
+            if (imageUrl) {
+                mainEmbed.setImage(imageUrl);
+            }
         } else if (account.thumbnail?.url || account.thumbnail?.file?.url) {
             // Fallback to thumbnail
             const thumbUrl =
                 account.thumbnail?.file?.url || account.thumbnail?.url;
             if (thumbUrl) {
-                const thumbEmbed = new EmbedBuilder()
-                    .setColor(categoryColor)
-                    .setImage(thumbUrl);
-                embeds.push(thumbEmbed);
+                mainEmbed.setImage(thumbUrl);
             }
         }
 
-        // Create action buttons
+        // Create action buttons - Professional style
         const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
                 .setCustomId(`account_purchase_${account.id}`)
-                .setLabel("🛒 Purchase This Account")
+                .setLabel("Purchase Now")
+                .setEmoji("💳")
                 .setStyle(ButtonStyle.Success),
             new ButtonBuilder()
                 .setCustomId(`account_back_categories`)
-                .setLabel("← Browse Other Categories")
+                .setLabel("Back to Shop")
+                .setEmoji("🔙")
                 .setStyle(ButtonStyle.Secondary)
         );
 
