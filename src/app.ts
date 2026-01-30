@@ -77,6 +77,9 @@ import getControllers from "./api";
             uptime: process.uptime(),
         });
     });
+
+    // Serve static files from CDN directory (for local development)
+    app.use("/cdn", express.static(Environment.project.cdnDir));
     useExpressServer(app, {
         authorizationChecker,
         classToPlainTransformOptions: {

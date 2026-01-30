@@ -9,7 +9,7 @@ export namespace Environment {
             process.env.CDN_DIR || path.join(__dirname, "../../../photos/");
         export const logsDir: string =
             process.env.LOGS_DIR || path.join(__dirname, "../../../logs/");
-        export const cdnLink: string = process.env.CDN_LINK || "";
+        export const cdnLink: string = process.env.CDN_LINK || "http://localhost:3000/cdn";
     }
 
     export namespace Server {

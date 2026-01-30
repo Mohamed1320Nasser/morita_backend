@@ -118,6 +118,26 @@ Please provide the following information:
 
 We'll provide you with the current exchange rate and process your swap securely!`,
     },
+    [TicketType.PURCHASE_ACCOUNT]: {
+        title: "🎮 Account Purchase",
+        message: `Hello {customer}!
+
+Thank you for your interest in purchasing an OSRS account. Our team ({support}) will assist you shortly.
+
+**Ticket ID:** #{ticket_id}
+**Account:** {account_name}
+**Price:** {price} {currency}
+
+**What happens next:**
+1. Please confirm your payment method preference
+2. Once payment is verified, we'll prepare the account credentials
+3. You'll receive the full login details securely in this channel
+4. We'll assist you with the initial login and security setup
+
+**Important:** Please ensure you change the password and set up 2FA immediately after receiving the account.
+
+Thank you for choosing us!`,
+    },
     [TicketType.GENERAL]: {
         title: "💬 General Support",
         message: `Hello {customer}!
@@ -220,14 +240,40 @@ export default class TicketTypeSettingsService {
     }
 
     async getByGroupKey(groupKey: string) {
-        const settings = await prisma.ticketTypeSettings.findMany({
+        let settings = await prisma.ticketTypeSettings.findMany({
             where: { groupKey },
             orderBy: { displayOrder: "asc" },
         });
 
-        // Return empty array instead of throwing error - allows graceful fallback
+        // If no settings found, try to auto-initialize defaults for this group
         if (!settings || settings.length === 0) {
-            logger.warn(`No ticket types found for group: ${groupKey}`);
+            logger.info(`No ticket types found for group: ${groupKey}, attempting to auto-initialize...`);
+
+            // Find which ticket types belong to this group and create them
+            const GROUP_TO_TYPES: Record<string, TicketType[]> = {
+                "services": [TicketType.PURCHASE_SERVICES_OSRS, TicketType.PURCHASE_SERVICES_RS3],
+                "buy-gold": [TicketType.BUY_GOLD_OSRS, TicketType.BUY_GOLD_RS3],
+                "sell-gold": [TicketType.SELL_GOLD_OSRS, TicketType.SELL_GOLD_RS3],
+                "crypto-swap": [TicketType.SWAP_CRYPTO],
+                "account-purchase": [TicketType.PURCHASE_ACCOUNT],
+                "general": [TicketType.GENERAL],
+            };
+
+            const typesToCreate = GROUP_TO_TYPES[groupKey];
+            if (typesToCreate && typesToCreate.length > 0) {
+                // Initialize these types
+                await this.initializeDefaults();
+
+                // Fetch again
+                settings = await prisma.ticketTypeSettings.findMany({
+                    where: { groupKey },
+                    orderBy: { displayOrder: "asc" },
+                });
+            }
+        }
+
+        if (!settings || settings.length === 0) {
+            logger.warn(`No ticket types found for group: ${groupKey} even after initialization`);
             return [];
         }
 
@@ -254,20 +300,38 @@ export default class TicketTypeSettingsService {
 
         const settingsMap = new Map(existingSettings.map((s) => [s.ticketType, s]));
 
+        // Default group configs for fallback
+        const DEFAULT_GROUP_CONFIG: Record<string, { groupKey: string; buttonLabel: string; buttonColor: string; displayOrder: number }> = {
+            [TicketType.PURCHASE_SERVICES_OSRS]: { groupKey: "services", buttonLabel: "OSRS Services", buttonColor: "blue", displayOrder: 1 },
+            [TicketType.PURCHASE_SERVICES_RS3]: { groupKey: "services", buttonLabel: "RS3 Services", buttonColor: "blue", displayOrder: 2 },
+            [TicketType.BUY_GOLD_OSRS]: { groupKey: "buy-gold", buttonLabel: "Buy OSRS Gold", buttonColor: "gold", displayOrder: 1 },
+            [TicketType.BUY_GOLD_RS3]: { groupKey: "buy-gold", buttonLabel: "Buy RS3 Gold", buttonColor: "gold", displayOrder: 2 },
+            [TicketType.SELL_GOLD_OSRS]: { groupKey: "sell-gold", buttonLabel: "Sell OSRS Gold", buttonColor: "green", displayOrder: 1 },
+            [TicketType.SELL_GOLD_RS3]: { groupKey: "sell-gold", buttonLabel: "Sell RS3 Gold", buttonColor: "green", displayOrder: 2 },
+            [TicketType.SWAP_CRYPTO]: { groupKey: "crypto-swap", buttonLabel: "Crypto Swap", buttonColor: "orange", displayOrder: 1 },
+            [TicketType.PURCHASE_ACCOUNT]: { groupKey: "account-purchase", buttonLabel: "Buy Account", buttonColor: "gold", displayOrder: 1 },
+            [TicketType.GENERAL]: { groupKey: "general", buttonLabel: "General Support", buttonColor: "gray", displayOrder: 1 },
+        };
+
         return Object.values(TicketType).map((ticketType) => {
             const existing = settingsMap.get(ticketType);
             if (existing) return existing;
 
             const defaults = DEFAULT_WELCOME_MESSAGES[ticketType];
+            const groupConfig = DEFAULT_GROUP_CONFIG[ticketType];
             return {
                 id: null,
                 ticketType,
+                groupKey: groupConfig?.groupKey || "general",
+                buttonLabel: groupConfig?.buttonLabel || ticketType,
+                buttonColor: groupConfig?.buttonColor || "gray",
+                displayOrder: groupConfig?.displayOrder || 0,
                 bannerUrl: null,
                 thumbnailUrl: null,
                 welcomeTitle: defaults.title,
                 welcomeMessage: defaults.message,
                 footerText: null,
-                embedColor: DEFAULT_EMBED_COLOR,
+                embedColor: ticketType === TicketType.PURCHASE_ACCOUNT ? "C9A961" : DEFAULT_EMBED_COLOR,
                 customFields: null,
                 autoAssign: false,
                 notifyOnCreate: true,
@@ -300,18 +364,88 @@ export default class TicketTypeSettingsService {
     async initializeDefaults() {
         const created: any[] = [];
 
+        // Define group and button settings for each ticket type
+        const TICKET_TYPE_CONFIG: Record<TicketType, {
+            groupKey: string;
+            buttonLabel: string;
+            buttonColor: string;
+            displayOrder: number;
+            embedColor?: string;
+        }> = {
+            [TicketType.PURCHASE_SERVICES_OSRS]: {
+                groupKey: "services",
+                buttonLabel: "OSRS Services",
+                buttonColor: "blue",
+                displayOrder: 1,
+            },
+            [TicketType.PURCHASE_SERVICES_RS3]: {
+                groupKey: "services",
+                buttonLabel: "RS3 Services",
+                buttonColor: "blue",
+                displayOrder: 2,
+            },
+            [TicketType.BUY_GOLD_OSRS]: {
+                groupKey: "buy-gold",
+                buttonLabel: "Buy OSRS Gold",
+                buttonColor: "gold",
+                displayOrder: 1,
+            },
+            [TicketType.BUY_GOLD_RS3]: {
+                groupKey: "buy-gold",
+                buttonLabel: "Buy RS3 Gold",
+                buttonColor: "gold",
+                displayOrder: 2,
+            },
+            [TicketType.SELL_GOLD_OSRS]: {
+                groupKey: "sell-gold",
+                buttonLabel: "Sell OSRS Gold",
+                buttonColor: "green",
+                displayOrder: 1,
+            },
+            [TicketType.SELL_GOLD_RS3]: {
+                groupKey: "sell-gold",
+                buttonLabel: "Sell RS3 Gold",
+                buttonColor: "green",
+                displayOrder: 2,
+            },
+            [TicketType.SWAP_CRYPTO]: {
+                groupKey: "crypto-swap",
+                buttonLabel: "Crypto Swap",
+                buttonColor: "orange",
+                displayOrder: 1,
+            },
+            [TicketType.PURCHASE_ACCOUNT]: {
+                groupKey: "account-purchase",
+                buttonLabel: "Buy Account",
+                buttonColor: "gold",
+                displayOrder: 1,
+                embedColor: "C9A961",
+            },
+            [TicketType.GENERAL]: {
+                groupKey: "general",
+                buttonLabel: "General Support",
+                buttonColor: "gray",
+                displayOrder: 1,
+            },
+        };
+
         for (const [ticketType, defaults] of Object.entries(DEFAULT_WELCOME_MESSAGES)) {
             const existing = await prisma.ticketTypeSettings.findUnique({
                 where: { ticketType: ticketType as TicketType },
             });
 
             if (!existing) {
+                const config = TICKET_TYPE_CONFIG[ticketType as TicketType];
                 const newSettings = await prisma.ticketTypeSettings.create({
                     data: {
                         ticketType: ticketType as TicketType,
                         welcomeTitle: defaults.title,
                         welcomeMessage: defaults.message,
-                        embedColor: DEFAULT_EMBED_COLOR,
+                        embedColor: config?.embedColor || DEFAULT_EMBED_COLOR,
+                        groupKey: config?.groupKey || "general",
+                        buttonLabel: config?.buttonLabel || ticketType,
+                        buttonColor: config?.buttonColor || "gray",
+                        displayOrder: config?.displayOrder || 0,
                         autoAssign: false,
                         notifyOnCreate: true,
                         notifyOnClose: true,

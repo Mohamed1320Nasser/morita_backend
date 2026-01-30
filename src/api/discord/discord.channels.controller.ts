@@ -3,26 +3,12 @@ import { Service } from "typedi";
 import DiscordChannelsService from "./discord.channels.service";
 import logger from "../../common/loggers";
 
-/**
- * Discord Channels Controller
- * Provides endpoints for manual publishing to Discord channels
- *
- * Endpoints:
- * - GET  /discord/channels/status - Get status of all channels
- * - POST /discord/channels/publish/all - Publish all channels
- * - POST /discord/channels/publish/pricing - Publish pricing channel
- * - POST /discord/channels/publish/tos - Publish TOS channel
- * - POST /discord/channels/publish/tickets - Publish ticket channels
- */
+
 @JsonController("/discord/channels")
 @Service()
 export default class DiscordChannelsController {
     constructor(private discordChannelsService: DiscordChannelsService) {}
 
-    /**
-     * Get status of all Discord channels
-     * Returns last published time, status, and sync state
-     */
     @Get("/status")
     async getAllChannelsStatus() {
         try {
@@ -36,9 +22,6 @@ export default class DiscordChannelsController {
         }
     }
 
-    /**
-     * Publish all channels to Discord
-     */
     @Post("/publish/all")
     async publishAllChannels(@CurrentUser() user?: any, @Body() body?: { clearAllMessages?: boolean }) {
         try {
@@ -54,9 +37,6 @@ export default class DiscordChannelsController {
         }
     }
 
-    /**
-     * Publish pricing/services channel
-     */
     @Post("/publish/pricing")
     async publishPricingChannel(@CurrentUser() user?: any, @Body() body?: { clearAllMessages?: boolean }) {
         try {
@@ -72,9 +52,6 @@ export default class DiscordChannelsController {
         }
     }
 
-    /**
-     * Publish TOS channel
-     */
     @Post("/publish/tos")
     async publishTosChannel(@CurrentUser() user?: any, @Body() body?: { clearAllMessages?: boolean }) {
         try {
@@ -90,9 +67,6 @@ export default class DiscordChannelsController {
         }
     }
 
-    /**
-     * Publish ticket channels (4 channels)
-     */
     @Post("/publish/tickets")
     async publishTicketChannels(@CurrentUser() user?: any, @Body() body?: { clearAllMessages?: boolean }) {
         try {
@@ -104,6 +78,21 @@ export default class DiscordChannelsController {
             return {
                 success: false,
                 error: error.message || "Failed to publish ticket channels",
+            };
+        }
+    }
+
+    @Post("/publish/accounts")
+    async publishAccountsChannel(@CurrentUser() user?: any, @Body() body?: { clearAllMessages?: boolean }) {
+        try {
+            const userId = user?.id;
+            const clearAllMessages = body?.clearAllMessages === true;
+            return await this.discordChannelsService.publishAccountsChannel(userId, clearAllMessages);
+        } catch (error: any) {
+            logger.error("[DiscordChannelsController] Error publishing accounts channel:", error);
+            return {
+                success: false,
+                error: error.message || "Failed to publish accounts channel",
             };
         }
     }

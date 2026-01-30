@@ -23,6 +23,10 @@ export class CreateTicketDto {
     @IsString()
     serviceId?: string;
 
+    @IsOptional()
+    @IsString()
+    accountId?: string;
+
     @IsString()
     channelId: string;
 
@@ -57,6 +61,10 @@ export class CreateTicketFromDiscordDto {
     @IsString()
     serviceId?: string;
 
+    @IsOptional()
+    @IsString()
+    accountId?: string;
+
     @IsString()
     channelId: string;
 
@@ -89,4 +97,8 @@ export class CreateTicketFromDiscordDto {
     @IsOptional()
     @IsString()
     customerDiscordRole?: string; // Discord role: admin, support, worker, customer
+
+    @IsOptional()
+    @IsString()
+    ticketType?: string; // GENERAL, PURCHASE_ACCOUNT, etc.
 }

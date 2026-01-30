@@ -46,10 +46,6 @@ export async function withTransaction<T>(
     }
 }
 
-/**
- * Execute multiple operations in a single transaction
- * Automatically rolls back if any operation fails
- */
 export async function withTransactionBatch<T>(
     operations: TransactionCallback<any>[],
     options?: Parameters<typeof withTransaction>[1]

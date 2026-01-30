@@ -94,17 +94,9 @@ export class BatchService {
     return results;
   }
 
-  /**
-   * Validate batch data before submission
-   * Returns validation errors without creating anything
-   *
-   * @param data - Batch creation payload to validate
-   * @returns Validation result with any errors found
-   */
   async validateBatchServices(data: BatchCreateServicesDto) {
     const errors = [] as Array<{ type: string; message: string; details?: any }>;
 
-    // Check category exists
     const category = await prisma.serviceCategory.findFirst({
       where: { id: data.categoryId, deletedAt: null },
       include: { services: { where: { deletedAt: null } } },
@@ -151,13 +143,6 @@ export class BatchService {
     };
   }
 
-  /**
-   * Create multiple pricing methods in a single operation
-   * Uses partial success pattern: continues on errors, returns summary
-   *
-   * @param data - Batch creation payload with serviceId and pricingMethods array
-   * @returns Summary with created pricing methods and any errors
-   */
   async batchCreatePricingMethods(data: BatchCreatePricingMethodsDto) {
     const results = {
       created: 0,
@@ -213,13 +198,6 @@ export class BatchService {
     return results;
   }
 
-  /**
-   * Validate batch pricing methods before submission
-   * Returns validation errors without creating anything
-   *
-   * @param data - Batch creation payload to validate
-   * @returns Validation result with any errors found
-   */
   async validateBatchPricingMethods(data: BatchCreatePricingMethodsDto) {
     const errors = [] as Array<{ type: string; message: string; details?: any }>;
 
@@ -270,14 +248,6 @@ export class BatchService {
     };
   }
 
-  /**
-   * Create multiple services with pricing methods and modifiers in a single transaction
-   * Uses all-or-nothing transaction pattern for each service
-   * If a service fails, others will still be created
-   *
-   * @param data - Batch creation payload with services, pricing methods, and modifiers
-   * @returns Summary with created services and any errors
-   */
   async batchCreateServicesWithPricing(data: BatchCreateServicesWithPricingDto) {
     const results = {
       created: 0,
@@ -457,13 +427,6 @@ export class BatchService {
     return results;
   }
 
-  /**
-   * Validate batch services with pricing data before submission
-   * Returns validation errors without creating anything
-   *
-   * @param data - Batch creation payload to validate
-   * @returns Validation result with any errors found
-   */
   async validateBatchServicesWithPricing(data: BatchCreateServicesWithPricingDto) {
     const errors = [] as Array<{ type: string; message: string; details?: any }>;
 

@@ -38,7 +38,7 @@ export const upload = (
             },
         }),
         limits: {
-            fileSize: 1024 * 1024 * 2, // 2 MB
+            fileSize: 1024 * 1024 * 8, // 8 MB
         },
         fileFilter: function (req: any, file: Express.Multer.File, cb: any) {
             const acceptedMimetypes = data.find(

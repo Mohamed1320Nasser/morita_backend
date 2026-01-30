@@ -637,48 +637,14 @@ function findPvmItem(services: any[], searchTerm: string): {
     return null;
 }
 
-async function handleBossingCommand(message: Message, apiService: ApiService) {
-    if (message.author.bot) {
-        return;
-    }
-
-    const prefix = discordConfig.prefix;
-    const args = message.content.slice(prefix.length + 2).trim().split(/\s+/);
-
-    if (args.length < 2) {
-        await sendValidationError(
-            message,
-            "!p <boss-name> <kill-count>\nExample: !p cox 120 or !p cgp 50",
-            "Missing boss name or kill count"
-        );
-        return;
-    }
-
-    const killCountStr = args[args.length - 1];
-    const killCount = parseInt(killCountStr);
-
-    if (isNaN(killCount) || killCount < 1) {
-        await sendInvalidParameterError(
-            message,
-            "Kill Count",
-            killCountStr,
-            "Must be a valid number greater than 0"
-        );
-        return;
-    }
-
-    if (killCount > 10000) {
-        await sendInvalidParameterError(
-            message,
-            "Kill Count",
-            killCount,
-            "Must be between 1 and 10,000"
-        );
-        return;
-    }
-
-    let serviceName = args.slice(0, -1).join(" ").toLowerCase();
-
+// Helper function to process a single boss calculation
+async function processSingleBossCalculation(
+    message: Message,
+    apiService: ApiService,
+    serviceName: string,
+    killCount: number,
+    services: any[]
+): Promise<{ success: boolean; embed?: EmbedBuilder; error?: string }> {
     const bossAliases: { [key: string]: string } = {
         'cox': 'chambers',
         'chambers of xeric': 'chambers',
@@ -691,26 +657,16 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
         'corrupted': 'corrupted gauntlet',
     };
 
-    if (bossAliases[serviceName]) {
-        serviceName = bossAliases[serviceName];
+    let normalizedServiceName = serviceName.toLowerCase().trim();
+    if (bossAliases[normalizedServiceName]) {
+        normalizedServiceName = bossAliases[normalizedServiceName];
     }
 
-    const thinkingMsg = await message.reply("🔢 Calculating price...");
-
-    const services = await apiService.getAllServicesWithPricing();
-
-    // Use helper function to find PvM service/methods (same pattern as minigames)
-    const searchResult = findPvmItem(services, serviceName);
+    // Use helper function to find PvM service/methods
+    const searchResult = findPvmItem(services, normalizedServiceName);
 
     if (!searchResult) {
-        await deleteThinkingMessage(thinkingMsg);
-        await sendServiceNotFoundError(
-            message,
-            serviceName,
-            "PvM",
-            ["!p kraken 10", "!p cox 120", "!p zulrah 100", "!p nex 50"]
-        );
-        return;
+        return { success: false, error: `Service "${serviceName}" not found` };
     }
 
     const { service: foundService, method: specificMethod, showAllMethods, groupName: groupNameFilter } = searchResult;
@@ -719,21 +675,14 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
     const service = await apiService.getServiceWithPricing(foundService.id);
 
     if (!service) {
-        await deleteThinkingMessage(thinkingMsg);
-        await sendServiceNotFoundError(
-            message,
-            serviceName,
-            "PvM",
-            ["!p kraken 10", "!p cox 120", "!p zulrah 100", "!p nex 50"]
-        );
-        return;
+        return { success: false, error: `Service "${serviceName}" not found` };
     }
 
     try {
         const pricingService = new PricingCalculatorService();
 
         if (!service.pricingMethods || service.pricingMethods.length === 0) {
-            throw new Error('No pricing methods found for this service');
+            return { success: false, error: `No pricing methods found for "${serviceName}"` };
         }
 
         let allMethods = service.pricingMethods.filter((m: any) => m.pricingUnit === 'PER_KILL');
@@ -741,8 +690,6 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
         // Filter by groupName if matched by group
         if (groupNameFilter) {
             const normalizedFilter = groupNameFilter.trim().toLowerCase();
-            logger.info(`[PvM] Filtering for group: "${normalizedFilter}"`);
-
             allMethods = allMethods.filter((m: any) => {
                 const normalizedGroup = m.groupName ? m.groupName.trim().toLowerCase() : '';
                 return normalizedGroup === normalizedFilter;
@@ -755,17 +702,12 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
         }
 
         if (allMethods.length === 0) {
-            throw new Error(groupNameFilter
-                ? `No PER_KILL pricing methods found with groupName "${groupNameFilter}"`
-                : specificMethod
-                    ? `No PER_KILL pricing method found with name "${specificMethod.name}"`
-                    : 'No PER_KILL pricing method found for this service'
-            );
+            return { success: false, error: `No PER_KILL pricing found for "${serviceName}"` };
         }
 
         const paymentMethods = await apiService.getPaymentMethods();
         if (!paymentMethods || paymentMethods.length === 0) {
-            throw new Error('No payment methods available');
+            return { success: false, error: 'No payment methods available' };
         }
 
         const embed = new EmbedBuilder()
@@ -797,6 +739,7 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
         tableText += "```";
 
         embed.setDescription(tableText);
+
         const tierResults: Array<{
             tier: string;
             notes: string;
@@ -807,8 +750,6 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
         }> = [];
 
         const defaultPaymentMethod = paymentMethods[0];
-
-        // Modifiers disabled for calculator commands
         const serviceModifierIds: string[] = [];
 
         for (const method of allMethods) {
@@ -848,7 +789,7 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
 
             tierSection += `**${tier.notes}** • \`$${tier.pricePerKill.toFixed(2)}/kc\`\n`;
             if (tier.modifiers.length > 0) {
-                
+
                 tierSection += `\`\`\`diff\n`;
                 tierSection += `  Base Price           $${tier.basePrice.toFixed(2)}\n`;
 
@@ -862,7 +803,7 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
                 tierSection += `\n= Total              $${tier.finalPrice.toFixed(2)}\n`;
                 tierSection += `\`\`\``;
             } else {
-                
+
                 tierSection += `\`\`\`ansi\n\u001b[1;32m💰 Price: $${tier.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
             }
 
@@ -877,21 +818,123 @@ async function handleBossingCommand(message: Message, apiService: ApiService) {
             text: `Morita Gaming Services`,
         });
 
-        await thinkingMsg.edit({
-            content: "",
-            embeds: [embed.toJSON() as any],
-        });
-
-        logger.info(`[PriceCalculator] Multi-tier result sent for ${service.name} (${killCount} kills) to ${message.author.tag}`);
+        return { success: true, embed };
     } catch (apiError) {
         logger.error('[PriceCalculator] API error:', apiError);
+        return { success: false, error: apiError instanceof Error ? apiError.message : String(apiError) };
+    }
+}
 
-        await deleteThinkingMessage(thinkingMsg);
+async function handleBossingCommand(message: Message, apiService: ApiService) {
+    if (message.author.bot) {
+        return;
+    }
 
-        await sendCalculationError(
+    const prefix = discordConfig.prefix;
+    const rawInput = message.content.slice(prefix.length + 2).trim();
+
+    // Split by comma to support multiple services: !p nex 50, chambers 100
+    const segments = rawInput.split(',').map(s => s.trim()).filter(s => s.length > 0);
+
+    if (segments.length === 0) {
+        await sendValidationError(
             message,
-            apiError instanceof Error ? apiError.message : String(apiError)
+            "!p <boss-name> <kill-count>\nExample: !p cox 120 or !p nex 50, chambers 100",
+            "Missing boss name or kill count"
         );
+        return;
+    }
+
+    // Parse each segment into boss name and kill count
+    const requests: Array<{ serviceName: string; killCount: number }> = [];
+
+    for (const segment of segments) {
+        const args = segment.split(/\s+/);
+
+        if (args.length < 2) {
+            await sendValidationError(
+                message,
+                "!p <boss-name> <kill-count>\nExample: !p cox 120 or !p nex 50, chambers 100",
+                `Invalid format: "${segment}" - needs boss name and kill count`
+            );
+            return;
+        }
+
+        const killCountStr = args[args.length - 1];
+        const killCount = parseInt(killCountStr);
+
+        if (isNaN(killCount) || killCount < 1) {
+            await sendInvalidParameterError(
+                message,
+                "Kill Count",
+                killCountStr,
+                `Must be a valid number greater than 0 (in "${segment}")`
+            );
+            return;
+        }
+
+        if (killCount > 10000) {
+            await sendInvalidParameterError(
+                message,
+                "Kill Count",
+                killCount,
+                "Must be between 1 and 10,000"
+            );
+            return;
+        }
+
+        const serviceName = args.slice(0, -1).join(" ");
+        requests.push({ serviceName, killCount });
+    }
+
+    // Show thinking message
+    const thinkingMsg = await message.reply(`🔢 Calculating ${requests.length > 1 ? `${requests.length} prices` : 'price'}...`);
+
+    // Fetch all services once (shared across all calculations)
+    const services = await apiService.getAllServicesWithPricing();
+
+    // Process each request and send separate messages
+    let isFirstMessage = true;
+    const errors: string[] = [];
+
+    for (const request of requests) {
+        const result = await processSingleBossCalculation(
+            message,
+            apiService,
+            request.serviceName,
+            request.killCount,
+            services
+        );
+
+        if (result.success && result.embed) {
+            if (isFirstMessage) {
+                // Edit the thinking message with the first result
+                await thinkingMsg.edit({
+                    content: "",
+                    embeds: [result.embed.toJSON() as any],
+                });
+                isFirstMessage = false;
+            } else {
+                // Send additional results as new messages
+                await message.channel.send({
+                    embeds: [result.embed.toJSON() as any],
+                });
+            }
+            logger.info(`[PriceCalculator] Result sent for ${request.serviceName} (${request.killCount} kills) to ${message.author.tag}`);
+        } else {
+            errors.push(result.error || `Failed to calculate for "${request.serviceName}"`);
+        }
+    }
+
+    // If all requests failed, show error
+    if (isFirstMessage && errors.length > 0) {
+        await deleteThinkingMessage(thinkingMsg);
+        await sendCalculationError(message, errors.join('\n'));
+    } else if (errors.length > 0) {
+        // Some succeeded, some failed - notify about failures
+        await message.channel.send({
+            content: `⚠️ Some calculations failed:\n${errors.map(e => `• ${e}`).join('\n')}`,
+        });
     }
 }
 
@@ -1445,27 +1488,11 @@ function findIronmanItem(services: any[], searchTerm: string): any | null {
 
     logger.info(`[Ironman] Searching for: "${normalized}" in ${ironmanServices.length} Ironman services`);
 
-    for (const service of ironmanServices) {
-        if (!service.pricingMethods) continue;
-
-        const method = service.pricingMethods.find((m: any) =>
-            m.pricingUnit === 'PER_ITEM' &&
-            m.name.toLowerCase() === normalized
-        );
-
-        if (method) {
-            logger.info(`[Ironman] ✅ Exact method match: "${method.name}" in service "${service.name}"`);
-            return {
-                service,
-                method,
-                showAllMethods: false
-            };
-        }
-    }
-
+    // 1. Exact service name/slug/shortcut match → show ALL methods
     const exactServiceMatch = ironmanServices.find((s: any) =>
         s.name.toLowerCase() === normalized ||
-        s.slug.toLowerCase() === normalized
+        s.slug?.toLowerCase() === normalized ||
+        (s.shortcuts && Array.isArray(s.shortcuts) && s.shortcuts.some((alias: string) => alias.toLowerCase() === normalized))
     );
 
     if (exactServiceMatch) {
@@ -1477,6 +1504,7 @@ function findIronmanItem(services: any[], searchTerm: string): any | null {
         };
     }
 
+    // 2. Exact groupName match → show ALL methods in group
     for (const service of ironmanServices) {
         if (!service.pricingMethods) continue;
 
@@ -1497,12 +1525,71 @@ function findIronmanItem(services: any[], searchTerm: string): any | null {
         }
     }
 
+    // 3. Exact method name/shortcut match → show ONLY this method
     for (const service of ironmanServices) {
         if (!service.pricingMethods) continue;
 
         const method = service.pricingMethods.find((m: any) =>
             m.pricingUnit === 'PER_ITEM' &&
-            m.name.toLowerCase().includes(normalized)
+            (m.name.toLowerCase() === normalized ||
+            (m.shortcuts && Array.isArray(m.shortcuts) && m.shortcuts.some((alias: string) => alias.toLowerCase() === normalized)))
+        );
+
+        if (method) {
+            logger.info(`[Ironman] ✅ Exact method match: "${method.name}" in service "${service.name}"`);
+            return {
+                service,
+                method,
+                showAllMethods: false
+            };
+        }
+    }
+
+    // 4. Partial service name/slug/shortcut match → show ALL methods
+    const partialServiceMatch = ironmanServices.find((s: any) =>
+        s.name.toLowerCase().includes(normalized) ||
+        s.slug?.toLowerCase().includes(normalized) ||
+        (s.shortcuts && Array.isArray(s.shortcuts) && s.shortcuts.some((alias: string) => alias.toLowerCase().includes(normalized)))
+    );
+
+    if (partialServiceMatch) {
+        logger.info(`[Ironman] ✅ Partial service match: "${partialServiceMatch.name}"`);
+        return {
+            service: partialServiceMatch,
+            method: null,
+            showAllMethods: true
+        };
+    }
+
+    // 5. Partial groupName match → show ALL methods in group
+    for (const service of ironmanServices) {
+        if (!service.pricingMethods) continue;
+
+        const methodsInGroup = service.pricingMethods.filter((m: any) =>
+            m.pricingUnit === 'PER_ITEM' &&
+            m.groupName &&
+            m.groupName.toLowerCase().includes(normalized)
+        );
+
+        if (methodsInGroup.length > 0) {
+            logger.info(`[Ironman] ✅ Partial groupName match: "${methodsInGroup[0].groupName}" in service "${service.name}" (${methodsInGroup.length} methods)`);
+            return {
+                service,
+                method: null,
+                showAllMethods: true,
+                groupName: methodsInGroup[0].groupName
+            };
+        }
+    }
+
+    // 6. Partial method name/shortcut match → show ONLY this method
+    for (const service of ironmanServices) {
+        if (!service.pricingMethods) continue;
+
+        const method = service.pricingMethods.find((m: any) =>
+            m.pricingUnit === 'PER_ITEM' &&
+            (m.name.toLowerCase().includes(normalized) ||
+            (m.shortcuts && Array.isArray(m.shortcuts) && m.shortcuts.some((alias: string) => alias.toLowerCase().includes(normalized))))
         );
 
         if (method) {
@@ -1513,20 +1600,6 @@ function findIronmanItem(services: any[], searchTerm: string): any | null {
                 showAllMethods: false
             };
         }
-    }
-
-    const partialServiceMatch = ironmanServices.find((s: any) =>
-        s.name.toLowerCase().includes(normalized) ||
-        s.slug.toLowerCase().includes(normalized)
-    );
-
-    if (partialServiceMatch) {
-        logger.info(`[Ironman] ✅ Partial service match: "${partialServiceMatch.name}"`);
-        return {
-            service: partialServiceMatch,
-            method: null,
-            showAllMethods: true
-        };
     }
 
     logger.warn(`[Ironman] ❌ No match found for: "${searchTerm}"`);
@@ -2083,9 +2156,21 @@ function findQuoteMatch(services: any[], searchName: string): {
         s.pricingMethods?.some((m: any) => m.pricingUnit === 'FIXED')
     );
 
+    // Helper to check shortcuts
+    const matchesShortcuts = (shortcuts: any, searchVal: string, exact: boolean) => {
+        if (!shortcuts || !Array.isArray(shortcuts)) return false;
+        return shortcuts.some((alias: string) =>
+            exact
+                ? normalizeQuestName(alias) === searchVal
+                : normalizeQuestName(alias).includes(searchVal)
+        );
+    };
+
+    // 1. Exact service name/slug/shortcut match → show ALL methods
     for (const service of fixedServices) {
         if (normalizeQuestName(service.name) === normalized ||
-            normalizeQuestName(service.slug) === normalized) {
+            normalizeQuestName(service.slug) === normalized ||
+            matchesShortcuts(service.shortcuts, normalized, true)) {
 
             const fixedMethods = service.pricingMethods
                 .filter((m: any) => m.pricingUnit === 'FIXED')
@@ -2108,29 +2193,7 @@ function findQuoteMatch(services: any[], searchName: string): {
         }
     }
 
-    for (const service of fixedServices) {
-        const methodMatch = service.pricingMethods?.find((m: any) =>
-            m.pricingUnit === 'FIXED' &&
-            normalizeQuestName(m.name) === normalized
-        );
-
-        if (methodMatch) {
-            logger.info(`[Quote] ✅ Exact method match: "${methodMatch.name}" in "${service.name}"`);
-
-            return {
-                title: methodMatch.name,
-                description: service.description || 'Fixed price quest',
-                emoji: service.emoji || '⭐',
-                methods: [{
-                    name: methodMatch.name,
-                    price: Number(methodMatch.basePrice),
-                    displayOrder: methodMatch.displayOrder ?? 0,
-                    groupName: methodMatch.groupName || null,
-                }],
-            };
-        }
-    }
-
+    // 2. Exact groupName match → show ALL methods in group
     for (const service of fixedServices) {
         const methodsInGroup = service.pricingMethods?.filter((m: any) =>
             m.pricingUnit === 'FIXED' &&
@@ -2159,12 +2222,39 @@ function findQuoteMatch(services: any[], searchName: string): {
         }
     }
 
+    // 3. Exact method name/shortcut match → show ONLY this method
+    for (const service of fixedServices) {
+        const methodMatch = service.pricingMethods?.find((m: any) =>
+            m.pricingUnit === 'FIXED' &&
+            (normalizeQuestName(m.name) === normalized ||
+            matchesShortcuts(m.shortcuts, normalized, true))
+        );
+
+        if (methodMatch) {
+            logger.info(`[Quote] ✅ Exact method match: "${methodMatch.name}" in "${service.name}"`);
+
+            return {
+                title: methodMatch.name,
+                description: service.description || 'Fixed price quest',
+                emoji: service.emoji || '⭐',
+                methods: [{
+                    name: methodMatch.name,
+                    price: Number(methodMatch.basePrice),
+                    displayOrder: methodMatch.displayOrder ?? 0,
+                    groupName: methodMatch.groupName || null,
+                }],
+            };
+        }
+    }
+
+    // 4. Partial service name/slug/shortcut match → show ALL methods
     const partialServiceMatches = fixedServices.filter((s: any) =>
-        normalizeQuestName(s.name).includes(normalized)
+        normalizeQuestName(s.name).includes(normalized) ||
+        normalizeQuestName(s.slug || '').includes(normalized) ||
+        matchesShortcuts(s.shortcuts, normalized, false)
     );
 
     if (partialServiceMatches.length > 0) {
-        
         const bestMatch = partialServiceMatches.reduce((shortest, curr) =>
             curr.name.length < shortest.name.length ? curr : shortest
         );
@@ -2189,10 +2279,41 @@ function findQuoteMatch(services: any[], searchName: string): {
         };
     }
 
+    // 5. Partial groupName match → show ALL methods in group
+    for (const service of fixedServices) {
+        const methodsInGroup = service.pricingMethods?.filter((m: any) =>
+            m.pricingUnit === 'FIXED' &&
+            m.groupName &&
+            normalizeQuestName(m.groupName).includes(normalized)
+        );
+
+        if (methodsInGroup && methodsInGroup.length > 0) {
+            logger.info(`[Quote] ✅ Partial group match: "${methodsInGroup[0].groupName}" (${methodsInGroup.length} methods)`);
+
+            const methods = methodsInGroup
+                .map((m: any) => ({
+                    name: m.name,
+                    price: Number(m.basePrice),
+                    displayOrder: m.displayOrder ?? 999,
+                    groupName: m.groupName || null,
+                }))
+                .sort((a: any, b: any) => a.displayOrder - b.displayOrder);
+
+            return {
+                title: methodsInGroup[0].groupName,
+                description: service.description || 'Fixed price group',
+                emoji: service.emoji || '⭐',
+                methods,
+            };
+        }
+    }
+
+    // 6. Partial method name/shortcut match → show ONLY this method
     for (const service of fixedServices) {
         const methodMatch = service.pricingMethods?.find((m: any) =>
             m.pricingUnit === 'FIXED' &&
-            normalizeQuestName(m.name).includes(normalized)
+            (normalizeQuestName(m.name).includes(normalized) ||
+            matchesShortcuts(m.shortcuts, normalized, false))
         );
 
         if (methodMatch) {

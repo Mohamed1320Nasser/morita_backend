@@ -120,12 +120,29 @@ app.get("/discord/channels/status", async (req, res) => {
         channels.push({
             channelType: "TICKETS",
             channelId: discordConfig.createTicketCategoryId || null,
-            channelName: ticketCategory ? (ticketCategory as any).name : "CREATE TICKET (4 channels)",
+            channelName: ticketCategory ? (ticketCategory as any).name : "CREATE TICKET (5 channels)",
             status: ticketsStatus?.status || "never_published",
             lastPublishedAt: ticketsStatus?.lastPublishedAt || null,
             lastPublishedBy: ticketsStatus?.lastPublishedBy || null,
             messageCount: ticketsStatus?.messageCount || 0,
             lastError: ticketsStatus?.lastError || null,
+        });
+
+        // Add ACCOUNTS channel status
+        const accountsStatus = dbStatuses.find(s => s.channelType === "ACCOUNTS");
+        const accountsChannel = isConnected && discordConfig.accountShopChannelId
+            ? discordClient.channels.cache.get(discordConfig.accountShopChannelId)
+            : null;
+
+        channels.push({
+            channelType: "ACCOUNTS",
+            channelId: discordConfig.accountShopChannelId || null,
+            channelName: accountsChannel ? (accountsChannel as any).name : "Account Shop",
+            status: accountsStatus?.status || "never_published",
+            lastPublishedAt: accountsStatus?.lastPublishedAt || null,
+            lastPublishedBy: accountsStatus?.lastPublishedBy || null,
+            messageCount: accountsStatus?.messageCount || 0,
+            lastError: accountsStatus?.lastError || null,
         });
 
         res.json({
@@ -143,7 +160,7 @@ app.get("/discord/channels/status", async (req, res) => {
 });
 
 async function updateChannelStatus(
-    channelType: "PRICING" | "TOS" | "TICKETS",
+    channelType: "PRICING" | "TOS" | "TICKETS" | "ACCOUNTS",
     data: {
         status?: string;
         lastPublishedAt?: Date;
@@ -261,7 +278,7 @@ app.post("/discord/channels/publish/tickets", async (req, res) => {
         await updateChannelStatus("TICKETS", {
             status: "published",
             lastPublishedAt: new Date(),
-            messageCount: 4,
+            messageCount: 5,
             channelId: discordConfig.createTicketCategoryId,
             lastError: null,
         });
@@ -271,6 +288,37 @@ app.post("/discord/channels/publish/tickets", async (req, res) => {
     } catch (error: any) {
         logger.error("[Bot API] Error publishing ticket channels:", error);
         await updateChannelStatus("TICKETS", { status: "error", lastError: error.message });
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post("/discord/channels/publish/accounts", async (req, res) => {
+    try {
+        if (!discordClient.isReady()) {
+            return res.status(400).json({ success: false, error: "Discord bot not connected" });
+        }
+
+        if (!discordClient.accountChannelManager) {
+            return res.status(400).json({ success: false, error: "Account channel manager not initialized" });
+        }
+
+        const clearAllMessages = req.body.clearAllMessages === true;
+        logger.info(`[Bot API] Publishing accounts channel (clearAll: ${clearAllMessages})...`);
+        await discordClient.accountChannelManager.rebuildChannel(clearAllMessages);
+
+        await updateChannelStatus("ACCOUNTS", {
+            status: "published",
+            lastPublishedAt: new Date(),
+            messageCount: 1,
+            channelId: discordConfig.accountShopChannelId,
+            lastError: null,
+        });
+
+        logger.info("[Bot API] Accounts channel published successfully");
+        res.json({ success: true, message: "Accounts channel published successfully" });
+    } catch (error: any) {
+        logger.error("[Bot API] Error publishing accounts channel:", error);
+        await updateChannelStatus("ACCOUNTS", { status: "error", lastError: error.message });
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -327,7 +375,7 @@ app.post("/discord/channels/publish/all", async (req, res) => {
             await updateChannelStatus("TICKETS", {
                 status: "published",
                 lastPublishedAt: new Date(),
-                messageCount: 4,
+                messageCount: 5,
                 channelId: discordConfig.createTicketCategoryId,
                 lastError: null,
             });

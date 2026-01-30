@@ -36,9 +36,7 @@ interface UpdateServiceModifierDto {
 @JsonController("/api/admin/services/:serviceId/modifiers")
 @Service()
 export default class ServiceModifierController {
-    /**
-     * Get all modifiers for a service
-     */
+
     @Get("/")
     @Authorized(API.Role.admin)
     async getServiceModifiers(@Param("serviceId") serviceId: string) {
@@ -60,9 +58,6 @@ export default class ServiceModifierController {
         }
     }
 
-    /**
-     * Get a single modifier
-     */
     @Get("/:modifierId")
     @Authorized(API.Role.admin)
     async getServiceModifier(
@@ -93,9 +88,6 @@ export default class ServiceModifierController {
         }
     }
 
-    /**
-     * Create a new service modifier
-     */
     @Post("/")
     @Authorized(API.Role.admin)
     async createServiceModifier(
@@ -137,9 +129,6 @@ export default class ServiceModifierController {
         }
     }
 
-    /**
-     * Update a service modifier
-     */
     @Put("/:modifierId")
     @Authorized(API.Role.admin)
     async updateServiceModifier(
@@ -185,9 +174,6 @@ export default class ServiceModifierController {
         }
     }
 
-    /**
-     * Delete a service modifier
-     */
     @Delete("/:modifierId")
     @Authorized(API.Role.admin)
     async deleteServiceModifier(
@@ -223,9 +209,6 @@ export default class ServiceModifierController {
         }
     }
 
-    /**
-     * Toggle modifier active status
-     */
     @Put("/:modifierId/toggle")
     @Authorized(API.Role.admin)
     async toggleServiceModifier(

@@ -45,29 +45,31 @@ model User {
   updatedAt           DateTime  @default(now()) @updatedAt() @db.DateTime(0)
   deletedAt           DateTime?
 
-  discordId          String?      @unique 
-  discordUsername    String? 
+  discordId          String?      @unique
+  discordUsername    String?
   discordDisplayName String?
   discordRole        DiscordRole? @default(customer)
 
-  sessions    Session[]
-  otpRequests OtpRequest[]
-  files       File[]       @relation("fileUploader")
-  profile     File?        @relation("userProfile", fields: [profileId], references: [id])
-  customerOrders      Order[]              @relation("customerOrders")
-  workerOrders        Order[]              @relation("workerOrders")
-  supportOrders       Order[]              @relation("supportOrders")
-  statusChangeHistory OrderStatusHistory[] @relation("statusChangeHistory")
-  transactions              Transaction[]       @relation("userTransactions")
-  wallet                    Wallet?             @relation("userWallet")
-  walletTransactionsCreated WalletTransaction[] @relation("transactionCreator")
-  customerTickets Ticket[]        @relation("customerTickets")
-  supportTickets  Ticket[]        @relation("supportTickets")
-  ticketMessages  TicketMessage[] @relation("ticketMessageAuthor")
-  tosAcceptances    TosAcceptance[]    @relation("userTosAcceptances")
-  onboardingAnswers OnboardingAnswer[] @relation("userOnboardingAnswers")
-  reportedIssues OrderIssue[] @relation("reportedIssues")
-  resolvedIssues OrderIssue[] @relation("resolvedIssues")
+  sessions                  Session[]
+  otpRequests               OtpRequest[]
+  files                     File[]               @relation("fileUploader")
+  profile                   File?                @relation("userProfile", fields: [profileId], references: [id])
+  customerOrders            Order[]              @relation("customerOrders")
+  workerOrders              Order[]              @relation("workerOrders")
+  supportOrders             Order[]              @relation("supportOrders")
+  statusChangeHistory       OrderStatusHistory[] @relation("statusChangeHistory")
+  transactions              Transaction[]        @relation("userTransactions")
+  wallet                    Wallet?              @relation("userWallet")
+  walletTransactionsCreated WalletTransaction[]  @relation("transactionCreator")
+  customerTickets           Ticket[]             @relation("customerTickets")
+  supportTickets            Ticket[]             @relation("supportTickets")
+  ticketMessages            TicketMessage[]      @relation("ticketMessageAuthor")
+  tosAcceptances            TosAcceptance[]      @relation("userTosAcceptances")
+  onboardingAnswers         OnboardingAnswer[]   @relation("userOnboardingAnswers")
+  reportedIssues            OrderIssue[]         @relation("reportedIssues")
+  resolvedIssues            OrderIssue[]         @relation("resolvedIssues")
+  reservedAccounts          Account[]            @relation("accountReservedBy")
+  purchasedAccounts         Account[]            @relation("accountSoldTo")
 
   @@index([email])
   @@index([role])
@@ -123,6 +125,7 @@ model File {
   uploader          User              @relation("fileUploader", fields: [uploadedBy], references: [id], onDelete: Cascade)
   user              User?             @relation("userProfile")
   serviceCategories ServiceCategory[] @relation("categoryIcon")
+  accountImages     AccountImage[]    @relation("accountImages")
 }
 
 enum PricingUnit {
@@ -134,67 +137,76 @@ enum PricingUnit {
 }
 
 enum ModifierType {
-  PERCENTAGE 
-  FIXED 
+  PERCENTAGE
+  FIXED
 }
 
 enum ModifierDisplayType {
-  NORMAL 
-  UPCHARGE 
-  DISCOUNT 
-  NOTE 
-  WARNING 
+  NORMAL
+  UPCHARGE
+  DISCOUNT
+  NOTE
+  WARNING
 }
 
 enum PaymentType {
-  CRYPTO 
-  NON_CRYPTO 
+  CRYPTO
+  NON_CRYPTO
 }
 
 enum AccountStatus {
-  AVAILABLE
-  RESERVED 
-  IN_USE 
-  COMPLETED 
+  IN_STOCK
+  RESERVED
+  SOLD
+}
+
+enum AccountCategory {
+  MAIN
+  IRONS
+  HCIM
+  ZERK
+  PURE
+  ACCOUNTS
 }
 
 enum OrderStatus {
-  PENDING 
-  CLAIMING 
-  ASSIGNED 
-  IN_PROGRESS 
-  AWAITING_CONFIRM 
-  COMPLETED 
-  CANCELLED 
-  DISPUTED 
-  REFUNDED 
+  PENDING
+  CLAIMING
+  ASSIGNED
+  IN_PROGRESS
+  AWAITING_CONFIRM
+  COMPLETED
+  CANCELLED
+  DISPUTED
+  REFUNDED
 }
 
 enum TicketType {
-  PURCHASE_SERVICES_OSRS 
-  PURCHASE_SERVICES_RS3 
-  BUY_GOLD_OSRS 
-  BUY_GOLD_RS3 
-  SELL_GOLD_OSRS 
-  SELL_GOLD_RS3 
-  SWAP_CRYPTO 
-  GENERAL 
+  PURCHASE_SERVICES_OSRS
+  PURCHASE_SERVICES_RS3
+  BUY_GOLD_OSRS
+  BUY_GOLD_RS3
+  SELL_GOLD_OSRS
+  SELL_GOLD_RS3
+  SWAP_CRYPTO
+  PURCHASE_ACCOUNT
+  GENERAL
 }
 
 enum TicketStatus {
-  OPEN 
-  IN_PROGRESS 
-  AWAITING_CONFIRMATION 
-  COMPLETED 
-  CANCELLED 
-  CLOSED 
+  OPEN
+  IN_PROGRESS
+  AWAITING_CONFIRMATION
+  COMPLETED
+  CANCELLED
+  CLOSED
 }
 
 enum TransactionType {
   DEPOSIT
-  WITHDRAWAL 
-  PAYMENT 
-  REFUND 
+  WITHDRAWAL
+  PAYMENT
+  REFUND
 }
 
 model ServiceCategory {
@@ -210,9 +222,8 @@ model ServiceCategory {
   updatedAt    DateTime  @default(now()) @updatedAt() @db.DateTime(0)
   deletedAt    DateTime?
 
-  icon File? @relation("categoryIcon", fields: [iconId], references: [id])
-  services Service[] @relation("serviceCategory")
-  accounts Account[] @relation("accountCategory")
+  icon           File?                   @relation("categoryIcon", fields: [iconId], references: [id])
+  services       Service[]               @relation("serviceCategory")
   tickets        Ticket[]                @relation("categoryTickets")
   ticketSettings CategoryTicketSettings? @relation("categoryTicketSettings")
 
@@ -228,7 +239,7 @@ model Service {
   slug         String
   description  String?   @db.Text
   emoji        String?
-  imageUrl     String? 
+  imageUrl     String?
   active       Boolean   @default(true)
   displayOrder Int       @default(0)
   createdAt    DateTime  @default(now()) @db.DateTime(0)
@@ -238,7 +249,6 @@ model Service {
   category         ServiceCategory   @relation("serviceCategory", fields: [categoryId], references: [id])
   serviceModifiers ServiceModifier[] @relation("serviceModifiers")
   pricingMethods   PricingMethod[]   @relation("servicePricingMethods")
-  accounts         Account[]         @relation("accountService")
   orders           Order[]           @relation("serviceOrders")
   tickets          Ticket[]          @relation("serviceTickets")
 
@@ -278,8 +288,8 @@ model PricingMethod {
   description  String?     @db.Text
   basePrice    Decimal     @db.Decimal(18, 8)
   pricingUnit  PricingUnit @default(FIXED)
-  startLevel   Int? 
-  endLevel     Int? 
+  startLevel   Int?
+  endLevel     Int?
   displayOrder Int         @default(0)
   active       Boolean     @default(true)
   createdAt    DateTime    @default(now()) @db.DateTime(0)
@@ -306,8 +316,8 @@ model PricingModifier {
   name         String
   modifierType ModifierType
   value        Decimal             @db.Decimal(10, 2)
-  condition    String?             @db.Text 
-  displayType  ModifierDisplayType @default(NORMAL) 
+  condition    String?             @db.Text
+  displayType  ModifierDisplayType @default(NORMAL)
   priority     Int                 @default(0)
   active       Boolean             @default(true)
   createdAt    DateTime            @default(now()) @db.DateTime(0)
@@ -355,65 +365,93 @@ model MethodPrice {
 }
 
 model Account {
-  id          String        @id @default(uuid())
-  categoryId  String
-  serviceId   String
-  accountData Json 
-  status      AccountStatus @default(AVAILABLE)
-  reservedAt  DateTime?
-  completedAt DateTime?
-  createdAt   DateTime      @default(now()) @db.DateTime(0)
-  updatedAt   DateTime      @default(now()) @updatedAt() @db.DateTime(0)
+  id String @id @default(uuid())
 
-  category ServiceCategory @relation("accountCategory", fields: [categoryId], references: [id])
-  service  Service         @relation("accountService", fields: [serviceId], references: [id])
-  orders   Order[]         @relation("accountOrders")
+  name              String
+  price             Decimal         @db.Decimal(10, 2)
+  quantity          Int             @default(1)
+  source            String?
+  category          AccountCategory
+  accountData       Json?
+  status            AccountStatus   @default(IN_STOCK)
 
-  @@index([categoryId])
-  @@index([serviceId])
+  // Reservation tracking
+  reservedById      Int?            @db.UnsignedInt
+  reservedAt        DateTime?       @db.DateTime(0)
+  reservationExpiry DateTime?       @db.DateTime(0)
+
+  // Sale tracking
+  soldToId          Int?            @db.UnsignedInt
+  soldAt            DateTime?       @db.DateTime(0)
+
+  createdAt         DateTime        @default(now()) @db.DateTime(0)
+  updatedAt         DateTime        @default(now()) @updatedAt() @db.DateTime(0)
+
+  images     AccountImage[]
+  reservedBy User?          @relation("accountReservedBy", fields: [reservedById], references: [id])
+  soldTo     User?          @relation("accountSoldTo", fields: [soldToId], references: [id])
+  tickets    Ticket[]       @relation("ticketAccount")
+  orders     Order[]        @relation("accountOrders")
+
+  @@index([category])
   @@index([status])
+  @@index([reservedById])
+  @@index([soldToId])
+}
+
+model AccountImage {
+  id        String   @id @default(uuid())
+  accountId String
+  fileId    Int      @db.UnsignedInt
+  createdAt DateTime @default(now()) @db.DateTime(0)
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  file    File    @relation("accountImages", fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@index([fileId])
 }
 
 model Order {
   id          String @id @default(uuid())
   orderNumber Int    @unique @default(0)
 
-  customerId Int  @db.UnsignedInt
-  workerId   Int? @db.UnsignedInt 
-  supportId  Int? @db.UnsignedInt 
+  customerId      Int     @db.UnsignedInt
+  workerId        Int?    @db.UnsignedInt
+  supportId       Int?    @db.UnsignedInt
   ticketId        String?
   serviceId       String?
   methodId        String?
   paymentMethodId String?
   accountId       String?
-  orderChannelId  String? @unique 
-  claimMessageId  String? 
-  pinnedMessageId String? 
-  ticketChannelId String? 
-  orderValue    Decimal @db.Decimal(18, 8)
-  depositAmount Decimal @db.Decimal(18, 8)
-  currency      String  @default("USD")
+  orderChannelId  String? @unique
+  claimMessageId  String?
+  pinnedMessageId String?
+  ticketChannelId String?
+  orderValue      Decimal @db.Decimal(18, 8)
+  depositAmount   Decimal @db.Decimal(18, 8)
+  currency        String  @default("USD")
 
-  workerPayout    Decimal? @db.Decimal(18, 8) 
-  supportPayout   Decimal? @db.Decimal(18, 8) 
-  systemPayout    Decimal? @db.Decimal(18, 8) 
-  payoutProcessed Boolean  @default(false) 
-  status OrderStatus @default(PENDING)
-  jobDetails Json?
-  completionNotes    String? @db.Text
-  cancellationReason String? @db.Text
-  rating     Int? 
-  review     String?   @db.Text
-  reviewedAt DateTime? @db.DateTime(0)
-  createdAt   DateTime  @default(now()) @db.DateTime(0)
-  updatedAt   DateTime  @default(now()) @updatedAt @db.DateTime(0)
-  assignedAt  DateTime?
-  claimedAt   DateTime?
-  startedAt   DateTime?
-  completedAt DateTime?
-  confirmedAt DateTime?
-  cancelledAt DateTime?
-  version Int @default(0)
+  workerPayout       Decimal?    @db.Decimal(18, 8)
+  supportPayout      Decimal?    @db.Decimal(18, 8)
+  systemPayout       Decimal?    @db.Decimal(18, 8)
+  payoutProcessed    Boolean     @default(false)
+  status             OrderStatus @default(PENDING)
+  jobDetails         Json?
+  completionNotes    String?     @db.Text
+  cancellationReason String?     @db.Text
+  rating             Int?
+  review             String?     @db.Text
+  reviewedAt         DateTime?   @db.DateTime(0)
+  createdAt          DateTime    @default(now()) @db.DateTime(0)
+  updatedAt          DateTime    @default(now()) @updatedAt @db.DateTime(0)
+  assignedAt         DateTime?
+  claimedAt          DateTime?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  confirmedAt        DateTime?
+  cancelledAt        DateTime?
+  version            Int         @default(0)
 
   customer           User                 @relation("customerOrders", fields: [customerId], references: [id])
   worker             User?                @relation("workerOrders", fields: [workerId], references: [id])
@@ -432,9 +470,10 @@ model Order {
   @@index([workerId])
   @@index([status])
   @@index([ticketId])
+  @@index([accountId])
   @@index([createdAt])
-  @@index([workerId, status]) 
-  @@index([customerId, status]) 
+  @@index([workerId, status])
+  @@index([customerId, status])
 }
 
 model OrderStatusHistory {
@@ -522,12 +561,12 @@ enum WalletTransactionType {
   WITHDRAWAL
   PAYMENT
   REFUND
-  EARNING 
-  COMMISSION 
-  SYSTEM_FEE 
-  ADJUSTMENT 
-  RELEASE 
-  WORKER_DEPOSIT 
+  EARNING
+  COMMISSION
+  SYSTEM_FEE
+  ADJUSTMENT
+  RELEASE
+  WORKER_DEPOSIT
 }
 
 enum WalletTransactionStatus {
@@ -557,22 +596,22 @@ model Wallet {
 }
 
 model WalletTransaction {
-  id            String                  @id @default(uuid())
-  walletId      String
-  orderId       String?
-  type          WalletTransactionType
-  amount        Decimal                 @db.Decimal(18, 8)
-  balanceBefore Decimal                 @db.Decimal(18, 8)
-  balanceAfter  Decimal                 @db.Decimal(18, 8)
-  depositBefore Decimal?                @db.Decimal(18, 8)
-  depositAfter  Decimal?                @db.Decimal(18, 8)
-  currency      String                  @default("USD")
-  status        WalletTransactionStatus @default(COMPLETED)
+  id              String                  @id @default(uuid())
+  walletId        String
+  orderId         String?
+  type            WalletTransactionType
+  amount          Decimal                 @db.Decimal(18, 8)
+  balanceBefore   Decimal                 @db.Decimal(18, 8)
+  balanceAfter    Decimal                 @db.Decimal(18, 8)
+  depositBefore   Decimal?                @db.Decimal(18, 8)
+  depositAfter    Decimal?                @db.Decimal(18, 8)
+  currency        String                  @default("USD")
+  status          WalletTransactionStatus @default(COMPLETED)
   paymentMethodId String?
-  reference       String? 
-  notes           String? @db.Text
-  createdById Int @db.UnsignedInt
-  createdAt DateTime @default(now()) @db.DateTime(0)
+  reference       String?
+  notes           String?                 @db.Text
+  createdById     Int                     @db.UnsignedInt
+  createdAt       DateTime                @default(now()) @db.DateTime(0)
 
   wallet        Wallet         @relation(fields: [walletId], references: [id])
   order         Order?         @relation("orderWalletTransactions", fields: [orderId], references: [id])
@@ -596,10 +635,10 @@ model DiscordMessage {
   id          String    @id @default(uuid())
   messageId   String    @unique
   channelId   String
-  messageType String 
+  messageType String
   categoryId  String?
   serviceId   String?
-  groupIndex  Int? 
+  groupIndex  Int?
   isPinned    Boolean   @default(false)
   createdAt   DateTime  @default(now()) @db.DateTime(0)
   updatedAt   DateTime  @default(now()) @updatedAt @db.DateTime(0)
@@ -609,39 +648,42 @@ model DiscordMessage {
   @@index([channelId])
   @@index([messageType])
 }
+
 model ExperienceTable {
   level      Int    @id @db.UnsignedTinyInt
-  experience BigInt 
-  difference Int 
+  experience BigInt
+  difference Int
 
   @@index([level])
 }
 
 model Ticket {
-  id           String @id @default(uuid())
-  ticketNumber Int    @unique @default(autoincrement())
-  ticketType TicketType @default(GENERAL)
-  customerId        Int    @db.UnsignedInt
-  customerDiscordId String 
-  categoryId String?
-  serviceId  String?
-  channelId String @unique
-  calculatedPrice Decimal? @db.Decimal(18, 8)
-  paymentMethodId String?
-  currency        String   @default("USD")
-  status TicketStatus @default(OPEN)
-  supportId        Int?    @db.UnsignedInt
-  supportDiscordId String?
-  customerNotes String? @db.Text
-  createdAt DateTime  @default(now()) @db.DateTime(0)
-  updatedAt DateTime  @default(now()) @updatedAt @db.DateTime(0)
-  closedAt  DateTime? @db.DateTime(0)
+  id                String       @id @default(uuid())
+  ticketNumber      Int          @unique @default(autoincrement())
+  ticketType        TicketType   @default(GENERAL)
+  customerId        Int          @db.UnsignedInt
+  customerDiscordId String
+  categoryId        String?
+  serviceId         String?
+  accountId         String?
+  channelId         String       @unique
+  calculatedPrice   Decimal?     @db.Decimal(18, 8)
+  paymentMethodId   String?
+  currency          String       @default("USD")
+  status            TicketStatus @default(OPEN)
+  supportId         Int?         @db.UnsignedInt
+  supportDiscordId  String?
+  customerNotes     String?      @db.Text
+  createdAt         DateTime     @default(now()) @db.DateTime(0)
+  updatedAt         DateTime     @default(now()) @updatedAt @db.DateTime(0)
+  closedAt          DateTime?    @db.DateTime(0)
 
   customer      User             @relation("customerTickets", fields: [customerId], references: [id])
   support       User?            @relation("supportTickets", fields: [supportId], references: [id])
   category      ServiceCategory? @relation("categoryTickets", fields: [categoryId], references: [id])
   service       Service?         @relation("serviceTickets", fields: [serviceId], references: [id])
   paymentMethod PaymentMethod?   @relation("paymentMethodTickets", fields: [paymentMethodId], references: [id])
+  account       Account?         @relation("ticketAccount", fields: [accountId], references: [id])
   messages      TicketMessage[]
   orders        Order[]          @relation("ticketOrders")
   metadata      TicketMetadata?  @relation("ticketMetadata")
@@ -649,6 +691,7 @@ model Ticket {
   @@index([customerId])
   @@index([categoryId])
   @@index([serviceId])
+  @@index([accountId])
   @@index([status])
   @@index([channelId])
   @@index([ticketType])
@@ -656,16 +699,16 @@ model Ticket {
 }
 
 model TicketMessage {
-  id       String @id @default(uuid())
-  ticketId String
-  authorId        Int    @db.UnsignedInt
-  authorDiscordId String
-  authorName      String
-  content String @db.Text
-  isSystem  Boolean @default(false)
-  isWelcome Boolean @default(false)
-  discordMessageId String? @unique
-  createdAt DateTime @default(now()) @db.DateTime(0)
+  id               String   @id @default(uuid())
+  ticketId         String
+  authorId         Int      @db.UnsignedInt
+  authorDiscordId  String
+  authorName       String
+  content          String   @db.Text
+  isSystem         Boolean  @default(false)
+  isWelcome        Boolean  @default(false)
+  discordMessageId String?  @unique
+  createdAt        DateTime @default(now()) @db.DateTime(0)
 
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   author User   @relation("ticketMessageAuthor", fields: [authorId], references: [id])
@@ -676,19 +719,20 @@ model TicketMessage {
 }
 
 model CategoryTicketSettings {
-  id         String @id @default(uuid())
-  categoryId String @unique
-  bannerUrl String? @db.Text
-  welcomeTitle   String? @db.VarChar(255)
-  welcomeMessage String  @db.Text
-  footerText String? @db.Text
-  embedColor String? @default("5865F2") @db.VarChar(6)
-  isActive Boolean @default(true)
-  createdAt DateTime @default(now()) @db.DateTime(0)
-  updatedAt DateTime @default(now()) @updatedAt @db.DateTime(0)
+  id             String   @id @default(uuid())
+  categoryId     String   @unique
+  bannerUrl      String?  @db.Text
+  welcomeTitle   String?  @db.VarChar(255)
+  welcomeMessage String   @db.Text
+  footerText     String?  @db.Text
+  embedColor     String?  @default("5865F2") @db.VarChar(6)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now()) @db.DateTime(0)
+  updatedAt      DateTime @default(now()) @updatedAt @db.DateTime(0)
 
   category ServiceCategory @relation("categoryTicketSettings", fields: [categoryId], references: [id], onDelete: Cascade)
 }
+
 model TicketMetadata {
   id       String @id @default(uuid())
   ticketId String @unique
@@ -698,17 +742,17 @@ model TicketMetadata {
   deliveryMethod String?  @db.VarChar(100) // F2P, P2P, Drop Trading, etc.
   worldLocation  String?  @db.VarChar(200) // "W301, Grand Exchange"
   osrsUsername   String?  @db.VarChar(100) // Customer's OSRS/RS3 username
-  cryptoType    String?  @db.VarChar(50) // BTC, ETH, USDT, etc.
-  cryptoAmount  Decimal? @db.Decimal(20, 8) // Crypto amount
-  walletAddress String?  @db.VarChar(500) 
-  swapDirection String?  @db.VarChar(50) 
-  paymentEmail String?  @db.VarChar(255) 
-  paymentProof String?  @db.Text
-  payoutAmount Decimal? @db.Decimal(18, 8) 
-  specialNotes  String? @db.Text
-  internalNotes String? @db.Text // Staff-only notes
-  createdAt DateTime @default(now()) @db.DateTime(0)
-  updatedAt DateTime @default(now()) @updatedAt @db.DateTime(0)
+  cryptoType     String?  @db.VarChar(50) // BTC, ETH, USDT, etc.
+  cryptoAmount   Decimal? @db.Decimal(20, 8) // Crypto amount
+  walletAddress  String?  @db.VarChar(500)
+  swapDirection  String?  @db.VarChar(50)
+  paymentEmail   String?  @db.VarChar(255)
+  paymentProof   String?  @db.Text
+  payoutAmount   Decimal? @db.Decimal(18, 8)
+  specialNotes   String?  @db.Text
+  internalNotes  String?  @db.Text // Staff-only notes
+  createdAt      DateTime @default(now()) @db.DateTime(0)
+  updatedAt      DateTime @default(now()) @updatedAt @db.DateTime(0)
 
   ticket Ticket @relation("ticketMetadata", fields: [ticketId], references: [id], onDelete: Cascade)
 
@@ -782,7 +826,6 @@ model TermsOfService {
   @@index([isActive])
   @@index([version])
 }
-
 
 model TosAcceptance {
   id              String   @id @default(uuid())
@@ -860,15 +903,15 @@ model OnboardingSession {
 
 // Discord Channel Publish Status - Track when channels were last published
 enum DiscordChannelType {
-  PRICING        // Services/Pricing channel
-  TOS            // Terms of Service channel
-  TICKETS        // Ticket creation channels (4 channels)
+  PRICING // Services/Pricing channel
+  TOS // Terms of Service channel
+  TICKETS // Ticket creation channels (4 channels)
 }
 
 model DiscordChannelPublishStatus {
   id              String             @id @default(uuid())
   channelType     DiscordChannelType @unique
-  channelId       String?            // Discord channel ID
+  channelId       String? // Discord channel ID
   lastPublishedAt DateTime?          @db.DateTime(0)
   lastPublishedBy Int?               @db.UnsignedInt // User who triggered publish
   messageCount    Int                @default(0)
@@ -881,32 +924,25 @@ model DiscordChannelPublishStatus {
   @@index([status])
 }
 
-// Mention Tracker - Track mentions for auto-reminder system
 model MentionTracker {
-  id                  String    @id @default(uuid())
-  channelId           String    // Discord channel where mention happened
-  messageId           String    // Original message ID
-  messageUrl          String?   // Link to the message
-  mentionedUserId     String    // Discord ID of mentioned user
-  mentionedByUserId   String    // Discord ID of who mentioned
-  mentionedAt         DateTime  @default(now()) @db.DateTime(0)
+  id                    String    @id @default(uuid())
+  channelId             String
+  messageId             String
+  messageUrl            String?
+  mentionedUserId       String
+  mentionedByUserId     String
+  mentionedAt           DateTime  @default(now()) @db.DateTime(0)
+  hasResponded          Boolean   @default(false)
+  respondedAt           DateTime? @db.DateTime(0)
+  channelReminderSent   Boolean   @default(false)
+  channelReminderSentAt DateTime? @db.DateTime(0)
+  dmReminderSent        Boolean   @default(false)
+  dmReminderSentAt      DateTime? @db.DateTime(0)
+  reminderDelayMinutes  Int       @default(15)
+  isActive              Boolean   @default(true)
 
-  // Response tracking
-  hasResponded        Boolean   @default(false)
-  respondedAt         DateTime? @db.DateTime(0)
-
-  // Reminder tracking
-  channelReminderSent     Boolean   @default(false)
-  channelReminderSentAt   DateTime? @db.DateTime(0)
-  dmReminderSent          Boolean   @default(false)
-  dmReminderSentAt        DateTime? @db.DateTime(0)
-
-  // Config
-  reminderDelayMinutes    Int       @default(15)
-  isActive                Boolean   @default(true)
-
-  createdAt           DateTime  @default(now()) @db.DateTime(0)
-  updatedAt           DateTime  @default(now()) @updatedAt @db.DateTime(0)
+  createdAt DateTime @default(now()) @db.DateTime(0)
+  updatedAt DateTime @default(now()) @updatedAt @db.DateTime(0)
 
   @@unique([channelId, messageId, mentionedUserId])
   @@index([mentionedUserId])

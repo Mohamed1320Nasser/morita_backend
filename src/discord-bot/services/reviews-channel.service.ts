@@ -115,6 +115,96 @@ export class ReviewsChannelService {
         }
     }
 
+    /**
+     * Post an account purchase review (no worker involved)
+     */
+    async postAccountReview(
+        order: any,
+        review: any,
+        customer: User,
+        isAnonymous: boolean = false
+    ): Promise<void> {
+        try {
+            const guild = this.client.guilds.cache.get(discordConfig.guildId);
+            if (!guild) {
+                logger.error("[Reviews] Guild not found");
+                return;
+            }
+
+            const channel = await this.getOrCreateChannel(guild);
+            if (!channel) {
+                logger.error("[Reviews] Could not get channel");
+                return;
+            }
+
+            const embed = this.formatAccountReviewEmbed(order, review, customer, isAnonymous);
+
+            await channel.send({
+                embeds: [embed.toJSON() as any],
+            });
+
+            logger.info(
+                `[Reviews] Posted account review for order #${order.orderNumber} to channel`
+            );
+        } catch (error) {
+            logger.error("[Reviews] Error posting account review:", error);
+        }
+    }
+
+    private formatAccountReviewEmbed(
+        order: any,
+        review: any,
+        customer: User,
+        isAnonymous: boolean = false
+    ): EmbedBuilder {
+        const orderNumber = String(order.orderNumber).padStart(4, "0");
+        const rating = review.rating || 5;
+
+        const stars = "⭐".repeat(rating);
+
+        let embedColor: number;
+        if (rating >= 5) {
+            embedColor = 0x57f287; // Green
+        } else if (rating >= 4) {
+            embedColor = 0x5865f2; // Blue
+        } else if (rating >= 3) {
+            embedColor = 0xfee75c; // Yellow
+        } else {
+            embedColor = 0xed4245; // Red
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(embedColor as ColorResolvable)
+            .setTimestamp();
+
+        const descriptionParts: string[] = [];
+
+        // Add highlighted review text at top (if exists)
+        if (review.comment && review.comment.trim().length > 0) {
+            descriptionParts.push(`## "${review.comment.substring(0, 900)}"`);
+            descriptionParts.push("");
+        }
+
+        // Rating display
+        descriptionParts.push(`${stars} **${rating}/5**`);
+        descriptionParts.push("");
+
+        // Service info - Account Purchase
+        descriptionParts.push(`🎮 ${order.service?.name || "Account Purchase"}`);
+
+        // Customer only (no worker for account purchases)
+        const customerDisplay = isAnonymous ? "Anonymous" : customer.displayName;
+        descriptionParts.push(`👤 ${customerDisplay}`);
+
+        embed.setDescription(descriptionParts.join("\n"));
+
+        embed.setFooter({
+            text: `Ticket #${orderNumber} • Account Purchase`,
+        });
+
+        return embed;
+    }
+
     private formatReviewEmbed(
         order: any,
         review: any,

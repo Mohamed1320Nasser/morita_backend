@@ -26,14 +26,6 @@ import { OrderStatus as PrismaOrderStatus } from "@prisma/client";
 export default class OrderService {
     constructor(private walletService: WalletService) {}
 
-    /**
-     * Create Order
-     *
-     * BUSINESS FLOW:
-     * 1. Customer locks ORDER VALUE (payment) in pending
-     * 2. Worker locks DEPOSIT (security) when claiming/assigned
-     * 3. On completion: Customer's order value distributed, Worker's deposit returned
-     */
     async createOrder(data: CreateOrderDto) {
         logger.info(`[OrderService] Creating order for customer ${data.customerId}`);
 
@@ -315,9 +307,6 @@ export default class OrderService {
         return order;
     }
 
-    /**
-     * Create order via Discord (handles Discord ID lookups)
-     */
     async createOrderByDiscord(data: DiscordCreateOrderDto) {
         logger.info(
             `[OrderService] Creating order via Discord for customer ${data.customerDiscordId}`
@@ -371,9 +360,6 @@ export default class OrderService {
         });
     }
 
-    /**
-     * Get order by ID
-     */
     async getOrderById(orderId: string) {
         const order = await prisma.order.findUnique({
             where: { id: orderId },
@@ -433,9 +419,6 @@ export default class OrderService {
         return order;
     }
 
-    /**
-     * Get debug info about orders (for troubleshooting)
-     */
     async getOrderDebugInfo() {
         try {
             const totalOrders = await prisma.order.count();
@@ -485,9 +468,6 @@ export default class OrderService {
         }
     }
 
-    /**
-     * Get order list with filters
-     */
     async getOrders(query: GetOrderListDto) {
         const { search, status, customerId, workerId, ticketId, page, limit, sortBy, sortOrder } = query;
         const skip = (page! - 1) * limit!;
@@ -591,9 +571,6 @@ export default class OrderService {
         }
     }
 
-    /**
-     * Assign worker to order
-     */
     async assignWorker(orderId: string, data: AssignWorkerDto) {
         const order = await this.getOrderById(orderId);
 
@@ -656,9 +633,6 @@ export default class OrderService {
         return updatedOrder;
     }
 
-    /**
-     * Worker claims an unassigned order
-     */
     async claimOrder(orderId: string, data: ClaimOrderDto) {
         const order = await this.getOrderById(orderId);
 
@@ -788,9 +762,6 @@ export default class OrderService {
         return updatedOrder;
     }
 
-    /**
-     * Update order status
-     */
     async updateOrderStatus(orderId: string, data: UpdateOrderStatusDto) {
         const order = await this.getOrderById(orderId);
 
@@ -846,9 +817,6 @@ export default class OrderService {
         return updatedOrder;
     }
 
-    /**
-     * Worker marks order as complete
-     */
     async completeOrder(data: CompleteOrderDto) {
         const order = await this.getOrderById(data.orderId);
 
@@ -868,9 +836,6 @@ export default class OrderService {
         });
     }
 
-    /**
-     * Customer or support/admin confirms order completion (triggers payout)
-     */
     async confirmOrderCompletion(data: ConfirmOrderDto) {
         const order = await this.getOrderById(data.orderId);
 
@@ -911,10 +876,6 @@ export default class OrderService {
         return this.getOrderById(data.orderId);
     }
 
-    /**
-     * Validate status transition
-     * Enforces proper order flow and prevents invalid status changes
-     */
     private validateStatusTransition(currentStatus: PrismaOrderStatus, newStatus: OrderStatus): void {
         const validTransitions: Record<PrismaOrderStatus, PrismaOrderStatus[]> = {
             [PrismaOrderStatus.PENDING]: [PrismaOrderStatus.CLAIMING, PrismaOrderStatus.ASSIGNED, PrismaOrderStatus.CANCELLED],
@@ -939,17 +900,6 @@ export default class OrderService {
         }
     }
 
-    /**
-     * Process order payouts (80% worker, 5% support, 15% system)
-     */
-    /**
-     * Process Order Payouts (on completion)
-     *
-     * 1. Release customer's pending ORDER VALUE and distribute it
-     * 2. Release worker's pending DEPOSIT back to worker
-     * 3. Pay worker their earnings
-     * 4. Pay support commission
-     */
     private async processOrderPayouts(orderId: string) {
         const order = await this.getOrderById(orderId);
 
@@ -1080,9 +1030,6 @@ export default class OrderService {
         logger.info(`  - System profit: $${order.systemPayout || 0}`);
     }
 
-    /**
-     * Cancel order and process refund
-     */
     async cancelOrder(data: CancelOrderDto) {
         const order = await this.getOrderById(data.orderId);
 

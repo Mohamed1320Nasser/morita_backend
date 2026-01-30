@@ -335,4 +335,114 @@ export class ApiService {
     removeAuthToken(): void {
         delete this.client.defaults.headers.common["Authorization"];
     }
+
+    async getAccountCategories(): Promise<any[]> {
+        try {
+            const response = await this.client.get("/accounts/view/categories");
+            return response.data?.data || [];
+        } catch (error) {
+            logger.error("Error fetching account categories:", error);
+            throw error;
+        }
+    }
+
+    async getAccountViewList(category?: string, page: number = 1, limit: number = 5): Promise<any> {
+        try {
+            const params: any = { page, limit };
+            if (category) params.category = category;
+
+            const response = await this.client.get("/accounts/view/list", { params });
+            return response.data?.data || { list: [], total: 0, filterCount: 0 };
+        } catch (error) {
+            logger.error("Error fetching accounts view list:", error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get single account details
+     */
+    async getAccountDetail(accountId: string): Promise<any> {
+        try {
+            const response = await this.client.get(`/accounts/view/${accountId}`);
+            // Response is wrapped: { msg, status, data: {...}, error }
+            return response.data?.data || null;
+        } catch (error) {
+            logger.error("Error fetching account detail:", error);
+            return null;
+        }
+    }
+
+    /**
+     * Reserve an account for a user
+     */
+    async reserveAccount(accountId: string, userId: number, expiryMinutes: number = 30): Promise<any> {
+        try {
+            const response = await this.client.post(
+                `/accounts/reserve/${accountId}`,
+                { userId, expiryMinutes }
+            );
+            return response.data?.data || response.data;
+        } catch (error) {
+            logger.error("Error reserving account:", error);
+            return { success: false, error: "Failed to reserve account" };
+        }
+    }
+
+    /**
+     * Release a reserved account
+     */
+    async releaseAccount(accountId: string): Promise<any> {
+        try {
+            const response = await this.client.post(`/accounts/release/${accountId}`);
+            return response.data?.data || response.data;
+        } catch (error) {
+            logger.error("Error releasing account:", error);
+            return { success: false, error: "Failed to release account" };
+        }
+    }
+
+    /**
+     * Complete account sale
+     */
+    async completeAccountSale(accountId: string, userId: number, orderId?: string): Promise<any> {
+        try {
+            const response = await this.client.post(
+                `/accounts/complete-sale/${accountId}`,
+                { userId, orderId }
+            );
+            return response.data?.data || response.data;
+        } catch (error) {
+            logger.error("Error completing account sale:", error);
+            return { success: false, error: "Failed to complete sale" };
+        }
+    }
+
+    /**
+     * Get account stats
+     */
+    async getAccountStats(): Promise<any> {
+        try {
+            const response = await this.client.get("/accounts/stats");
+            return response.data?.data || null;
+        } catch (error) {
+            logger.error("Error fetching account stats:", error);
+            return null;
+        }
+    }
+
+    // ==================== Ticket Methods ====================
+
+    /**
+     * Get ticket by ID
+     */
+    async getTicketById(ticketId: string): Promise<any> {
+        try {
+            const response = await this.client.get(`/api/discord/tickets/${ticketId}`);
+            return response.data?.data || null;
+        } catch (error) {
+            logger.error("Error fetching ticket:", error);
+            return null;
+        }
+    }
 }

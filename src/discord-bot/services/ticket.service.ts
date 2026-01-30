@@ -271,6 +271,211 @@ export class TicketService {
         }
     }
 
+    /**
+     * Create a ticket specifically for account purchases
+     * Reserves the account and creates a ticket channel with account details
+     */
+    async createAccountPurchaseTicket(
+        guild: Guild,
+        user: User,
+        accountId: string,
+        accountData: {
+            name: string;
+            price: number;
+            category: string;
+        }
+    ): Promise<{ channel: TextChannel; ticket: any; reservationSuccess: boolean }> {
+        try {
+            // First, reserve the account (userId will be looked up from discordId in API)
+            const reserveResponse = await this.apiClient.post(
+                `/accounts/reserve/${accountId}`,
+                {
+                    discordUserId: user.id, // API will lookup userId from discordId
+                    expiryMinutes: 30, // 30 minute reservation
+                }
+            );
+
+            const reservationSuccess = reserveResponse.data?.success || false;
+
+            if (!reservationSuccess) {
+                logger.warn(`[TicketService] Failed to reserve account ${accountId} - may already be reserved`);
+            }
+
+            // Create the ticket channel with PURCHASE_ACCOUNT type
+            const ticketCategory = await this.getOrCreateTicketsCategory(guild);
+            const username = user.username.replace(/[^a-z0-9_-]/gi, '').toLowerCase();
+            const tempTimestamp = Date.now().toString().slice(-6);
+            const tempChannelName = `temp-account-${tempTimestamp}`;
+
+            const channel = await guild.channels.create({
+                name: tempChannelName,
+                type: ChannelType.GuildText,
+                parent: ticketCategory?.id,
+                permissionOverwrites: [
+                    {
+                        id: guild.id,
+                        deny: [PermissionFlagsBits.ViewChannel],
+                    },
+                    {
+                        id: user.id,
+                        allow: [
+                            PermissionFlagsBits.ViewChannel,
+                            PermissionFlagsBits.SendMessages,
+                            PermissionFlagsBits.ReadMessageHistory,
+                            PermissionFlagsBits.AttachFiles,
+                            PermissionFlagsBits.EmbedLinks,
+                        ],
+                    },
+                    {
+                        id: discordConfig.supportRoleId,
+                        allow: [
+                            PermissionFlagsBits.ViewChannel,
+                            PermissionFlagsBits.SendMessages,
+                            PermissionFlagsBits.ReadMessageHistory,
+                            PermissionFlagsBits.ManageMessages,
+                            PermissionFlagsBits.AttachFiles,
+                            PermissionFlagsBits.EmbedLinks,
+                        ],
+                    },
+                    {
+                        id: discordConfig.adminRoleId,
+                        allow: [PermissionFlagsBits.Administrator],
+                    },
+                ],
+            });
+
+            // Create ticket in database with accountId
+            const ticketResponse = await this.apiClient.post(
+                "/api/discord/tickets",
+                {
+                    customerDiscordId: user.id,
+                    channelId: channel.id,
+                    calculatedPrice: accountData.price,
+                    currency: "USD",
+                    customerName: user.username || user.displayName,
+                    ticketType: TicketType.PURCHASE_ACCOUNT,
+                    accountId: accountId,
+                    customerNotes: `Account Purchase: ${accountData.name} (${accountData.category}) - $${accountData.price.toFixed(2)}`,
+                }
+            );
+
+            const responseData = ticketResponse.data.data || ticketResponse.data;
+            const ticket = responseData.data || responseData;
+
+            const ticketNumber = ticket.ticketNumber.toString().padStart(4, "0");
+            const finalChannelName = `${username}-account-${ticketNumber}`;
+
+            await channel.setName(finalChannelName);
+            await channel.setTopic(
+                `Account Purchase #${ticketNumber} | ${accountData.name} | Customer: ${user.tag}`
+            );
+
+            // Send account purchase welcome message
+            await this.sendAccountPurchaseWelcome(channel, ticket, user, accountData, reservationSuccess);
+
+            logger.info(
+                `[TicketService] Created account purchase ticket #${ticketNumber} for ${user.tag} - Account: ${accountData.name}`
+            );
+
+            return {
+                channel,
+                ticket: { ...ticket, channelId: channel.id },
+                reservationSuccess,
+            };
+        } catch (error) {
+            logger.error("[TicketService] Error creating account purchase ticket:", error);
+            throw error;
+        }
+    }
+
+    /**
+     * Send welcome message specifically for account purchase tickets
+     */
+    private async sendAccountPurchaseWelcome(
+        channel: TextChannel,
+        ticket: any,
+        user: User,
+        accountData: {
+            name: string;
+            price: number;
+            category: string;
+        },
+        reservationSuccess: boolean
+    ): Promise<void> {
+        try {
+            const ticketNumber = ticket.ticketNumber.toString().padStart(4, "0");
+
+            const reservationNote = reservationSuccess
+                ? "✅ **This account has been reserved for you for 30 minutes.**"
+                : "⚠️ **Note:** This account could not be reserved. It may become unavailable if purchased by another customer.";
+
+            const embed = new EmbedBuilder()
+                .setTitle("🎮 Account Purchase Ticket")
+                .setDescription(
+                    `Welcome <@${user.id}>!\n\n` +
+                    `Thank you for your interest in purchasing this account.\n\n` +
+                    `${reservationNote}`
+                )
+                .setColor(0xc9a961 as ColorResolvable)
+                .addFields(
+                    {
+                        name: "📦 Account",
+                        value: accountData.name,
+                        inline: true,
+                    },
+                    {
+                        name: "📁 Category",
+                        value: accountData.category,
+                        inline: true,
+                    },
+                    {
+                        name: "💰 Price",
+                        value: `**$${accountData.price.toFixed(2)}**`,
+                        inline: true,
+                    },
+                    {
+                        name: "📋 Next Steps",
+                        value:
+                            "1️⃣ Choose your payment method using `!pm`\n" +
+                            "2️⃣ Send payment to the provided details\n" +
+                            "3️⃣ Click **Payment Sent** once complete\n" +
+                            "4️⃣ Receive your account credentials",
+                        inline: false,
+                    }
+                )
+                .setTimestamp()
+                .setFooter({
+                    text: `Ticket #${ticketNumber} | MORITA Gaming`,
+                });
+
+            // Action buttons for the customer
+            const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`account_payment_sent_${ticket.id}`)
+                    .setLabel("💳 Payment Sent")
+                    .setStyle(ButtonStyle.Success),
+                new ButtonBuilder()
+                    .setCustomId(`account_cancel_order_${ticket.id}`)
+                    .setLabel("❌ Cancel Order")
+                    .setStyle(ButtonStyle.Danger),
+                new ButtonBuilder()
+                    .setCustomId(`ticket_close_${ticket.id}`)
+                    .setLabel("🔒 Close Ticket")
+                    .setStyle(ButtonStyle.Secondary)
+            );
+
+            await channel.send({
+                content: `<@${user.id}> <@&${discordConfig.supportRoleId}>`,
+                embeds: [embed.toJSON() as any],
+                components: [actionRow.toJSON() as any],
+            });
+
+            logger.info(`[TicketService] Sent account purchase welcome to ticket #${ticketNumber}`);
+        } catch (error) {
+            logger.error("[TicketService] Error sending account purchase welcome:", error);
+        }
+    }
+
     private async getTicketCategoryByType(
         guild: Guild,
         ticketType: TicketType
@@ -292,6 +497,8 @@ export class TicketService {
                 return "sell-gold-";
             case TicketType.SWAP_CRYPTO:
                 return "swap-";
+            case TicketType.PURCHASE_ACCOUNT:
+                return "account-";
             default:
                 return "ticket-";
         }
@@ -313,6 +520,8 @@ export class TicketService {
                 return "Sell RS3 Gold";
             case TicketType.SWAP_CRYPTO:
                 return "Crypto Swap";
+            case TicketType.PURCHASE_ACCOUNT:
+                return "Account Purchase";
             default:
                 return "Support";
         }
@@ -331,6 +540,8 @@ export class TicketService {
                 return "sell-gold";
             case TicketType.SWAP_CRYPTO:
                 return "swap-crypto";
+            case TicketType.PURCHASE_ACCOUNT:
+                return "account";
             default:
                 return "support";
         }

@@ -9,7 +9,7 @@ import {
     AssignSupportDto,
 } from "./dtos";
 import { NotFoundError, BadRequestError } from "routing-controllers";
-import { TicketStatus } from "@prisma/client";
+import { TicketStatus, TicketType } from "@prisma/client";
 import logger from "../../common/loggers";
 
 @Service()
@@ -19,8 +19,8 @@ export default class TicketService {
     /**
      * Create a new ticket
      */
-    async create(data: CreateTicketDto) {
-        logger.info(`[TicketService] Creating ticket with categoryId: ${JSON.stringify(data.categoryId)}`);
+    async create(data: CreateTicketDto, ticketType?: TicketType) {
+        logger.info(`[TicketService] Creating ticket with categoryId: ${JSON.stringify(data.categoryId)}, accountId: ${data.accountId}, ticketType: ${ticketType}`);
 
         // Verify the category exists (only if categoryId is provided and not empty)
         if (data.categoryId && data.categoryId.trim() !== "") {
@@ -62,12 +62,14 @@ export default class TicketService {
                 customerDiscordId: data.customerDiscordId,
                 categoryId: (data.categoryId && data.categoryId.trim() !== "") ? data.categoryId : undefined,
                 serviceId: data.serviceId,
+                accountId: data.accountId,
                 channelId: data.channelId,
                 calculatedPrice: data.calculatedPrice,
                 paymentMethodId: data.paymentMethodId,
                 currency: data.currency || "USD",
                 customerNotes: data.customerNotes,
                 status: TicketStatus.OPEN,
+                ticketType: ticketType || TicketType.GENERAL,
             },
             include: {
                 customer: {
@@ -137,12 +139,13 @@ export default class TicketService {
             customerDiscordId: data.customerDiscordId,
             categoryId: data.categoryId,
             serviceId: data.serviceId,
+            accountId: data.accountId,
             channelId: data.channelId,
             calculatedPrice: data.calculatedPrice,
             paymentMethodId: data.paymentMethodId,
             currency: data.currency,
             customerNotes: data.customerNotes,
-        });
+        }, data.ticketType as any);
 
         return ticket;
     }

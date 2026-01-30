@@ -31,6 +31,7 @@ import { handleHelpOrders } from "./help-orders.button";
 import { handleHelpSupport } from "./help-support.button";
 import { handleServiceDetails } from "./pricing-service-details.button";
 import { handleAdminRefreshPricing } from "./admin-refresh-pricing.button";
+import { handleAdminRefreshAccounts } from "./admin-refresh-accounts.button";
 import { handlePricingPagination } from "./pricing-pagination.button";
 import { handleClaimJobButton } from "./claim-job.button";
 import { handleConfirmCompleteButton } from "./confirm-complete.button";
@@ -44,6 +45,29 @@ import { handleResolveIssueButton } from "./resolve-issue.button";
 import acceptTosButton from "./accept-tos.button";
 import continueOnboardingButton from "./continue-onboarding.button";
 import retryOnboardingButton from "./retry-onboarding.button";
+
+// Account shop button handlers
+import {
+    handleBrowseAccounts,
+    handleBackToCategories,
+    handleAccountPage,
+    handleAccountView,
+    handleBackToList,
+    handleAccountPurchase,
+    handleAccountCancel,
+    handleAccountConfirm,
+    handleAccountPaymentSent,
+    handleAccountCancelOrder,
+    handleAccountConfirmPayment,
+    handleAccountDeliver,
+    handleAccountRelease,
+    handleAccountConfirmDelivery,
+    handleAccountCloseTicket,
+    handleAccountLeaveReview,
+    handleAccountConfirmCancel,
+    handleAccountKeepOrder,
+} from "./account-buttons";
+import { ACCOUNT_BUTTON_IDS } from "../../utils/accountComponentBuilder";
 
 const buttonHandlers: {
     [key: string]: (interaction: ButtonInteraction) => Promise<void>;
@@ -60,7 +84,7 @@ const buttonHandlers: {
     order_from_price: handleOrderFromPrice,
     recalculate: handleRecalculate,
     confirm_order: handleConfirmOrder,
-    
+
     accept_order: handleAcceptOrder,
     update_status: handleUpdateStatus,
     complete_order: handleCompleteOrder,
@@ -71,6 +95,12 @@ const buttonHandlers: {
     help_support: handleHelpSupport,
     pricing_service_details: handleServiceDetails,
     admin_refresh_pricing_channel: handleAdminRefreshPricing,
+    admin_refresh_accounts_channel: handleAdminRefreshAccounts,
+
+    // Account shop buttons
+    [ACCOUNT_BUTTON_IDS.BROWSE_ACCOUNTS]: handleBrowseAccounts,
+    [ACCOUNT_BUTTON_IDS.BACK_TO_CATEGORIES]: handleBackToCategories,
+    [ACCOUNT_BUTTON_IDS.ACCOUNT_CANCEL]: handleAccountCancel,
 };
 
 export default Object.entries(buttonHandlers).map(([customId, execute]) => ({
@@ -223,6 +253,103 @@ export async function handleButtonInteraction(
 
         if (customId === "retry_onboarding") {
             await retryOnboardingButton.execute(interaction);
+            return;
+        }
+
+        // ==================== Account Shop Button Handlers ====================
+
+        // Account pagination: account_page_CATEGORY_PAGE
+        if (customId.startsWith(ACCOUNT_BUTTON_IDS.ACCOUNT_PAGE)) {
+            await handleAccountPage(interaction);
+            return;
+        }
+
+        // Account view details: account_view_ACCOUNTID
+        if (customId.startsWith(ACCOUNT_BUTTON_IDS.ACCOUNT_VIEW)) {
+            await handleAccountView(interaction);
+            return;
+        }
+
+        // Account purchase: account_purchase_ACCOUNTID
+        if (customId.startsWith(ACCOUNT_BUTTON_IDS.ACCOUNT_PURCHASE)) {
+            await handleAccountPurchase(interaction);
+            return;
+        }
+
+        // Back to account list: account_back_list_CATEGORY
+        if (customId.startsWith(ACCOUNT_BUTTON_IDS.BACK_TO_LIST)) {
+            await handleBackToList(interaction);
+            return;
+        }
+
+        // Account confirm purchase: account_confirm_ACCOUNTID
+        if (customId.startsWith(ACCOUNT_BUTTON_IDS.ACCOUNT_CONFIRM)) {
+            await handleAccountConfirm(interaction);
+            return;
+        }
+
+        // Account payment sent: account_payment_sent_TICKETID
+        if (customId.startsWith(ACCOUNT_BUTTON_IDS.PAYMENT_SENT)) {
+            await handleAccountPaymentSent(interaction);
+            return;
+        }
+
+        // Account cancel order: account_cancel_order_TICKETID
+        if (customId.startsWith(ACCOUNT_BUTTON_IDS.CANCEL_ORDER)) {
+            await handleAccountCancelOrder(interaction);
+            return;
+        }
+
+        // Staff confirm payment: account_confirm_payment_TICKETID
+        if (customId.startsWith("account_confirm_payment_")) {
+            await handleAccountConfirmPayment(interaction);
+            return;
+        }
+
+        // Staff deliver account: account_deliver_TICKETID_ACCOUNTID
+        if (customId.startsWith("account_deliver_")) {
+            await handleAccountDeliver(interaction);
+            return;
+        }
+
+        // Staff release account: account_release_ACCOUNTID
+        if (customId.startsWith("account_release_")) {
+            await handleAccountRelease(interaction);
+            return;
+        }
+
+        // Customer confirm delivery: account_confirm_delivery_TICKETID
+        if (customId.startsWith(ACCOUNT_BUTTON_IDS.CONFIRM_DELIVERY)) {
+            await handleAccountConfirmDelivery(interaction);
+            return;
+        }
+
+        // Close ticket: account_close_ticket_TICKETID
+        if (customId.startsWith(ACCOUNT_BUTTON_IDS.CLOSE_TICKET)) {
+            await handleAccountCloseTicket(interaction);
+            return;
+        }
+
+        // Account review buttons: account_public_review_TICKETID or account_anonymous_review_TICKETID
+        if (customId.startsWith("account_public_review_") || customId.startsWith("account_anonymous_review_")) {
+            await handleAccountLeaveReview(interaction);
+            return;
+        }
+
+        // Legacy leave review button: account_leave_review_TICKETID
+        if (customId.startsWith(ACCOUNT_BUTTON_IDS.LEAVE_REVIEW)) {
+            await handleAccountLeaveReview(interaction);
+            return;
+        }
+
+        // Cancel confirmation buttons
+        if (customId.startsWith("account_confirm_cancel_")) {
+            await handleAccountConfirmCancel(interaction);
+            return;
+        }
+
+        if (customId.startsWith("account_keep_order_")) {
+            await handleAccountKeepOrder(interaction);
             return;
         }
 

@@ -1,4 +1,4 @@
-import { SelectMenuInteraction } from "discord.js";
+import { SelectMenuInteraction, StringSelectMenuInteraction } from "discord.js";
 import { SelectMenu } from "../../types/discord.types";
 import logger from "../../../common/loggers";
 
@@ -7,6 +7,15 @@ import { handleServiceSelect } from "./service-select.menu";
 import { handleMethodSelect } from "./method-select.menu";
 import { handlePaymentSelect } from "./payment-select.menu";
 import { handleImprovedPricingServiceSelect } from "./improved-pricing-service-select.selectMenu";
+import { handleAccountShopSelect } from "./account-shop-select.selectMenu";
+
+// Account select menu handlers
+import {
+    handleAccountCategorySelect,
+    handleAccountSelect,
+    handleAccountPaymentSelect,
+} from "./account-select.menu";
+import { ACCOUNT_SELECT_IDS } from "../../utils/accountComponentBuilder";
 
 const selectMenuHandlers: {
     [key: string]: (interaction: SelectMenuInteraction) => Promise<void>;
@@ -15,6 +24,11 @@ const selectMenuHandlers: {
     service_select: handleServiceSelect,
     method_select: handleMethodSelect,
     payment_select: handlePaymentSelect,
+
+    // Account shop select menus
+    [ACCOUNT_SELECT_IDS.CATEGORY_SELECT]: handleAccountCategorySelect as any,
+    [ACCOUNT_SELECT_IDS.ACCOUNT_SELECT]: handleAccountSelect as any,
+    [ACCOUNT_SELECT_IDS.PAYMENT_SELECT]: handleAccountPaymentSelect as any,
 };
 
 export default Object.entries(selectMenuHandlers).map(
@@ -31,6 +45,12 @@ export async function handleSelectMenuInteraction(
 
     if (customId.startsWith("pricing_service_select_")) {
         await handleImprovedPricingServiceSelect(interaction as any);
+        return;
+    }
+
+    // Handle account shop select menus (account_shop_select_CATEGORY)
+    if (customId.startsWith("account_shop_select_")) {
+        await handleAccountShopSelect(interaction as StringSelectMenuInteraction);
         return;
     }
 

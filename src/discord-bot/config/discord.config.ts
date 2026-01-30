@@ -45,11 +45,12 @@ export const discordConfig = {
     ticketLogChannelId: process.env.DISCORD_TICKET_LOG_CHANNEL_ID || "", 
     closedTicketArchiveAfter: parseInt(process.env.CLOSED_TICKET_ARCHIVE_AFTER_HOURS || "72") * 60 * 60 * 1000, 
 
-    createTicketCategoryId: process.env.DISCORD_CREATE_TICKET_CATEGORY_ID || "", 
-    purchaseServicesChannelId: process.env.DISCORD_PURCHASE_SERVICES_CHANNEL_ID || "", 
-    purchaseGoldChannelId: process.env.DISCORD_PURCHASE_GOLD_CHANNEL_ID || "", 
-    sellGoldChannelId: process.env.DISCORD_SELL_GOLD_CHANNEL_ID || "", 
-    swapCryptoChannelId: process.env.DISCORD_SWAP_CRYPTO_CHANNEL_ID || "", 
+    createTicketCategoryId: process.env.DISCORD_CREATE_TICKET_CATEGORY_ID || "",
+    purchaseServicesChannelId: process.env.DISCORD_PURCHASE_SERVICES_CHANNEL_ID || "",
+    purchaseGoldChannelId: process.env.DISCORD_PURCHASE_GOLD_CHANNEL_ID || "",
+    sellGoldChannelId: process.env.DISCORD_SELL_GOLD_CHANNEL_ID || "",
+    swapCryptoChannelId: process.env.DISCORD_SWAP_CRYPTO_CHANNEL_ID || "",
+    accountShopChannelId: process.env.DISCORD_ACCOUNT_SHOP_CHANNEL_ID || "", 
 
     serviceDetailExpiry:
         parseInt(process.env.SERVICE_DETAIL_EXPIRY_MS || "300000") || 300000, 
@@ -59,7 +60,7 @@ export const discordConfig = {
     logLevel: process.env.LOG_LEVEL || "info",
 
     // Mention Reminder Settings
-    mentionChannelReminderDelayMinutes: parseInt(process.env.MENTION_CHANNEL_REMINDER_DELAY_MINUTES || "15") || 15,
+    mentionChannelReminderDelayMinutes: parseInt(process.env.MENTION_CHANNEL_REMINDER_DELAY_MINUTES || "10") || 10,
     mentionDmReminderDelayMinutes: parseInt(process.env.MENTION_DM_REMINDER_DELAY_MINUTES || "30") || 30,
     mentionCheckIntervalMinutes: parseInt(process.env.MENTION_CHECK_INTERVAL_MINUTES || "5") || 5,
     mentionTrackAllChannels: process.env.MENTION_TRACK_ALL_CHANNELS === "true",

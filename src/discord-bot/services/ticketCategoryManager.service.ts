@@ -5,6 +5,7 @@ import { buildPurchaseServicesMessage } from "../messages/purchaseServicesMessag
 import { buildPurchaseGoldMessage } from "../messages/purchaseGoldMessage";
 import { buildSellGoldMessage } from "../messages/sellGoldMessage";
 import { buildSwapCryptoMessage } from "../messages/swapCryptoMessage";
+import { buildAccountShopMessage } from "../messages/accountShopMessage";
 import { getMessagePersistence } from "./messagePersistence.service";
 
 export class TicketCategoryManager {
@@ -176,6 +177,7 @@ export class TicketCategoryManager {
             { name: "purchase-gold", key: "purchaseGoldChannelId" },
             { name: "sell-gold", key: "sellGoldChannelId" },
             { name: "swap-crypto", key: "swapCryptoChannelId" },
+            { name: "account-shop", key: "accountShopChannelId" },
         ];
 
         for (const config of channelConfigs) {
@@ -252,6 +254,11 @@ export class TicketCategoryManager {
             const swapCryptoChannel = this.channels.get("swapCryptoChannelId");
             if (swapCryptoChannel) {
                 await this.ensureAndSendMessage(swapCryptoChannel, await buildSwapCryptoMessage());
+            }
+
+            const accountShopChannel = this.channels.get("accountShopChannelId");
+            if (accountShopChannel) {
+                await this.ensureAndSendMessage(accountShopChannel, await buildAccountShopMessage());
             }
 
             logger.info("[TicketCategoryManager] Messages ensured in all channels");

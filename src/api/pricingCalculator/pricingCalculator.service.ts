@@ -128,9 +128,6 @@ export default class PricingCalculatorService {
         logger.info('[PricingCalculator] Service initialized with Redis caching');
     }
 
-    /**
-     * Generate cache key for pricing calculations
-     */
     private generatePricingCacheKey(
         methodId: string,
         paymentMethodId: string,
@@ -141,9 +138,6 @@ export default class PricingCalculatorService {
         return `pricing:calc:${methodId}:${paymentMethodId}:${quantity}:${modifiersKey}`;
     }
 
-    /**
-     * Generate cache key for level range calculations
-     */
     private generateLevelRangeCacheKey(
         serviceId: string,
         startLevel: number,
@@ -154,9 +148,6 @@ export default class PricingCalculatorService {
         return `pricing:range:${serviceId}:${startLevel}-${endLevel}:${groupKey}`;
     }
 
-    /**
-     * Invalidate all pricing cache for a service
-     */
     async invalidateServiceCache(serviceId: string): Promise<void> {
         try {
             // Note: Redis doesn't have a built-in way to delete by pattern in this implementation
@@ -530,10 +521,6 @@ export default class PricingCalculatorService {
         return service;
     }
 
-    /**
-     * Calculate price for a level range (e.g., Agility 70-99)
-     * Returns separate pricing options for each method, with cheapest marked
-     */
     async calculateLevelRangePrice(
         request: LevelRangeCalculationRequest
     ): Promise<LevelRangeCalculationResult> {
@@ -702,13 +689,6 @@ export default class PricingCalculatorService {
         return result;
     }
 
-    /**
-     * Generate ALL method options for comparison:
-     * 1. Optimal combination (cheapest mix of methods)
-     * 2. Each individual method that can cover the full range
-     * 3. Named method combinations (e.g., "GOTR Only", "Lava Runes Only")
-     * 4. Individual method segments (e.g., "GOTR 27-77", "Blood Runes 77-99")
-     */
     private generateAllMethodOptions(
         pricingMethods: any[],
         startLevel: number,
@@ -859,10 +839,6 @@ export default class PricingCalculatorService {
         return options;
     }
 
-    /**
-     * Group pricing methods by base name (e.g., "GOTR", "Lava Runes", "Blood Runes")
-     * Extracts common name patterns before level ranges
-     */
     private groupMethodsByName(pricingMethods: any[]): Record<string, any[]> {
         const groups: Record<string, any[]> = {};
 
@@ -874,7 +850,6 @@ export default class PricingCalculatorService {
                 .replace(/\s+$/g, '') // Trim trailing spaces
                 .trim();
 
-            // If empty after cleaning, use original name
             if (!baseName) {
                 baseName = method.name;
             }
@@ -888,9 +863,6 @@ export default class PricingCalculatorService {
         return groups;
     }
 
-    /**
-     * Build a combination using only methods from a specific group
-     */
     private findMethodGroupCombination(
         methods: any[],
         startLevel: number,
@@ -898,7 +870,6 @@ export default class PricingCalculatorService {
         serviceModifiers: any[],
         groupName: string
     ): MethodOption | null {
-        // Try to cover the range using only these methods
         const segments: Array<{
             startLevel: number;
             endLevel: number;
@@ -911,7 +882,6 @@ export default class PricingCalculatorService {
         let currentLevel = startLevel;
 
         while (currentLevel < endLevel) {
-            // Find method from this group that can cover currentLevel
             const availableMethods = methods.filter(m => {
                 const methodStart = m.startLevel || 1;
                 const methodEnd = m.endLevel || 99;
@@ -919,11 +889,9 @@ export default class PricingCalculatorService {
             });
 
             if (availableMethods.length === 0) {
-                // Can't cover this level with this group
                 return null;
             }
 
-            // Use the cheapest method for this segment
             let bestMethod = availableMethods[0];
             let bestPrice = bestMethod.basePrice;
 
@@ -934,7 +902,6 @@ export default class PricingCalculatorService {
                 }
             }
 
-            // Calculate segment
             const methodStart = bestMethod.startLevel || 1;
             const methodEnd = bestMethod.endLevel || 99;
             const segmentStart = currentLevel;
@@ -955,12 +922,10 @@ export default class PricingCalculatorService {
             currentLevel = segmentEnd;
         }
 
-        // Calculate total
         let totalBasePrice = segments.reduce((sum, seg) => sum + seg.totalPrice, 0);
         let totalModifiers = 0;
         const allModifiers: MethodOption["modifiers"] = [];
 
-        // Apply service-level modifiers
         for (const modifier of serviceModifiers) {
             const modifierValue = Number(modifier.value);
 
@@ -1012,9 +977,6 @@ export default class PricingCalculatorService {
         };
     }
 
-    /**
-     * Calculate pricing for a single method covering the full range
-     */
     private calculateSingleMethodOption(
         method: any,
         startLevel: number,
@@ -1024,11 +986,9 @@ export default class PricingCalculatorService {
         const xpRequired = getXpBetweenLevels(startLevel, endLevel);
         const basePrice = method.basePrice * xpRequired;
 
-        // Apply modifiers
         let totalModifiers = 0;
         const modifiersList: MethodOption["modifiers"] = [];
 
-        // Apply service-level modifiers
         for (const modifier of serviceModifiers) {
             const modifierValue = Number(modifier.value);
 
@@ -1107,10 +1067,6 @@ export default class PricingCalculatorService {
         };
     }
 
-    /**
-     * Calculate pricing for a single method segment (partial range)
-     * Used to show individual segment prices like "GOTR 27-77" or "Blood Runes 77-90"
-     */
     private calculateSingleMethodSegment(
         method: any,
         startLevel: number,
@@ -1206,17 +1162,12 @@ export default class PricingCalculatorService {
         };
     }
 
-    /**
-     * Find the optimal combination of pricing methods to cover the full level range
-     * Uses a greedy algorithm to select the cheapest method for each level segment
-     */
     private findOptimalMethodCombination(
         pricingMethods: any[],
         startLevel: number,
         endLevel: number,
         serviceModifiers: any[]
     ): MethodOption | null {
-        // Build segments: divide the range into segments covered by different methods
         const segments: Array<{
             startLevel: number;
             endLevel: number;

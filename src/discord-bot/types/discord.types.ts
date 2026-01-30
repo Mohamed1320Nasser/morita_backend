@@ -11,15 +11,17 @@ import { ChannelManagerService } from "../services/channelManager.service";
 import { ImprovedChannelManager } from "../services/improvedChannelManager.service";
 import { TicketCategoryManager } from "../services/ticketCategoryManager.service";
 import { TosManagerService } from "../services/tosManager.service";
+import { AccountChannelManager } from "../services/accountChannelManager.service";
 
 declare module "discord.js" {
     interface Client {
         commands: Collection<string, Command>;
         apiService: ApiService;
-        channelManager: ChannelManagerService; 
-        improvedChannelManager: ImprovedChannelManager; 
-        ticketCategoryManager: TicketCategoryManager; 
-        tosManager: TosManagerService; 
+        channelManager: ChannelManagerService;
+        improvedChannelManager: ImprovedChannelManager;
+        ticketCategoryManager: TicketCategoryManager;
+        tosManager: TosManagerService;
+        accountChannelManager: AccountChannelManager;
     }
 }
 
@@ -192,6 +194,7 @@ export enum TicketType {
     SELL_GOLD_OSRS = "SELL_GOLD_OSRS",
     SELL_GOLD_RS3 = "SELL_GOLD_RS3",
     SWAP_CRYPTO = "SWAP_CRYPTO",
+    PURCHASE_ACCOUNT = "PURCHASE_ACCOUNT",
     GENERAL = "GENERAL",
 }
 

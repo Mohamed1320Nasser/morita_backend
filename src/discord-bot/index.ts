@@ -142,11 +142,22 @@ client.once(Events.ClientReady, async readyClient => {
     try {
         const { TosManagerService } = await import("./services/tosManager.service");
         client.tosManager = new TosManagerService(client);
-        
+
         await client.tosManager.setupOnly();
         logger.info("TOS manager ready (manual publish mode - use API to publish)");
     } catch (error) {
         logger.error("Failed to setup TOS manager:", error);
+    }
+
+    // Setup account channel manager (account shop with category dropdowns)
+    try {
+        const { getAccountChannelManager } = await import("./services/accountChannelManager.service");
+        client.accountChannelManager = getAccountChannelManager(client);
+
+        await client.accountChannelManager.setupOnly();
+        logger.info("Account channel manager ready (use API or /admin-refresh-accounts to publish)");
+    } catch (error) {
+        logger.error("Failed to setup account channel manager:", error);
     }
 });
 

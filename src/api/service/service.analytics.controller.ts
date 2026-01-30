@@ -8,9 +8,6 @@ import { Decimal } from "@prisma/client/runtime/library";
 @JsonController("/api/admin/services/stats")
 @Service()
 export default class ServiceAnalyticsController {
-    /**
-     * Get overall service statistics summary
-     */
     @Get("/overview")
     @Authorized(API.Role.admin)
     async getOverview(@QueryParams() query: { startDate?: string; endDate?: string }) {
@@ -114,9 +111,6 @@ export default class ServiceAnalyticsController {
         }
     }
 
-    /**
-     * Get top performing services
-     */
     @Get("/top-services")
     @Authorized(API.Role.admin)
     async getTopServices(
@@ -274,9 +268,6 @@ export default class ServiceAnalyticsController {
         }
     }
 
-    /**
-     * Get detailed statistics for a specific service
-     */
     @Get("/service/:serviceId")
     @Authorized(API.Role.admin)
     async getServiceDetails(
@@ -456,9 +447,6 @@ export default class ServiceAnalyticsController {
         }
     }
 
-    /**
-     * Get revenue trend data for charts
-     */
     @Get("/revenue-trend")
     @Authorized(API.Role.admin)
     async getRevenueTrend(
@@ -617,9 +605,6 @@ export default class ServiceAnalyticsController {
         }
     }
 
-    /**
-     * Get category-level statistics
-     */
     @Get("/categories")
     @Authorized(API.Role.admin)
     async getCategoryStats(@QueryParams() query: { startDate?: string; endDate?: string }) {

@@ -64,9 +64,6 @@ export default class ServiceCategoryService {
         return category;
     }
 
-    /**
-     * Upsert ticket settings for a category
-     */
     async upsertTicketSettings(categoryId: string, settings: TicketSettingsInput) {
         try {
             const existing = await prisma.categoryTicketSettings.findUnique({
@@ -104,9 +101,6 @@ export default class ServiceCategoryService {
         }
     }
 
-    /**
-     * Get ticket settings for a category
-     */
     async getTicketSettings(categoryId: string) {
         const settings = await prisma.categoryTicketSettings.findUnique({
             where: { categoryId },
