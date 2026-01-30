@@ -344,7 +344,7 @@ export class EnhancedAccountBuilder {
             for (let i = 0; i < account.images.length && addedImages < maxImages; i++) {
                 const img = account.images[i];
                 // Try multiple paths to find the URL (API returns file.url after normalization)
-                const imageUrl = img?.file?.url || img?.url || img?.file?.title;
+                const imageUrl = img?.file?.url || img?.url || (img?.file as any)?.title;
 
                 logger.debug(`[EnhancedAccountBuilder] Image ${i}: ${JSON.stringify(img)}`);
 
