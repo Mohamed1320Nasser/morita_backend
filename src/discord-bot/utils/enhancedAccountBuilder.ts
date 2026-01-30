@@ -269,7 +269,7 @@ export class EnhancedAccountBuilder {
             this.CATEGORY_LABELS[account.category] || account.category;
 
         // Build stats line
-        const stats = account.stats || {};
+        const stats = (account.stats || {}) as any;
         const statsLine = [
             stats.combatLevel ? `⚔️ CB ${stats.combatLevel}` : null,
             stats.totalLevel ? `📊 Total ${stats.totalLevel}` : null,
