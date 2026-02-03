@@ -983,7 +983,7 @@ model DailyRewardConfig {
   isEnabled     Boolean  @default(true)    // Enable/disable feature
   currencyName  String   @default("coins") // e.g., "coins", "gold", "points"
   currencyEmoji String   @default("🪙")    // Emoji for display
-  gifUrl        String?  @db.Text @default("https://tenor.com/0Orl.gif")          // GIF URL for reward message
+  gifUrl        String?  @db.Text          // GIF URL for reward message (default handled in code)
   thumbnailUrl  String?  @db.Text          // Thumbnail for embed
   createdAt     DateTime @default(now()) @db.DateTime(0)
   updatedAt     DateTime @default(now()) @updatedAt @db.DateTime(0)
