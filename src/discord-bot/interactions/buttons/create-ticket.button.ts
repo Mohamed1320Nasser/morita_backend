@@ -52,14 +52,22 @@ async function buildModalForTicketTypeCached(ticketType: TicketType): Promise<Mo
     const cached = modalCache.get(ticketType);
 
     if (cached && (now - cached.timestamp) < CACHE_TTL) {
-        logger.info(`[CreateTicket] Using cached modal for ${ticketType}`);
-        
-        return cloneModal(cached.modal, ticketType);
+        // Validate cached modal has components
+        if (cached.modal.data.components && cached.modal.data.components.length > 0) {
+            logger.info(`[CreateTicket] Using cached modal for ${ticketType}`);
+            return cloneModal(cached.modal, ticketType);
+        } else {
+            logger.warn(`[CreateTicket] Cached modal for ${ticketType} has no components, rebuilding`);
+            modalCache.delete(ticketType);
+        }
     }
 
     const modal = await buildModalForTicketType(ticketType);
 
-    modalCache.set(ticketType, { modal, timestamp: now });
+    // Only cache if modal has valid components
+    if (modal.data.components && modal.data.components.length > 0) {
+        modalCache.set(ticketType, { modal, timestamp: now });
+    }
 
     return modal;
 }
@@ -82,25 +90,29 @@ async function buildModalForTicketType(ticketType: TicketType): Promise<ModalBui
         .setTitle(getModalTitle(ticketType));
 
     try {
-        
         const response: any = await discordApiClient.get(
             `/discord/ticket-type-settings/${ticketType}/custom-fields`
         );
 
         const customFieldsData = response?.data;
 
-        if (customFieldsData && customFieldsData.fields && customFieldsData.fields.length > 0) {
-            
+        if (customFieldsData && Array.isArray(customFieldsData.fields) && customFieldsData.fields.length > 0) {
             const fields = buildFieldsFromCustomDefinitions(customFieldsData.fields);
-            modal.addComponents(...fields.slice(0, 5)); 
+
+            // If custom fields returned empty rows, fallback to defaults
+            if (fields.length > 0) {
+                modal.addComponents(...fields.slice(0, 5));
+            } else {
+                logger.warn(`[CreateTicket] Custom fields returned empty for ${ticketType}, using defaults`);
+                const defaultFields = getModalFields(ticketType);
+                modal.addComponents(...defaultFields);
+            }
         } else {
-            
             const fields = getModalFields(ticketType);
             modal.addComponents(...fields);
         }
     } catch (error) {
         logger.warn(`[CreateTicket] Failed to fetch custom fields for ${ticketType}, using defaults:`, error);
-        
         const fields = getModalFields(ticketType);
         modal.addComponents(...fields);
     }
@@ -113,38 +125,51 @@ function buildFieldsFromCustomDefinitions(
 ): ActionRowBuilder<TextInputBuilder>[] {
     const rows: ActionRowBuilder<TextInputBuilder>[] = [];
 
-    for (let i = 0; i < Math.min(customFields.length, 5); i++) {
-        const field = customFields[i];
+    // Safety check for invalid array
+    if (!Array.isArray(customFields) || customFields.length === 0) {
+        logger.warn("[CreateTicket] Invalid or empty customFields array");
+        return rows;
+    }
 
-        const input = new TextInputBuilder()
-            .setCustomId(field.id)
-            .setLabel(field.label.slice(0, 45)) 
-            .setRequired(field.required);
+    const validFields = customFields.filter(field => field && field.id && field.label);
+    const fieldCount = Math.min(validFields.length, 5);
 
-        if (field.placeholder) {
-            input.setPlaceholder(field.placeholder.slice(0, 100));
-        }
+    for (let i = 0; i < fieldCount; i++) {
+        const field = validFields[i];
 
-        if (field.type === "textarea") {
-            input.setStyle(TextInputStyle.Paragraph);
-        } else {
-            input.setStyle(TextInputStyle.Short);
-        }
+        try {
+            const input = new TextInputBuilder()
+                .setCustomId(field.id)
+                .setLabel((field.label || "Field").slice(0, 45))
+                .setRequired(field.required ?? false);
 
-        if (field.maxLength) {
-            input.setMaxLength(Math.min(field.maxLength, 4000));
-        }
-
-        if (field.type === "number") {
-            if (field.min !== undefined) {
-                input.setMinLength(1); 
+            if (field.placeholder) {
+                input.setPlaceholder(field.placeholder.slice(0, 100));
             }
-            if (field.max !== undefined) {
-                input.setMaxLength(20); 
-            }
-        }
 
-        rows.push(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
+            if (field.type === "textarea") {
+                input.setStyle(TextInputStyle.Paragraph);
+            } else {
+                input.setStyle(TextInputStyle.Short);
+            }
+
+            if (field.maxLength && field.maxLength > 0) {
+                input.setMaxLength(Math.min(field.maxLength, 4000));
+            }
+
+            if (field.type === "number") {
+                if (field.min !== undefined) {
+                    input.setMinLength(1);
+                }
+                if (field.max !== undefined) {
+                    input.setMaxLength(20);
+                }
+            }
+
+            rows.push(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
+        } catch (fieldError) {
+            logger.error(`[CreateTicket] Error building field ${field.id}:`, fieldError);
+        }
     }
 
     return rows;

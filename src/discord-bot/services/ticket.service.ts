@@ -49,16 +49,18 @@ export interface WelcomeMessageSettings {
 export class TicketService {
     private client: Client;
     private apiClient: AxiosInstance;
+    private apiService: ApiService;
 
     constructor(client: Client) {
         this.client = client;
         this.apiClient = axios.create({
             baseURL: discordConfig.apiBaseUrl,
-            timeout: 5000, 
+            timeout: 5000,
             headers: {
                 "Content-Type": "application/json",
             },
         });
+        this.apiService = new ApiService(discordConfig.apiBaseUrl);
     }
 
     async createTicketChannel(
@@ -265,8 +267,13 @@ export class TicketService {
                 channel,
                 ticket: { ...ticket, channelId: channel.id },
             };
-        } catch (error) {
-            logger.error("[TicketService] Error creating ticket channel with type:", error);
+        } catch (error: any) {
+            logger.error("[TicketService] Error creating ticket channel with type:", {
+                message: error.message,
+                response: error.response?.data,
+                status: error.response?.status,
+                stack: error.stack?.split('\n').slice(0, 3).join('\n'),
+            });
             throw error;
         }
     }
@@ -345,6 +352,7 @@ export class TicketService {
             });
 
             // Create ticket in database with accountId
+            logger.info(`[TicketService] Creating ticket with accountId: ${accountId}, customerDiscordId: ${user.id}`);
             const ticketResponse = await this.apiClient.post(
                 "/api/discord/tickets",
                 {
@@ -361,6 +369,7 @@ export class TicketService {
 
             const responseData = ticketResponse.data.data || ticketResponse.data;
             const ticket = responseData.data || responseData;
+            logger.info(`[TicketService] Created ticket response - id: ${ticket.id}, accountId: ${ticket.accountId}, customerDiscordId: ${ticket.customerDiscordId}`);
 
             const ticketNumber = ticket.ticketNumber.toString().padStart(4, "0");
             const finalChannelName = `${username}-account-${ticketNumber}`;
@@ -370,8 +379,8 @@ export class TicketService {
                 `Account Purchase #${ticketNumber} | ${accountData.name} | Customer: ${user.tag}`
             );
 
-            // Send account purchase welcome message
-            await this.sendAccountPurchaseWelcome(channel, ticket, user, accountData, reservationSuccess);
+            // Send account purchase welcome message (pass accountId explicitly since ticket might not have it)
+            await this.sendAccountPurchaseWelcome(channel, { ...ticket, accountId }, user, accountData, reservationSuccess);
 
             logger.info(
                 `[TicketService] Created account purchase ticket #${ticketNumber} for ${user.tag} - Account: ${accountData.name}`
@@ -390,6 +399,7 @@ export class TicketService {
 
     /**
      * Send welcome message specifically for account purchase tickets
+     * Uses EnhancedAccountBuilder to show full account details (same format as account detail view)
      */
     private async sendAccountPurchaseWelcome(
         channel: TextChannel,
@@ -404,70 +414,187 @@ export class TicketService {
     ): Promise<void> {
         try {
             const ticketNumber = ticket.ticketNumber.toString().padStart(4, "0");
+            const accountId = ticket.accountId || "";
 
-            const reservationNote = reservationSuccess
-                ? "✅ **This account has been reserved for you for 30 minutes.**"
-                : "⚠️ **Note:** This account could not be reserved. It may become unavailable if purchased by another customer.";
+            // Fetch full account details using ApiService.getAccountById (works for RESERVED/SOLD accounts too)
+            let fullAccount: any = null;
+            if (accountId) {
+                try {
+                    fullAccount = await this.apiService.getAccountById(accountId);
+                    logger.info(`[TicketService] Fetched full account: ${fullAccount?.name || 'null'}, accountData keys: ${fullAccount?.accountData ? Object.keys(fullAccount.accountData).join(', ') : 'none'}`);
+                } catch (err) {
+                    logger.warn(`[TicketService] Could not fetch account details: ${err}`);
+                }
+            }
 
-            const embed = new EmbedBuilder()
-                .setTitle("🎮 Account Purchase Ticket")
-                .setDescription(
-                    `Welcome <@${user.id}>!\n\n` +
-                    `Thank you for your interest in purchasing this account.\n\n` +
-                    `${reservationNote}`
-                )
-                .setColor(0xc9a961 as ColorResolvable)
-                .addFields(
-                    {
-                        name: "📦 Account",
-                        value: accountData.name,
-                        inline: true,
-                    },
-                    {
-                        name: "📁 Category",
-                        value: accountData.category,
-                        inline: true,
-                    },
-                    {
-                        name: "💰 Price",
-                        value: `**$${accountData.price.toFixed(2)}**`,
-                        inline: true,
-                    },
-                    {
-                        name: "📋 Next Steps",
-                        value:
-                            "1️⃣ Choose your payment method using `!pm`\n" +
-                            "2️⃣ Send payment to the provided details\n" +
-                            "3️⃣ Click **Payment Sent** once complete\n" +
-                            "4️⃣ Receive your account credentials",
-                        inline: false,
+
+            // Build the account detail description using the same logic
+            const categoryEmojis: Record<string, string> = {
+                MAIN: "⚔️",
+                IRONS: "🔨",
+                HCIM: "💀",
+                ZERK: "🗡️",
+                PURE: "🏹",
+                ACCOUNTS: "📦",
+            };
+            const categoryLabels: Record<string, string> = {
+                MAIN: "Main Accounts",
+                IRONS: "Ironman",
+                HCIM: "Hardcore Ironman",
+                ZERK: "Zerker",
+                PURE: "Pure",
+                ACCOUNTS: "Other Accounts",
+            };
+            const categoryEmoji = categoryEmojis[accountData.category] || "🎮";
+            const categoryLabel = categoryLabels[accountData.category] || accountData.category;
+
+            // Build description - use fullAccount.accountData if available
+            let description = ``;
+
+            // Price banner (prominent)
+            description += `> 💰 **PRICE: $${accountData.price.toFixed(2)} USD**\n\n`;
+
+            // Category
+            description += `**${categoryEmoji} Category**\n`;
+            description += `> ${categoryLabel}\n\n`;
+
+            // Dynamically render ALL fields from accountData (same as EnhancedAccountBuilder)
+            if (fullAccount?.accountData) {
+                const allFields = Object.entries(fullAccount.accountData);
+
+                for (const [key, value] of allFields) {
+                    // Format key: camelCase to Title Case
+                    const formattedKey = key
+                        .replace(/([A-Z])/g, ' $1')
+                        .replace(/^./, str => str.toUpperCase())
+                        .trim();
+
+                    // Format value based on type
+                    if (Array.isArray(value) && value.length > 0) {
+                        description += `**🎯 ${formattedKey}**\n`;
+                        description += (value as any[]).map((item) => `✅ ${item}`).join("\n") + `\n\n`;
+                    } else if (typeof value === 'number') {
+                        description += `> **${formattedKey}:** ${value.toLocaleString()}\n`;
+                    } else if (typeof value === 'boolean') {
+                        description += `> **${formattedKey}:** ${value ? '✅ Yes' : '❌ No'}\n`;
+                    } else if (typeof value === 'string' && value.length > 0) {
+                        if (value.length > 50 || key.toLowerCase().includes('description') || key.toLowerCase().includes('note')) {
+                            description += `**📋 ${formattedKey}**\n`;
+                            description += `> ${value}\n\n`;
+                        } else {
+                            description += `> **${formattedKey}:** ${value}\n`;
+                        }
+                    } else if (typeof value === 'object' && value !== null) {
+                        description += `**📊 ${formattedKey}**\n`;
+                        for (const [subKey, subValue] of Object.entries(value)) {
+                            const formattedSubKey = subKey
+                                .replace(/([A-Z])/g, ' $1')
+                                .replace(/^./, str => str.toUpperCase())
+                                .trim();
+                            description += `> **${formattedSubKey}:** ${subValue}\n`;
+                        }
+                        description += `\n`;
                     }
-                )
+                }
+
+                if (!description.endsWith('\n\n')) {
+                    description += `\n`;
+                }
+            }
+
+            // Reservation status
+            if (reservationSuccess) {
+                description += `**⏰ Reservation**\n`;
+                description += `> ✅ Reserved for 30 minutes\n\n`;
+            }
+
+            // Next steps section
+            description += `**📋 Next Steps**\n`;
+            description += `> 1️⃣ Send payment to the address provided by staff\n`;
+            description += `> 2️⃣ Click **Payment Sent** when done\n`;
+            description += `> 3️⃣ Wait for staff to verify and deliver credentials\n`;
+
+            // Build main embed
+            const embed = new EmbedBuilder()
+                .setTitle(`${categoryEmoji}  ${accountData.name}`)
+                .setDescription(description)
+                .setColor(0xc9a961 as ColorResolvable)
                 .setTimestamp()
                 .setFooter({
-                    text: `Ticket #${ticketNumber} | MORITA Gaming`,
+                    text: `MORITA Gaming • Ticket #${ticketNumber}`,
                 });
 
-            // Action buttons for the customer
-            const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            // Build embeds array - main embed + image embeds in 2-column grid
+            const embeds: EmbedBuilder[] = [embed];
+            const dummyUrl = "https://morita.gg/account"; // Same URL groups embeds together
+
+            // Add images in 2-column grid layout
+            if (fullAccount?.images && fullAccount.images.length > 0) {
+                const maxImages = Math.min(fullAccount.images.length, 8);
+
+                for (let i = 0; i < maxImages; i++) {
+                    const img = fullAccount.images[i];
+                    const imageUrl = img?.file?.url || img?.url;
+
+                    if (imageUrl && !imageUrl.includes("localhost")) {
+                        const imageEmbed = new EmbedBuilder()
+                            .setColor(0xc9a961 as ColorResolvable)
+                            .setURL(dummyUrl) // Same URL makes embeds display in a row (2 per row)
+                            .setImage(imageUrl);
+                        embeds.push(imageEmbed);
+                    }
+                }
+
+                // Add footer to last embed with image count
+                if (embeds.length > 1) {
+                    embeds[embeds.length - 1].setFooter({
+                        text: `📸 ${fullAccount.images.length} image${fullAccount.images.length > 1 ? 's' : ''} • MORITA Gaming`,
+                    });
+                }
+            }
+
+            // Customer action buttons (Row 1) - include accountId in button IDs
+            const customerRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
                 new ButtonBuilder()
-                    .setCustomId(`account_payment_sent_${ticket.id}`)
-                    .setLabel("💳 Payment Sent")
+                    .setCustomId(`account_payment_sent_${ticket.id}_${accountId}`)
+                    .setLabel("Payment Sent")
+                    .setEmoji("💳")
                     .setStyle(ButtonStyle.Success),
                 new ButtonBuilder()
-                    .setCustomId(`account_cancel_order_${ticket.id}`)
-                    .setLabel("❌ Cancel Order")
+                    .setCustomId(`account_cancel_order_${ticket.id}_${accountId}`)
+                    .setLabel("Cancel Order")
+                    .setEmoji("❌")
                     .setStyle(ButtonStyle.Danger),
                 new ButtonBuilder()
-                    .setCustomId(`ticket_close_${ticket.id}`)
-                    .setLabel("🔒 Close Ticket")
+                    .setCustomId(`account_close_ticket_${ticket.id}_${accountId}`)
+                    .setLabel("Close Ticket")
+                    .setEmoji("🔒")
+                    .setStyle(ButtonStyle.Secondary)
+            );
+
+            // Staff action buttons (Row 2)
+            const staffRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`account_confirm_payment_${ticket.id}`)
+                    .setLabel("Confirm Payment")
+                    .setEmoji("✅")
+                    .setStyle(ButtonStyle.Success),
+                new ButtonBuilder()
+                    .setCustomId(`account_deliver_${ticket.id}_${accountId}`)
+                    .setLabel("Deliver Account")
+                    .setEmoji("📦")
+                    .setStyle(ButtonStyle.Primary),
+                new ButtonBuilder()
+                    .setCustomId(`account_release_${accountId}`)
+                    .setLabel("Release Account")
+                    .setEmoji("🔓")
                     .setStyle(ButtonStyle.Secondary)
             );
 
             await channel.send({
                 content: `<@${user.id}> <@&${discordConfig.supportRoleId}>`,
-                embeds: [embed.toJSON() as any],
-                components: [actionRow.toJSON() as any],
+                embeds: embeds.map(e => e.toJSON() as any),
+                components: [customerRow.toJSON() as any, staffRow.toJSON() as any],
             });
 
             logger.info(`[TicketService] Sent account purchase welcome to ticket #${ticketNumber}`);
@@ -633,6 +760,11 @@ export class TicketService {
             }
 
             const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`payment_all_${ticket.id}`)
+                    .setLabel("Payment Methods")
+                    .setEmoji("💳")
+                    .setStyle(ButtonStyle.Primary),
                 new ButtonBuilder()
                     .setCustomId(`ticket_close_${ticket.id}`)
                     .setLabel("Close Ticket")

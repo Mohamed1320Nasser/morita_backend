@@ -17,6 +17,7 @@ import { NotFoundError, BadRequestError } from "routing-controllers";
 import { Decimal } from "@prisma/client/runtime/library";
 import logger from "../../common/loggers";
 import WalletService from "../wallet/wallet.service";
+import OrderRewardService from "../orderReward/order-reward.service";
 import { withTransactionRetry, checkWalletBalanceWithLock, updateWalletBalance, deductFromWorkerWallet } from "../../common/utils/transaction.util";
 import { PAYOUT_STRUCTURE, FINANCIAL_LIMITS, isValidAmount } from "../../common/constants/security.constants";
 import { InsufficientBalanceError } from "../../common/utils/errorHandler.util";
@@ -24,7 +25,10 @@ import { OrderStatus as PrismaOrderStatus } from "@prisma/client";
 
 @Service()
 export default class OrderService {
-    constructor(private walletService: WalletService) {}
+    constructor(
+        private walletService: WalletService,
+        private orderRewardService: OrderRewardService
+    ) {}
 
     async createOrder(data: CreateOrderDto) {
         logger.info(`[OrderService] Creating order for customer ${data.customerId}`);
@@ -198,6 +202,7 @@ export default class OrderService {
                     workerId: data.workerId,
                     supportId: data.supportId,
                     ticketId: data.ticketId,
+                    ticketChannelId: data.discordChannelId, // Map discordChannelId to ticketChannelId in DB
                     serviceId: data.serviceId,
                     methodId: data.methodId,
                     paymentMethodId: data.paymentMethodId,
@@ -350,6 +355,7 @@ export default class OrderService {
             workerId: worker?.id,
             supportId: support.id,
             ticketId: data.ticketId,
+            discordChannelId: data.discordChannelId,
             serviceId: data.serviceId,
             methodId: data.methodId,
             paymentMethodId: data.paymentMethodId,
@@ -409,6 +415,49 @@ export default class OrderService {
                         createdAt: "desc",
                     },
                 },
+                // Include account data status (without encrypted data for security)
+                accountData: {
+                    select: {
+                        id: true,
+                        accountType: true,
+                        submittedAt: true,
+                        submittedBy: true,
+                        isClaimed: true,
+                        claimedAt: true,
+                        claimedBy: true,
+                        claimedByRole: true,
+                        // Note: encryptedData is NOT included for security
+                    },
+                },
+                // Include issues
+                issues: {
+                    select: {
+                        id: true,
+                        issueDescription: true,
+                        status: true,
+                        priority: true,
+                        resolution: true,
+                        createdAt: true,
+                        resolvedAt: true,
+                        reportedBy: {
+                            select: {
+                                id: true,
+                                fullname: true,
+                                discordId: true,
+                            },
+                        },
+                        resolvedBy: {
+                            select: {
+                                id: true,
+                                fullname: true,
+                                discordId: true,
+                            },
+                        },
+                    },
+                    orderBy: {
+                        createdAt: "desc",
+                    },
+                },
             },
         });
 
@@ -416,7 +465,33 @@ export default class OrderService {
             throw new NotFoundError("Order not found");
         }
 
-        return order;
+        // Format response with screenshots (merged into single field)
+        const screenshots = (order.proofScreenshots as string[] | null) || [];
+
+        return {
+            ...order,
+            // Single merged screenshots array
+            screenshots,
+            screenshotCount: screenshots.length,
+            // Keep proofScreenshots for backward compatibility
+            proofScreenshots: screenshots,
+            // Account data status summary with user names
+            accountDataStatus: order.accountData ? {
+                isSubmitted: true,
+                submittedAt: order.accountData.submittedAt,
+                submittedBy: order.accountData.submittedBy,
+                submittedByName: order.customer?.fullname || order.customer?.username || order.accountData.submittedBy,
+                isClaimed: order.accountData.isClaimed,
+                claimedAt: order.accountData.claimedAt,
+                claimedBy: order.accountData.claimedBy,
+                claimedByRole: order.accountData.claimedByRole,
+                claimedByName: order.accountData.claimedByRole === 'worker'
+                    ? (order.worker?.fullname || order.worker?.username || order.accountData.claimedBy)
+                    : (order.support?.fullname || order.support?.username || order.accountData.claimedBy),
+            } : {
+                isSubmitted: false,
+            },
+        };
     }
 
     async getOrderDebugInfo() {
@@ -828,6 +903,22 @@ export default class OrderService {
             throw new BadRequestError("Order must be IN_PROGRESS to complete");
         }
 
+        // Append completion screenshots to proofScreenshots (merged field)
+        if (data.completionScreenshots && data.completionScreenshots.length > 0) {
+            logger.info(`[OrderService] Appending ${data.completionScreenshots.length} completion screenshots to order ${data.orderId}`);
+
+            // Get existing proof screenshots
+            const existingProof = (order.proofScreenshots as string[] | null) || [];
+            const mergedScreenshots = [...existingProof, ...data.completionScreenshots];
+
+            await prisma.order.update({
+                where: { id: data.orderId },
+                data: {
+                    proofScreenshots: mergedScreenshots,
+                },
+            });
+        }
+
         return this.updateOrderStatus(data.orderId, {
             status: OrderStatus.AWAITING_CONFIRM,
             changedById: data.workerId,
@@ -872,6 +963,24 @@ export default class OrderService {
         });
 
         await this.processOrderPayouts(data.orderId);
+
+        // Process order reward for customer
+        try {
+            logger.info(`[OrderService] Processing order reward for order ${data.orderId}, customer ${order.customerId}, value ${order.orderValue}`);
+            const rewardResult = await this.orderRewardService.processOrderReward(
+                data.orderId,
+                order.customerId,
+                Number(order.orderValue)
+            );
+            if (rewardResult.success) {
+                logger.info(`[OrderService] Order reward processed: $${rewardResult.rewardAmount} for order ${data.orderId}${rewardResult.isFirstOrder ? ' (first order bonus)' : ''}`);
+            } else {
+                logger.info(`[OrderService] Order reward skipped for ${data.orderId}: ${rewardResult.error}`);
+            }
+        } catch (error) {
+            // Log error but don't fail the order completion
+            logger.error(`[OrderService] Failed to process order reward for ${data.orderId}:`, error);
+        }
 
         return this.getOrderById(data.orderId);
     }
@@ -1524,7 +1633,7 @@ export default class OrderService {
         });
     }
 
-    async completeOrderByDiscordId(orderId: string, data: { workerDiscordId: string; completionNotes?: string }) {
+    async completeOrderByDiscordId(orderId: string, data: { workerDiscordId: string; completionNotes?: string; completionScreenshots?: string[] }) {
         const worker = await prisma.user.findUnique({
             where: { discordId: data.workerDiscordId },
         });
@@ -1537,6 +1646,7 @@ export default class OrderService {
             orderId,
             workerId: worker.id,
             completionNotes: data.completionNotes,
+            completionScreenshots: data.completionScreenshots,
         });
     }
 
@@ -1785,5 +1895,90 @@ export default class OrderService {
             reason: data.reason || `Status changed to ${data.status}`,
             notes: data.notes,
         });
+    }
+
+    /**
+     * Add proof screenshots to an order (can be done anytime by worker)
+     */
+    async addProofScreenshots(
+        orderId: string,
+        data: {
+            workerDiscordId: string;
+            screenshots: string[];
+            notes?: string;
+        }
+    ) {
+        const order = await this.getOrderById(orderId);
+
+        // Verify worker
+        if (!order.worker || order.worker.discordId !== data.workerDiscordId) {
+            throw new BadRequestError("Only the assigned worker can add proof screenshots");
+        }
+
+        // Check order status - must be ASSIGNED or IN_PROGRESS
+        if (order.status !== OrderStatus.ASSIGNED && order.status !== OrderStatus.IN_PROGRESS) {
+            throw new BadRequestError(
+                `Cannot add proof screenshots. Order status must be ASSIGNED or IN_PROGRESS. Current: ${order.status}`
+            );
+        }
+
+        // Get existing proof screenshots
+        const existingProof = (order.proofScreenshots as string[] | null) || [];
+
+        // Append new screenshots
+        const updatedProof = [...existingProof, ...data.screenshots];
+
+        // Update order
+        const updatedOrder = await prisma.order.update({
+            where: { id: orderId },
+            data: {
+                proofScreenshots: updatedProof,
+            },
+            include: {
+                customer: { select: { id: true, discordId: true, fullname: true } },
+                worker: { select: { id: true, discordId: true, fullname: true } },
+            },
+        });
+
+        logger.info(
+            `[OrderService] Added ${data.screenshots.length} proof screenshots to order #${order.orderNumber}. Total: ${updatedProof.length}`
+        );
+
+        return {
+            success: true,
+            orderNumber: order.orderNumber,
+            totalProofScreenshots: updatedProof.length,
+            newScreenshots: data.screenshots.length,
+        };
+    }
+
+    /**
+     * Get proof screenshots for an order
+     */
+    async getProofScreenshots(orderId: string) {
+        const order = await prisma.order.findUnique({
+            where: { id: orderId },
+            select: {
+                id: true,
+                orderNumber: true,
+                proofScreenshots: true,
+                status: true,
+            },
+        });
+
+        if (!order) {
+            throw new NotFoundError("Order not found");
+        }
+
+        const screenshots = (order.proofScreenshots as string[] | null) || [];
+
+        return {
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            status: order.status,
+            screenshots,
+            proofScreenshots: screenshots, // backward compatibility
+            screenshotCount: screenshots.length,
+        };
     }
 }

@@ -65,6 +65,15 @@ export default {
         const prefix = discordConfig.prefix;
         const content = message.content.toLowerCase().trim();
 
+        // Handle !daily command - only in daily gift channel
+        if (content === "!daily") {
+            if (discordConfig.dailyGiftChannelId && message.channel.id !== discordConfig.dailyGiftChannelId) {
+                return; // Silently ignore if not in daily gift channel
+            }
+            await handleDailyRewardCommand(message);
+            return;
+        }
+
         // Wallet commands moved to slash commands /w and /t for ephemeral support
         // Users should use /w for balance and /t for transactions
 
@@ -2408,3 +2417,166 @@ function normalizeQuestName(name: string): string {
 
 // Wallet commands (!w, !t) have been moved to slash commands /w and /t
 // This allows ephemeral messages that only the user can see
+
+// =====================================
+// DAILY REWARD COMMAND
+// =====================================
+
+/**
+ * Handle !daily command - Claim daily reward
+ */
+async function handleDailyRewardCommand(message: Message) {
+    try {
+        const discordId = message.author.id;
+
+        // First, get the config to check if enabled and get display settings
+        let config: any;
+        try {
+            const configResponse = await discordApiClient.get("/daily-reward/public-config");
+            config = configResponse.data?.data || configResponse.data;
+        } catch (err) {
+            logger.error("[DailyReward] Failed to fetch config:", err);
+            await message.reply({
+                content: "❌ Daily rewards are not available at the moment. Please try again later.",
+            });
+            return;
+        }
+
+        if (!config.isEnabled) {
+            await message.reply({
+                content: "❌ Daily rewards are currently disabled.",
+            });
+            return;
+        }
+
+        // Check claim status first
+        let status: any;
+        try {
+            const statusResponse = await discordApiClient.get(`/daily-reward/status/${discordId}`);
+            status = statusResponse.data?.data || statusResponse.data;
+        } catch (err) {
+            logger.error("[DailyReward] Failed to fetch status:", err);
+        }
+
+        // If can't claim, show cooldown message
+        if (status && !status.canClaim && status.remainingSeconds) {
+            const hours = Math.floor(status.remainingSeconds / 3600);
+            const minutes = Math.floor((status.remainingSeconds % 3600) / 60);
+            const seconds = status.remainingSeconds % 60;
+
+            let timeString = "";
+            if (hours > 0) timeString += `${hours}h `;
+            if (minutes > 0) timeString += `${minutes}m `;
+            timeString += `${seconds}s`;
+
+            const cooldownEmbed = new EmbedBuilder()
+                .setTitle("⏰ Not Yet!")
+                .setDescription(`It's not been ${config.cooldownHours} hours yet!\n\nTime remaining: **${timeString.trim()}**`)
+                .setColor(0xffa500)
+                .setTimestamp()
+                .setFooter({ text: "MORITA Gaming" });
+
+            await message.reply({
+                embeds: [cooldownEmbed.toJSON() as any],
+            });
+            return;
+        }
+
+        // Attempt to claim
+        let claimResult: any;
+        try {
+            const claimResponse = await discordApiClient.post("/daily-reward/claim", {
+                discordId,
+            });
+            claimResult = claimResponse.data?.data || claimResponse.data;
+        } catch (err: any) {
+            logger.error("[DailyReward] Failed to claim:", err);
+
+            // Check if it's a "not found" error (user not registered)
+            if (err.response?.status === 404 || err.message?.includes("not found")) {
+                await message.reply({
+                    content: "❌ You need to complete onboarding first before claiming daily rewards!",
+                });
+            } else {
+                await message.reply({
+                    content: "❌ Failed to claim daily reward. Please try again later.",
+                });
+            }
+            return;
+        }
+
+        if (!claimResult.success) {
+            // Handle error (already claimed, etc.)
+            if (claimResult.error?.includes("already claimed") || claimResult.nextClaimAt) {
+                const nextClaim = claimResult.nextClaimAt ? new Date(claimResult.nextClaimAt) : null;
+                const timeLeft = nextClaim ? Math.ceil((nextClaim.getTime() - Date.now()) / 1000) : 0;
+
+                const hours = Math.floor(timeLeft / 3600);
+                const minutes = Math.floor((timeLeft % 3600) / 60);
+                const seconds = timeLeft % 60;
+
+                let timeString = "";
+                if (hours > 0) timeString += `${hours}h `;
+                if (minutes > 0) timeString += `${minutes}m `;
+                timeString += `${seconds}s`;
+
+                const cooldownEmbed = new EmbedBuilder()
+                    .setTitle("⏰ Not Yet!")
+                    .setDescription(`It's not been ${config.cooldownHours} hours yet!\n\nTime remaining: **${timeString.trim()}**`)
+                    .setColor(0xffa500)
+                    .setTimestamp()
+                    .setFooter({ text: "MORITA Gaming" });
+
+                await message.reply({
+                    embeds: [cooldownEmbed.toJSON() as any],
+                });
+            } else {
+                await message.reply({
+                    content: `❌ ${claimResult.error || "Failed to claim daily reward."}`,
+                });
+            }
+            return;
+        }
+
+        // Success! Build the reward embed
+        const amount = claimResult.amount || 0;
+        const currencyName = config.currencyName || "$";
+
+        const successEmbed = new EmbedBuilder()
+            .setTitle(`🎁 Daily Reward Claimed!`)
+            .setDescription(`Use it on your next order!`)
+            .setColor(0x2ecc71)
+            .addFields({
+                name: "Reward",
+                value: `\`\`\`${currencyName}${amount.toLocaleString()}\`\`\``,
+                inline: true,
+            })
+            .setTimestamp()
+            .setFooter({ text: "MORITA Gaming • Come back in 24 hours!" });
+
+        // Add thumbnail if configured
+        if (config.thumbnailUrl) {
+            successEmbed.setThumbnail(config.thumbnailUrl);
+        }
+
+        // Add GIF image directly to the main embed
+        if (config.gifUrl) {
+            successEmbed.setImage(config.gifUrl);
+        }
+
+        // Build message options
+        const messageOptions: any = {
+            content: `<@${message.author.id}>`,
+            embeds: [successEmbed.toJSON() as any],
+        };
+
+        await message.reply(messageOptions);
+
+        logger.info(`[DailyReward] User ${message.author.tag} claimed ${currencyName}${amount}`);
+    } catch (error) {
+        logger.error("[DailyReward] Error handling daily command:", error);
+        await message.reply({
+            content: "❌ An error occurred while processing your daily reward. Please try again later.",
+        });
+    }
+}

@@ -50,7 +50,9 @@ export const discordConfig = {
     purchaseGoldChannelId: process.env.DISCORD_PURCHASE_GOLD_CHANNEL_ID || "",
     sellGoldChannelId: process.env.DISCORD_SELL_GOLD_CHANNEL_ID || "",
     swapCryptoChannelId: process.env.DISCORD_SWAP_CRYPTO_CHANNEL_ID || "",
-    accountShopChannelId: process.env.DISCORD_ACCOUNT_SHOP_CHANNEL_ID || "", 
+    accountShopChannelId: process.env.DISCORD_ACCOUNT_SHOP_CHANNEL_ID || "",
+    dailyGiftChannelId: process.env.DISCORD_DAILY_GIFT_CHANNEL_ID || "",
+    paymentsChannelId: process.env.DISCORD_PAYMENTS_CHANNEL_ID || "",
 
     serviceDetailExpiry:
         parseInt(process.env.SERVICE_DETAIL_EXPIRY_MS || "300000") || 300000, 

@@ -297,30 +297,39 @@ export class AccountComponentBuilder {
     }
 
     /**
-     * Create ticket action buttons (staff view)
+     * Create ticket action buttons (staff view) - 2 rows with 2 buttons each
      */
     static createTicketStaffButtons(
         ticketId: string,
         accountId: string
-    ): ActionRowBuilder<ButtonBuilder> {
-        return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    ): ActionRowBuilder<ButtonBuilder>[] {
+        const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
                 .setCustomId(`account_confirm_payment_${ticketId}`)
-                .setLabel("✅ Confirm Payment")
+                .setLabel("Confirm Payment")
+                .setEmoji("✅")
                 .setStyle(ButtonStyle.Success),
             new ButtonBuilder()
                 .setCustomId(`account_deliver_${ticketId}_${accountId}`)
-                .setLabel("📦 Deliver Account")
-                .setStyle(ButtonStyle.Primary),
+                .setLabel("Deliver Account")
+                .setEmoji("📦")
+                .setStyle(ButtonStyle.Primary)
+        );
+
+        const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
                 .setCustomId(`account_release_${accountId}`)
-                .setLabel("🔓 Release Account")
+                .setLabel("Release Account")
+                .setEmoji("🔓")
                 .setStyle(ButtonStyle.Secondary),
             new ButtonBuilder()
                 .setCustomId(`${ACCOUNT_BUTTON_IDS.CANCEL_ORDER}${ticketId}`)
-                .setLabel("❌ Cancel & Refund")
+                .setLabel("Cancel & Refund")
+                .setEmoji("❌")
                 .setStyle(ButtonStyle.Danger)
         );
+
+        return [row1, row2];
     }
 
     /**
@@ -344,13 +353,14 @@ export class AccountComponentBuilder {
 
     /**
      * Create account delivery credentials modal
+     * Modal ID format: account_delivery_modal_TICKETID_ACCOUNTID
      */
     static createDeliveryCredentialsModal(
         ticketId: string,
-        accountName: string
+        accountId: string
     ): ModalBuilder {
         const modal = new ModalBuilder()
-            .setCustomId(`${ACCOUNT_MODAL_IDS.DELIVERY_CREDENTIALS}_${ticketId}`)
+            .setCustomId(`${ACCOUNT_MODAL_IDS.DELIVERY_CREDENTIALS}_${ticketId}_${accountId}`)
             .setTitle("Deliver Account Credentials");
 
         const emailInput = new TextInputBuilder()
@@ -436,6 +446,107 @@ export class AccountComponentBuilder {
                 .setLabel("No, Keep Order")
                 .setStyle(ButtonStyle.Secondary)
         );
+    }
+
+    /**
+     * Create disabled customer buttons (after payment sent)
+     */
+    static createTicketCustomerButtonsDisabled(
+        ticketId: string
+    ): ActionRowBuilder<ButtonBuilder> {
+        return new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`${ACCOUNT_BUTTON_IDS.PAYMENT_SENT}${ticketId}_disabled`)
+                .setLabel("✅ Payment Sent")
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(true),
+            new ButtonBuilder()
+                .setCustomId(`${ACCOUNT_BUTTON_IDS.CANCEL_ORDER}${ticketId}`)
+                .setLabel("❌ Cancel Order")
+                .setStyle(ButtonStyle.Danger),
+            new ButtonBuilder()
+                .setCustomId(`${ACCOUNT_BUTTON_IDS.CLOSE_TICKET}${ticketId}`)
+                .setLabel("🔒 Close Ticket")
+                .setStyle(ButtonStyle.Secondary)
+        );
+    }
+
+    /**
+     * Create staff buttons after payment confirmed (Confirm disabled, Deliver enabled)
+     */
+    static createTicketStaffButtonsAfterConfirm(
+        ticketId: string,
+        accountId: string
+    ): ActionRowBuilder<ButtonBuilder>[] {
+        const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`account_confirm_payment_${ticketId}_disabled`)
+                .setLabel("Payment Confirmed")
+                .setEmoji("✅")
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(true),
+            new ButtonBuilder()
+                .setCustomId(`account_deliver_${ticketId}_${accountId}`)
+                .setLabel("Deliver Account")
+                .setEmoji("📦")
+                .setStyle(ButtonStyle.Success)
+        );
+
+        const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`account_release_${accountId}`)
+                .setLabel("Release Account")
+                .setEmoji("🔓")
+                .setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder()
+                .setCustomId(`${ACCOUNT_BUTTON_IDS.CANCEL_ORDER}${ticketId}`)
+                .setLabel("Cancel & Refund")
+                .setEmoji("❌")
+                .setStyle(ButtonStyle.Danger)
+        );
+
+        return [row1, row2];
+    }
+
+    /**
+     * Create staff buttons after delivery (all disabled except close ticket)
+     * Used after account credentials have been delivered
+     */
+    static createTicketStaffButtonsAfterDelivery(
+        ticketId: string,
+        accountId: string
+    ): ActionRowBuilder<ButtonBuilder>[] {
+        const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`account_confirm_payment_${ticketId}_disabled`)
+                .setLabel("Payment Confirmed")
+                .setEmoji("✅")
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(true),
+            new ButtonBuilder()
+                .setCustomId(`account_deliver_${ticketId}_${accountId}_disabled`)
+                .setLabel("Delivered")
+                .setEmoji("📦")
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(true)
+        );
+
+        const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`account_release_${accountId}_disabled`)
+                .setLabel("Release Account")
+                .setEmoji("🔓")
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(true),
+            new ButtonBuilder()
+                .setCustomId(`${ACCOUNT_BUTTON_IDS.CANCEL_ORDER}${ticketId}_disabled`)
+                .setLabel("Cancel & Refund")
+                .setEmoji("❌")
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(true)
+        );
+
+        return [row1, row2];
     }
 
     // ==================== Helper Methods ====================

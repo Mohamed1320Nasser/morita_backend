@@ -70,4 +70,14 @@ export default class DiscordChannelsService {
             throw new Error(error.response?.data?.error || "Failed to publish accounts channel");
         }
     }
+
+    async publishPaymentsChannel(userId?: number, clearAllMessages: boolean = false): Promise<any> {
+        try {
+            const response = await axios.post(`${BOT_API_URL}/discord/channels/publish/payments`, { userId, clearAllMessages });
+            return response.data;
+        } catch (error: any) {
+            logger.error("[DiscordChannelsService] Error publishing payments channel:", error.message);
+            throw new Error(error.response?.data?.error || "Failed to publish payments channel");
+        }
+    }
 }

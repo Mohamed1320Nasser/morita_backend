@@ -70,6 +70,9 @@ model User {
   resolvedIssues            OrderIssue[]         @relation("resolvedIssues")
   reservedAccounts          Account[]            @relation("accountReservedBy")
   purchasedAccounts         Account[]            @relation("accountSoldTo")
+  soldAccounts              Account[]            @relation("accountSoldBy")
+  dailyRewardClaims         DailyRewardClaim[]   @relation("userDailyRewardClaims")
+  orderRewardClaims         OrderRewardClaim[]   @relation("userOrderRewardClaims")
 
   @@index([email])
   @@index([role])
@@ -382,6 +385,7 @@ model Account {
 
   // Sale tracking
   soldToId          Int?            @db.UnsignedInt
+  soldById          Int?            @db.UnsignedInt  // Support staff who delivered the account
   soldAt            DateTime?       @db.DateTime(0)
 
   createdAt         DateTime        @default(now()) @db.DateTime(0)
@@ -390,6 +394,7 @@ model Account {
   images     AccountImage[]
   reservedBy User?          @relation("accountReservedBy", fields: [reservedById], references: [id])
   soldTo     User?          @relation("accountSoldTo", fields: [soldToId], references: [id])
+  soldBy     User?          @relation("accountSoldBy", fields: [soldById], references: [id])
   tickets    Ticket[]       @relation("ticketAccount")
   orders     Order[]        @relation("accountOrders")
 
@@ -397,6 +402,7 @@ model Account {
   @@index([status])
   @@index([reservedById])
   @@index([soldToId])
+  @@index([soldById])
 }
 
 model AccountImage {
@@ -439,6 +445,7 @@ model Order {
   status             OrderStatus @default(PENDING)
   jobDetails         Json?
   completionNotes    String?     @db.Text
+  proofScreenshots   Json?       // All screenshots uploaded by worker (via /add-proof and completion)
   cancellationReason String?     @db.Text
   rating             Int?
   review             String?     @db.Text
@@ -465,6 +472,8 @@ model Order {
   walletTransactions WalletTransaction[]  @relation("orderWalletTransactions")
   statusHistory      OrderStatusHistory[]
   issues             OrderIssue[]
+  orderRewardClaim   OrderRewardClaim?    @relation("orderRewardClaim")
+  accountData        OrderAccountData?
 
   @@index([customerId])
   @@index([workerId])
@@ -567,6 +576,13 @@ enum WalletTransactionType {
   ADJUSTMENT
   RELEASE
   WORKER_DEPOSIT
+  DAILY_REWARD
+  ORDER_REWARD
+}
+
+enum OrderRewardType {
+  FIXED
+  PERCENTAGE
 }
 
 enum WalletTransactionStatus {
@@ -906,6 +922,8 @@ enum DiscordChannelType {
   PRICING // Services/Pricing channel
   TOS // Terms of Service channel
   TICKETS // Ticket creation channels (4 channels)
+  ACCOUNTS // Account shop channel
+  PAYMENTS // Payment methods channel
 }
 
 model DiscordChannelPublishStatus {
@@ -950,4 +968,203 @@ model MentionTracker {
   @@index([hasResponded])
   @@index([isActive, hasResponded, channelReminderSent])
   @@index([isActive, hasResponded, dmReminderSent])
+}
+
+// ============================================
+// DAILY REWARD SYSTEM
+// ============================================
+
+// Daily Reward Configuration (Admin-managed)
+model DailyRewardConfig {
+  id            String   @id @default("default-config")
+  minAmount     Int      @default(100)     // Minimum reward amount
+  maxAmount     Int      @default(10000)   // Maximum reward amount
+  cooldownHours Int      @default(24)      // Hours between claims
+  isEnabled     Boolean  @default(true)    // Enable/disable feature
+  currencyName  String   @default("coins") // e.g., "coins", "gold", "points"
+  currencyEmoji String   @default("🪙")    // Emoji for display
+  gifUrl        String?  @db.Text @default("https://tenor.com/0Orl.gif")          // GIF URL for reward message
+  thumbnailUrl  String?  @db.Text          // Thumbnail for embed
+  createdAt     DateTime @default(now()) @db.DateTime(0)
+  updatedAt     DateTime @default(now()) @updatedAt @db.DateTime(0)
+}
+
+// Daily Reward Claims (Track each claim)
+model DailyRewardClaim {
+  id        String   @id @default(uuid())
+  userId    Int      @db.UnsignedInt
+  amount    Int                          // Amount received
+  claimedAt DateTime @default(now()) @db.DateTime(0)
+
+  user User @relation("userDailyRewardClaims", fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([claimedAt])
+  @@index([userId, claimedAt])
+}
+
+// Order Reward Configuration (Admin configurable)
+model OrderRewardConfig {
+  id               String          @id @default("default-config")
+  isEnabled        Boolean         @default(false)
+  rewardType       OrderRewardType @default(PERCENTAGE)
+  fixedAmount      Decimal         @default(5) @db.Decimal(18, 2)      // Fixed reward amount
+  percentage       Decimal         @default(2) @db.Decimal(5, 2)       // Percentage of order value
+  minReward        Decimal         @default(1) @db.Decimal(18, 2)      // Min reward (for percentage)
+  maxReward        Decimal         @default(50) @db.Decimal(18, 2)     // Max reward cap
+  minOrderAmount   Decimal         @default(20) @db.Decimal(18, 2)     // Min order to qualify
+  firstOrderBonus  Decimal         @default(0) @db.Decimal(18, 2)      // Bonus for first order
+  notifyDiscord    Boolean         @default(true)                       // Send Discord notification
+  currencyName     String          @default("$")
+  createdAt        DateTime        @default(now()) @db.DateTime(0)
+  updatedAt        DateTime        @default(now()) @updatedAt @db.DateTime(0)
+}
+
+// Order Reward Claims (Track each order reward)
+model OrderRewardClaim {
+  id          String   @id @default(uuid())
+  orderId     String   @unique
+  userId      Int      @db.UnsignedInt
+  orderAmount Decimal  @db.Decimal(18, 2)  // Original order value
+  rewardAmount Decimal @db.Decimal(18, 2)  // Reward given
+  isFirstOrder Boolean @default(false)      // Was this their first order
+  claimedAt   DateTime @default(now()) @db.DateTime(0)
+
+  user  User  @relation("userOrderRewardClaims", fields: [userId], references: [id])
+  order Order @relation("orderRewardClaim", fields: [orderId], references: [id])
+
+  @@index([userId])
+  @@index([orderId])
+  @@index([claimedAt])
+}
+
+// Crypto Wallet addresses for receiving payments
+model CryptoWallet {
+  id               String   @id @default(uuid())
+  name             String                          // "Main LTC Wallet", "BTC Payments"
+  currency         String                          // LTC, BTC, ETH, USDT
+  network          String                          // litecoin, bitcoin, ethereum, tron
+  address          String                          // The wallet address
+  upchargePercent  Float    @default(0)            // Upcharge percentage (e.g., 5 = 5%)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now()) @db.DateTime(0)
+  updatedAt        DateTime @default(now()) @updatedAt @db.DateTime(0)
+
+  @@index([currency])
+  @@index([isActive])
+}
+
+// ============================================
+// MANUAL PAYMENT METHODS SYSTEM
+// ============================================
+
+enum ManualPaymentType {
+  PAYPAL
+  ZELLE
+  WISE
+  REVOLUT
+  E_TRANSFER
+  CASHAPP
+  VENMO
+  OTHER
+}
+
+// Manual Payment Options (PayPal, Zelle, Wise, etc.)
+model ManualPaymentOption {
+  id              String            @id @default(uuid())
+  name            String                              // Display name: "PayPal", "Zelle"
+  type            ManualPaymentType                   // Type enum
+  icon            String?           @default("💳")   // Emoji icon
+
+  // Dynamic details stored as JSON
+  // PayPal: { email, paypalMe }
+  // Zelle: { email, phone, bankName }
+  // Wise: { email, accountHolder }
+  // Revolut: { username, phone }
+  // E-Transfer: { email, securityQuestion, securityAnswer }
+  // CashApp: { cashtag }
+  // Venmo: { username }
+  // Other: { customLabel, customValue }
+  details         Json
+
+  // Instructions shown to customer
+  instructions    String?           @db.Text
+
+  upchargePercent Float             @default(0)      // Upcharge percentage (e.g., 5 = 5%)
+  isActive        Boolean           @default(true)
+  sortOrder       Int               @default(0)
+
+  createdAt       DateTime          @default(now()) @db.DateTime(0)
+  updatedAt       DateTime          @default(now()) @updatedAt @db.DateTime(0)
+
+  @@index([type])
+  @@index([isActive])
+  @@index([sortOrder])
+}
+
+// Discord Payment Message Configuration
+model PaymentDiscordConfig {
+  id                  String   @id @default("default")
+
+  // Embed content
+  title               String   @default("💳 Payment Methods")
+  description         String?  @db.Text
+  color               String   @default("5865F2")  // Hex without #
+  bannerUrl           String?  @db.Text            // Large image at bottom (like TOS)
+  thumbnailUrl        String?  @db.Text            // Small image on right
+
+  // Button configurations
+  cryptoButtonLabel   String   @default("🔗 Cryptocurrency")
+  cryptoButtonStyle   String   @default("PRIMARY")  // PRIMARY, SECONDARY, SUCCESS, DANGER
+  paymentButtonLabel  String   @default("💵 Other Payments")
+  paymentButtonStyle  String   @default("SECONDARY")
+
+  footerText          String?  @db.Text
+
+  updatedAt           DateTime @default(now()) @updatedAt @db.DateTime(0)
+}
+
+// Account Data Collection for Orders
+model AccountTypeTemplate {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  slug      String   @unique
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now()) @db.DateTime(0)
+  updatedAt DateTime @default(now()) @updatedAt @db.DateTime(0)
+
+  questions AccountQuestion[]
+}
+
+model AccountQuestion {
+  id          String  @id @default(uuid())
+  templateId  String
+  fieldName   String
+  label       String
+  placeholder String?
+  isRequired  Boolean @default(true)
+  sortOrder   Int     @default(0)
+
+  template AccountTypeTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+}
+
+model OrderAccountData {
+  id            String   @id @default(uuid())
+  orderId       String   @unique
+  accountType   String
+  encryptedData String   @db.Text
+  submittedAt   DateTime @default(now()) @db.DateTime(0)
+  submittedBy   String
+
+  isClaimed     Boolean   @default(false)
+  claimedAt     DateTime? @db.DateTime(0)
+  claimedBy     String?
+  claimedByRole String?
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
 }

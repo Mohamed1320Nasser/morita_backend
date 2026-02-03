@@ -360,7 +360,8 @@ export class ApiService {
     }
 
     /**
-     * Get single account details
+     * Get single account details (only IN_STOCK accounts)
+     * Used for browsing available accounts
      */
     async getAccountDetail(accountId: string): Promise<any> {
         try {
@@ -369,6 +370,20 @@ export class ApiService {
             return response.data?.data || null;
         } catch (error) {
             logger.error("Error fetching account detail:", error);
+            return null;
+        }
+    }
+
+    /**
+     * Get account details by ID regardless of status
+     * Used for ticket display where account may be RESERVED or SOLD
+     */
+    async getAccountById(accountId: string): Promise<any> {
+        try {
+            const response = await this.client.get(`/accounts/detail/${accountId}`);
+            return response.data?.data || null;
+        } catch (error) {
+            logger.error("Error fetching account by ID:", error);
             return null;
         }
     }
@@ -405,11 +420,11 @@ export class ApiService {
     /**
      * Complete account sale
      */
-    async completeAccountSale(accountId: string, userId: number, orderId?: string): Promise<any> {
+    async completeAccountSale(accountId: string, userId: number, orderId?: string, supportDiscordId?: string): Promise<any> {
         try {
             const response = await this.client.post(
                 `/accounts/complete-sale/${accountId}`,
-                { userId, orderId }
+                { userId, orderId, supportDiscordId }
             );
             return response.data?.data || response.data;
         } catch (error) {
@@ -443,6 +458,38 @@ export class ApiService {
         } catch (error) {
             logger.error("Error fetching ticket:", error);
             return null;
+        }
+    }
+
+    /**
+     * Update ticket status
+     */
+    async updateTicketStatus(ticketId: string, status: string, reason?: string): Promise<any> {
+        try {
+            const response = await this.client.patch(
+                `/api/discord/tickets/${ticketId}/status`,
+                { status, reason }
+            );
+            return response.data?.data || response.data;
+        } catch (error) {
+            logger.error("Error updating ticket status:", error);
+            return { success: false, error: "Failed to update ticket status" };
+        }
+    }
+
+    /**
+     * Mark ticket as delivered (for account purchases)
+     */
+    async markTicketDelivered(ticketId: string): Promise<any> {
+        try {
+            const response = await this.client.patch(
+                `/api/discord/tickets/${ticketId}/status`,
+                { status: "DELIVERED", accountDelivered: true }
+            );
+            return response.data?.data || response.data;
+        } catch (error) {
+            logger.error("Error marking ticket as delivered:", error);
+            return { success: false, error: "Failed to mark ticket as delivered" };
         }
     }
 }

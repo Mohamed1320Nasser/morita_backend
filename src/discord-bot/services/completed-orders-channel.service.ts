@@ -94,14 +94,55 @@ export class CompletedOrdersChannelService {
                 return;
             }
 
-            const embed = this.formatCompletedOrderEmbed(order, worker, customer, orderChannel);
+            // Get all screenshots (now merged into proofScreenshots field)
+            const allScreenshots = (order.proofScreenshots as string[] | null) || [];
 
-            await channel.send({
-                embeds: [embed.toJSON() as any],
-            });
+            logger.info(`[CompletedOrders] Order #${order.orderNumber} - ${allScreenshots.length} screenshots`);
+
+            const groupUrl = `https://morita.gg/order/${order.orderNumber}`;
+
+            // Build all embeds to send in ONE message
+            const allEmbeds: EmbedBuilder[] = [];
+
+            // Main info embed with URL for grouping
+            const mainEmbed = this.formatCompletedOrderEmbed(order, worker, customer, orderChannel);
+            mainEmbed.setURL(groupUrl);
+            allEmbeds.push(mainEmbed);
+
+            // Add screenshot embeds with same URL for grid layout
+            if (allScreenshots.length > 0) {
+                for (let i = 0; i < allScreenshots.length; i++) {
+                    const screenshotEmbed = new EmbedBuilder()
+                        .setURL(groupUrl)
+                        .setImage(allScreenshots[i])
+                        .setColor(0x57f287 as ColorResolvable);
+                    allEmbeds.push(screenshotEmbed);
+                }
+            }
+
+            // Send ALL embeds in ONE message (Discord limit is 10 embeds per message)
+            // If more than 10, we need to split but keep first batch with main embed
+            if (allEmbeds.length <= 10) {
+                await channel.send({
+                    embeds: allEmbeds.map(e => e.toJSON() as any),
+                });
+            } else {
+                // Send first 10 embeds (main + first 9 screenshots)
+                await channel.send({
+                    embeds: allEmbeds.slice(0, 10).map(e => e.toJSON() as any),
+                });
+                // Send remaining screenshots
+                const remaining = allEmbeds.slice(10);
+                for (let i = 0; i < remaining.length; i += 10) {
+                    const batch = remaining.slice(i, i + 10);
+                    await channel.send({
+                        embeds: batch.map(e => e.toJSON() as any),
+                    });
+                }
+            }
 
             logger.info(
-                `[CompletedOrders] Posted completed order #${order.orderNumber} to channel`
+                `[CompletedOrders] Posted completed order #${order.orderNumber} to channel with ${allScreenshots.length} screenshots`
             );
         } catch (error) {
             logger.error("[CompletedOrders] Error posting completed order:", error);
@@ -162,6 +203,13 @@ export class CompletedOrdersChannelService {
         if (order.completionNotes) {
             descriptionParts.push("");
             descriptionParts.push(`> *"${order.completionNotes.substring(0, 200)}"*`);
+        }
+
+        // Screenshot count
+        const screenshots = (order.proofScreenshots as string[] | null) || [];
+        if (screenshots.length > 0) {
+            descriptionParts.push("");
+            descriptionParts.push(`📸 **${screenshots.length}** screenshot${screenshots.length > 1 ? "s" : ""}`);
         }
 
         embed.setDescription(descriptionParts.join("\n"));

@@ -1,6 +1,6 @@
-import { ModalSubmitInteraction, EmbedBuilder, ColorResolvable, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
+import { ModalSubmitInteraction, EmbedBuilder, ColorResolvable, ActionRowBuilder, ButtonBuilder, ButtonStyle, Message } from "discord.js";
 import logger from "../../../common/loggers";
-import { ACCOUNT_MODAL_IDS, ACCOUNT_BUTTON_IDS } from "../../utils/accountComponentBuilder";
+import { ACCOUNT_MODAL_IDS, ACCOUNT_BUTTON_IDS, AccountComponentBuilder } from "../../utils/accountComponentBuilder";
 import { AccountEmbedBuilder } from "../../utils/accountEmbedBuilder";
 import { ApiService } from "../../services/api.service";
 import { discordConfig } from "../../config/discord.config";
@@ -9,7 +9,7 @@ const apiService = new ApiService(discordConfig.apiBaseUrl);
 
 /**
  * Handle the account delivery credentials modal submission
- * Modal ID format: account_delivery_modal_TICKETID
+ * Modal ID format: account_delivery_modal_TICKETID_ACCOUNTID
  */
 export async function handleAccountDeliveryModal(
     interaction: ModalSubmitInteraction
@@ -17,10 +17,16 @@ export async function handleAccountDeliveryModal(
     try {
         await interaction.deferReply();
 
-        const ticketId = interaction.customId.replace(
+        // Parse ticketId and accountId from modal customId
+        // Format: account_delivery_modal_TICKETID_ACCOUNTID
+        const modalIdParts = interaction.customId.replace(
             `${ACCOUNT_MODAL_IDS.DELIVERY_CREDENTIALS}_`,
             ""
-        );
+        ).split("_");
+        const ticketId = modalIdParts[0];
+        const accountIdFromModal = modalIdParts[1] || null;
+
+        logger.info(`[AccountDeliveryModal] Parsed from modal - ticketId: ${ticketId}, accountId: ${accountIdFromModal}`);
 
         // Get credentials from modal fields
         const email = interaction.fields.getTextInputValue("account_email");
@@ -28,36 +34,76 @@ export async function handleAccountDeliveryModal(
         const bankPin = interaction.fields.getTextInputValue("account_bank_pin") || undefined;
         const additionalInfo = interaction.fields.getTextInputValue("account_additional_info") || undefined;
 
-        // Get ticket data to retrieve accountId and customer info
-        let ticketData: any = null;
-        let accountId: string | null = null;
+        // Get account data directly to get customer Discord ID from reservedBy
+        let accountData: any = null;
+        let customerDiscordId: string | null = null;
+        let customerId: number = 0;
+        let accountId: string | null = accountIdFromModal;
 
-        try {
-            const ticketResponse = await apiService.getTicketById(ticketId);
-            if (ticketResponse) {
-                ticketData = ticketResponse;
-                accountId = ticketData.accountId;
+        if (accountIdFromModal) {
+            try {
+                // Fetch account details which includes reservedBy with discordId
+                accountData = await apiService.getAccountById(accountIdFromModal);
+                logger.info(`[AccountDeliveryModal] Fetched account data: ${JSON.stringify(accountData, null, 2)}`);
+
+                if (accountData) {
+                    // Get customer Discord ID from reservedBy relation
+                    customerDiscordId = accountData.reservedBy?.discordId || null;
+                    customerId = accountData.reservedById || accountData.reservedBy?.id || 0;
+                    logger.info(`[AccountDeliveryModal] From account - customerDiscordId: ${customerDiscordId}, customerId: ${customerId}`);
+                }
+            } catch (err) {
+                logger.warn(`[AccountDeliveryModal] Could not fetch account data: ${err}`);
             }
-        } catch (err) {
-            logger.warn(`[AccountDeliveryModal] Could not fetch ticket data: ${err}`);
         }
 
-        // Mark account as SOLD if we have accountId
+        // Fallback: try to get from ticket data if account data didn't have it
+        if (!customerDiscordId) {
+            try {
+                const ticketResponse = await apiService.getTicketById(ticketId);
+                if (ticketResponse) {
+                    customerDiscordId = ticketResponse.customerDiscordId || ticketResponse.customer?.discordId || null;
+                    customerId = customerId || ticketResponse.customerId || ticketResponse.customer?.id || 0;
+                    accountId = accountId || ticketResponse.accountId || ticketResponse.account?.id || null;
+                    logger.info(`[AccountDeliveryModal] Fallback from ticket - customerDiscordId: ${customerDiscordId}, customerId: ${customerId}, accountId: ${accountId}`);
+                }
+            } catch (err) {
+                logger.warn(`[AccountDeliveryModal] Could not fetch ticket data: ${err}`);
+            }
+        }
+
+        logger.info(`[AccountDeliveryModal] Final values - accountId: ${accountId}, customerId: ${customerId}, customerDiscordId: ${customerDiscordId}`);
+
         if (accountId) {
             try {
+                // Pass support's Discord ID (the staff member who is delivering)
+                const supportDiscordId = interaction.user.id;
+                logger.info(`[AccountDeliveryModal] Calling completeAccountSale for account ${accountId} with customerId ${customerId}, supportDiscordId ${supportDiscordId}`);
                 const saleResult = await apiService.completeAccountSale(
                     accountId,
-                    ticketData?.customerId || 0,
-                    ticketData?.orderId
+                    customerId,
+                    undefined, // orderId not needed for account sales
+                    supportDiscordId
                 );
+                logger.info(`[AccountDeliveryModal] Sale result: ${JSON.stringify(saleResult)}`);
                 if (saleResult.success) {
-                    logger.info(`[AccountDeliveryModal] Account ${accountId} marked as SOLD`);
+                    logger.info(`[AccountDeliveryModal] Account ${accountId} marked as SOLD successfully`);
                 } else {
                     logger.warn(`[AccountDeliveryModal] Could not mark account as SOLD: ${saleResult.error}`);
                 }
             } catch (err) {
-                logger.warn(`[AccountDeliveryModal] Error completing sale: ${err}`);
+                logger.error(`[AccountDeliveryModal] Error completing sale: ${err}`);
             }
+        } else {
+            logger.warn(`[AccountDeliveryModal] No accountId found in ticket data, cannot mark as SOLD`);
+        }
+
+        // Mark ticket as delivered so it won't release account on close
+        try {
+            await apiService.markTicketDelivered(ticketId);
+            logger.info(`[AccountDeliveryModal] Ticket ${ticketId} marked as DELIVERED`);
+        } catch (err) {
+            logger.warn(`[AccountDeliveryModal] Could not mark ticket as delivered: ${err}`);
         }
 
         // Create the delivery embed with credentials
@@ -65,7 +111,7 @@ export async function handleAccountDeliveryModal(
             .setTitle("🔐 Account Credentials")
             .setDescription(
                 "**Your account credentials are below. Please save them securely!**\n\n" +
-                "⚠️ **This message will NOT be repeated. Screenshot or save these details immediately.**"
+                "⚠️ **Save these details immediately - keep them safe!**"
             )
             .setColor(0xc9a961 as ColorResolvable)
             .addFields(
@@ -101,15 +147,101 @@ export async function handleAccountDeliveryModal(
             .setTimestamp()
             .setFooter({ text: "MORITA Gaming • Account Delivery" });
 
-        // Send the credentials to the channel
-        await interaction.editReply({
-            content: "✅ Account credentials delivered successfully!",
-        });
+        let dmSent = false;
 
-        // Send credentials in a separate message
-        await interaction.channel?.send({
-            embeds: [deliveryEmbed as any],
-        });
+        // Try to DM credentials to customer
+        if (customerDiscordId) {
+            try {
+                const customer = await interaction.client.users.fetch(customerDiscordId);
+                await customer.send({
+                    content: "🎉 **Your MORITA Gaming account purchase has been delivered!**",
+                    embeds: [deliveryEmbed as any],
+                });
+                dmSent = true;
+                logger.info(`[AccountDeliveryModal] Credentials sent via DM to ${customer.tag}`);
+            } catch (dmError) {
+                logger.warn(`[AccountDeliveryModal] Could not DM customer: ${dmError}`);
+                dmSent = false;
+            }
+        }
+
+        // Send confirmation to the channel
+        if (dmSent) {
+            await interaction.editReply({
+                content: "✅ Account credentials delivered successfully via DM to the customer!",
+            });
+
+            // Notify in channel that credentials were sent via DM
+            const channelNotifyEmbed = new EmbedBuilder()
+                .setTitle("📬 Credentials Delivered")
+                .setDescription(
+                    `Account credentials have been sent via **Direct Message** to <@${customerDiscordId}>.\n\n` +
+                    "Customer: Please check your DMs for your account credentials."
+                )
+                .setColor(0x2ecc71 as ColorResolvable)
+                .setTimestamp()
+                .setFooter({ text: "MORITA Gaming • Account Delivery" });
+
+            await interaction.channel?.send({
+                embeds: [channelNotifyEmbed as any],
+            });
+
+            // Disable staff buttons after successful delivery
+            try {
+                // Find and update the message with staff buttons
+                const messages = await interaction.channel?.messages.fetch({ limit: 50 });
+                if (messages) {
+                    for (const [, msg] of messages) {
+                        // Look for message with staff buttons (has account_deliver_ or account_confirm_payment_)
+                        const hasStaffButtons = msg.components?.some(row =>
+                            row.components?.some(comp =>
+                                comp.customId?.includes('account_deliver_') ||
+                                comp.customId?.includes('account_confirm_payment_')
+                            )
+                        );
+
+                        if (hasStaffButtons && msg.editable) {
+                            const disabledButtons = AccountComponentBuilder.createTicketStaffButtonsAfterDelivery(
+                                ticketId,
+                                accountId || ""
+                            );
+                            await msg.edit({
+                                components: disabledButtons.map(row => row as any),
+                            });
+                            logger.info(`[AccountDeliveryModal] Disabled staff buttons after delivery`);
+                            break;
+                        }
+                    }
+                }
+            } catch (btnErr) {
+                logger.warn(`[AccountDeliveryModal] Could not disable staff buttons: ${btnErr}`);
+            }
+        } else {
+            // DM failed - DO NOT post credentials in channel for security
+            await interaction.editReply({
+                content: "⚠️ Could not send credentials via DM. Customer may have DMs disabled.",
+            });
+
+            // Notify channel that DM failed - no credentials shown
+            const dmFailedEmbed = new EmbedBuilder()
+                .setTitle("⚠️ Delivery Issue")
+                .setDescription(
+                    `Could not send account credentials to <@${customerDiscordId}> via Direct Message.\n\n` +
+                    "**Customer:** Please enable DMs from server members to receive your credentials, then ask staff to resend."
+                )
+                .setColor(0xf59e0b as ColorResolvable)
+                .setTimestamp()
+                .setFooter({ text: "MORITA Gaming • Account Delivery" });
+
+            await interaction.channel?.send({
+                content: customerDiscordId ? `<@${customerDiscordId}>` : "",
+                embeds: [dmFailedEmbed as any],
+            });
+
+            // Don't send completion message since delivery wasn't successful
+            logger.warn(`[AccountDeliveryModal] Could not DM credentials to customer ${customerDiscordId} - credentials NOT posted in channel`);
+            return;
+        }
 
         // Send completion message with security checklist
         const completionEmbed = new EmbedBuilder()

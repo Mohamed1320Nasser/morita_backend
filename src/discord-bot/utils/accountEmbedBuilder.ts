@@ -259,8 +259,9 @@ export class AccountEmbedBuilder {
     }
 
     /**
-     * Create multiple embeds for account details with all images
-     * Returns array of embeds: main info embed + image embeds (up to 10 total)
+     * Create multiple embeds for account details with images in 2-column grid
+     * Uses Discord's embed URL grouping to display images side by side
+     * Returns array of embeds: main info embed + image embeds in pairs
      */
     static createAccountDetailEmbeds(account: AccountDetail): EmbedBuilder[] {
         const embeds: EmbedBuilder[] = [];
@@ -270,29 +271,46 @@ export class AccountEmbedBuilder {
         const mainEmbed = this.createAccountDetailEmbed(account);
         embeds.push(mainEmbed);
 
-        // Add image embeds (Discord allows up to 10 embeds per message)
+        // Add image embeds in 2-column grid layout
+        // Discord shows embeds with same URL side by side
         if (account.images && account.images.length > 0) {
-            // Limit to 9 more embeds (1 main + 9 images = 10 max)
-            const maxImages = Math.min(account.images.length, 9);
+            // Limit to 8 images (1 main + 8 images = 9 embeds, leaving room for grouping)
+            const maxImages = Math.min(account.images.length, 8);
+            const dummyUrl = "https://morita.gg/account"; // Same URL groups embeds together
 
-            for (let i = 0; i < maxImages; i++) {
-                const img = account.images[i];
-                const imageUrl = img?.url || img?.file?.url;
+            // Process images in pairs for 2-column layout
+            for (let i = 0; i < maxImages; i += 2) {
+                const img1 = account.images[i];
+                const img1Url = img1?.url || img1?.file?.url;
 
-                if (imageUrl) {
-                    const imageEmbed = new EmbedBuilder()
+                if (img1Url) {
+                    const imageEmbed1 = new EmbedBuilder()
                         .setColor(categoryColor as ColorResolvable)
-                        .setImage(imageUrl);
-
-                    // Only add footer to last image embed
-                    if (i === maxImages - 1) {
-                        imageEmbed.setFooter({
-                            text: `📸 Image ${i + 1} of ${account.images.length}`,
-                        });
-                    }
-
-                    embeds.push(imageEmbed);
+                        .setURL(dummyUrl) // Same URL makes embeds display in a row
+                        .setImage(img1Url);
+                    embeds.push(imageEmbed1);
                 }
+
+                // Add second image of pair if exists
+                if (i + 1 < maxImages) {
+                    const img2 = account.images[i + 1];
+                    const img2Url = img2?.url || img2?.file?.url;
+
+                    if (img2Url) {
+                        const imageEmbed2 = new EmbedBuilder()
+                            .setColor(categoryColor as ColorResolvable)
+                            .setURL(dummyUrl) // Same URL makes embeds display in a row
+                            .setImage(img2Url);
+                        embeds.push(imageEmbed2);
+                    }
+                }
+            }
+
+            // Add footer to last embed with image count
+            if (embeds.length > 1) {
+                embeds[embeds.length - 1].setFooter({
+                    text: `📸 ${account.images.length} image${account.images.length > 1 ? 's' : ''}`,
+                });
             }
         } else if (account.thumbnail?.url || account.thumbnail?.file?.url) {
             // Fallback to thumbnail if no images array
@@ -317,30 +335,13 @@ export class AccountEmbedBuilder {
         return new EmbedBuilder()
             .setTitle(`${categoryEmoji} Confirm Purchase`)
             .setDescription(
-                "Please review your purchase details before confirming:\n\n" +
-                "⚠️ **By confirming, the account will be reserved for you.**"
+                `You are about to purchase **${account.name}** for **$${account.price.toFixed(2)}**.\n\n` +
+                `A private ticket will be created for you to complete the payment.`
             )
-            .setColor(0xf1c40f as ColorResolvable) // Warning yellow
-            .addFields(
-                {
-                    name: "📦 Account",
-                    value: account.name,
-                    inline: true,
-                },
-                {
-                    name: "💰 Price",
-                    value: `**$${account.price.toFixed(2)}**`,
-                    inline: true,
-                },
-                {
-                    name: "💳 Payment",
-                    value: paymentMethod || "To be selected",
-                    inline: true,
-                }
-            )
+            .setColor(0x2ecc71 as ColorResolvable) // Green
             .setTimestamp()
             .setFooter({
-                text: "MORITA Gaming • Confirm your purchase",
+                text: "MORITA Gaming",
             });
     }
 

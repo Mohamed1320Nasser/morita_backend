@@ -96,4 +96,19 @@ export default class DiscordChannelsController {
             };
         }
     }
+
+    @Post("/publish/payments")
+    async publishPaymentsChannel(@CurrentUser() user?: any, @Body() body?: { clearAllMessages?: boolean }) {
+        try {
+            const userId = user?.id;
+            const clearAllMessages = body?.clearAllMessages === true;
+            return await this.discordChannelsService.publishPaymentsChannel(userId, clearAllMessages);
+        } catch (error: any) {
+            logger.error("[DiscordChannelsController] Error publishing payments channel:", error);
+            return {
+                success: false,
+                error: error.message || "Failed to publish payments channel",
+            };
+        }
+    }
 }

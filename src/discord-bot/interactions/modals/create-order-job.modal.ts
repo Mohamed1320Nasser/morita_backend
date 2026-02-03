@@ -44,7 +44,13 @@ export async function handleCreateOrderJobModal(interaction: ModalSubmitInteract
         const confirmEmbed = buildConfirmationEmbed(orderData, order, customerBalance, jobDetails);
 
         await handleOrderAssignment(interaction, orderData, order, confirmEmbed, jobDetails);
-        await sendToChannel(interaction, orderData.channelId, confirmEmbed);
+
+        // Only send separate confirmation to channel if NO worker assigned (job claiming flow)
+        // When worker is directly assigned, the message is already sent by addWorkerToTicketChannel
+        if (!orderData.workerDiscordId) {
+            await sendToChannel(interaction, orderData.channelId, confirmEmbed, order.orderId);
+        }
+
         await interaction.deleteReply();
 
         logger.info(`[CreateOrderJob] Order #${order.orderNumber} created by ${orderData.supportDiscordId} for ${orderData.customerDiscordId}`);
@@ -122,6 +128,7 @@ async function createOrder(orderData: any, ticketId: string | null, jobDetails: 
         workerDiscordId: orderData.workerDiscordId,
         supportDiscordId: orderData.supportDiscordId,
         ticketId: ticketId || null,
+        discordChannelId: orderData.channelId || null, // Store the ticket channel ID
         serviceId: null,
         methodId: null,
         paymentMethodId: null,
@@ -278,6 +285,7 @@ async function addWorkerToTicketChannel(
             serviceName: order.service?.name,
             jobDetails: jobDetails || undefined,
             status: order.status,
+            isDirectAssign: true, // Direct assign - don't pin the message
         });
 
         if (ticketChannel) {
@@ -297,7 +305,8 @@ async function addWorkerToTicketChannel(
 async function sendToChannel(
     interaction: ModalSubmitInteraction,
     channelId: string | null,
-    embed: EmbedBuilder
+    embed: EmbedBuilder,
+    orderId?: string
 ): Promise<void> {
     if (!channelId) return;
 

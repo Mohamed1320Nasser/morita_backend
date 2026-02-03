@@ -78,15 +78,60 @@ export async function handleConfirmCompleteButton(interaction: ButtonInteraction
 
         logger.info(`[ConfirmComplete] All Discord notifications sent for order ${orderId}`);
 
-        await interaction.editReply({
-            embeds: [confirmResult.customerEmbed.toJSON() as any],
-        });
+        // Send order reward notification to customer
+        try {
+            const rewardResponse: any = await discordApiClient.get(`/order-reward/order/${orderId}`);
+            const rewardData = rewardResponse?.data || rewardResponse;
+
+            if (rewardData && rewardData.rewardAmount > 0) {
+                const customerUser = await interaction.client.users.fetch(updatedOrderData.customer.discordId);
+
+                const rewardEmbed = new EmbedBuilder()
+                    .setTitle("🎁 Order Reward Earned!")
+                    .setDescription(
+                        `You've earned a reward for completing Order #${updatedOrderData.orderNumber}!`
+                    )
+                    .addFields([
+                        {
+                            name: "💰 Reward Amount",
+                            value: `\`\`\`${rewardData.currencyName}${rewardData.rewardAmount.toFixed(2)}\`\`\``,
+                            inline: true
+                        },
+                        {
+                            name: "💳 Added To",
+                            value: "Your Wallet Balance",
+                            inline: true
+                        },
+                    ])
+                    .setColor(0xf1c40f)
+                    .setTimestamp()
+                    .setFooter({ text: "Thank you for your order!" });
+
+                if (rewardData.isFirstOrder) {
+                    rewardEmbed.addFields([
+                        {
+                            name: "🌟 First Order Bonus!",
+                            value: "This reward includes a special bonus for your first completed order!",
+                            inline: false
+                        }
+                    ]);
+                }
+
+                await customerUser.send({ embeds: [rewardEmbed.toJSON() as any] });
+                logger.info(`[ConfirmComplete] Sent order reward notification to customer for order ${orderId}`);
+            }
+        } catch (rewardError) {
+            logger.warn(`[ConfirmComplete] Could not send reward notification:`, rewardError);
+        }
+
+        // Delete ephemeral reply - public message is already sent by confirmOrderCompletion
+        await interaction.deleteReply();
 
         try {
             const originalMessage = interaction.message;
             await originalMessage.edit({
                 content: `✅ **Order confirmed successfully!** All buttons have been disabled.`,
-                components: [] 
+                components: []
             });
             logger.info(`[ConfirmComplete] Disabled action buttons in thread message`);
         } catch (buttonError) {

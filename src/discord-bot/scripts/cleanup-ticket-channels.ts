@@ -7,8 +7,12 @@ config();
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const DISCORD_GUILD_ID = process.env.DISCORD_GUILD_ID;
 
-const TICKETS_CATEGORY_ID = "1444799020928073908"; 
-const CLOSED_TICKETS_CATEGORY_ID = "1451951437998330010"; 
+// Get category IDs from .env (with fallbacks to old hardcoded values)
+const TICKETS_CATEGORY_ID = process.env.DISCORD_TICKETS_CATEGORY_ID || "1444799020928073908";
+const CLOSED_TICKETS_CATEGORY_ID = process.env.DISCORD_CLOSED_TICKETS_CATEGORY_ID || "1451951437998330010";
+
+// Optional: also cleanup these additional categories if specified
+const ADDITIONAL_CATEGORY_IDS = process.env.CLEANUP_ADDITIONAL_CATEGORY_IDS?.split(",").filter(Boolean) || []; 
 
 async function cleanupTicketChannels() {
     if (!DISCORD_BOT_TOKEN || !DISCORD_GUILD_ID) {
@@ -39,16 +43,23 @@ async function cleanupTicketChannels() {
 
         const channels = await guild.channels.fetch();
 
+        // Build list of all category IDs to clean
+        const categoriesToClean = [TICKETS_CATEGORY_ID, CLOSED_TICKETS_CATEGORY_ID, ...ADDITIONAL_CATEGORY_IDS];
+
         const ticketChannels = channels.filter(
             (channel) =>
                 channel &&
-                (channel.parentId === TICKETS_CATEGORY_ID ||
-                    channel.parentId === CLOSED_TICKETS_CATEGORY_ID)
+                channel.parentId &&
+                categoriesToClean.includes(channel.parentId)
         );
 
         logger.info(`\n📊 Found ${ticketChannels.size} ticket channels to delete:`);
         logger.info(`   - Active Tickets Category: ${TICKETS_CATEGORY_ID}`);
-        logger.info(`   - Closed Tickets Category: ${CLOSED_TICKETS_CATEGORY_ID}\n`);
+        logger.info(`   - Closed Tickets Category: ${CLOSED_TICKETS_CATEGORY_ID}`);
+        if (ADDITIONAL_CATEGORY_IDS.length > 0) {
+            logger.info(`   - Additional Categories: ${ADDITIONAL_CATEGORY_IDS.join(", ")}`);
+        }
+        logger.info("");
 
         if (ticketChannels.size === 0) {
             logger.info("✅ No channels to delete. Categories are already clean.");
@@ -59,10 +70,14 @@ async function cleanupTicketChannels() {
         logger.info("📋 Channels to be deleted:");
         ticketChannels.forEach((channel) => {
             if (channel) {
-                const categoryName =
-                    channel.parentId === TICKETS_CATEGORY_ID
-                        ? "Active Tickets"
-                        : "Closed Tickets";
+                let categoryName = "Unknown";
+                if (channel.parentId === TICKETS_CATEGORY_ID) {
+                    categoryName = "Active Tickets";
+                } else if (channel.parentId === CLOSED_TICKETS_CATEGORY_ID) {
+                    categoryName = "Closed Tickets";
+                } else if (ADDITIONAL_CATEGORY_IDS.includes(channel.parentId || "")) {
+                    categoryName = "Additional Category";
+                }
                 logger.info(`   - ${channel.name} (${categoryName})`);
             }
         });

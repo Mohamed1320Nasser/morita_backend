@@ -5,6 +5,7 @@ import { startWorkOnOrder } from "../../utils/order-actions.util";
 
 export async function handleStartWork(interaction: ButtonInteraction): Promise<void> {
     try {
+        // Use ephemeral only for error responses
         await interaction.deferReply({ ephemeral: true });
 
         const orderId = interaction.customId.replace("start_work_", "");
@@ -34,10 +35,8 @@ export async function handleStartWork(interaction: ButtonInteraction): Promise<v
             workerDiscordId
         );
 
-        await interaction.editReply({
-            embeds: [result.ephemeralEmbed.toJSON() as any],
-            components: [result.completeButton.toJSON() as any],
-        });
+        // Delete the ephemeral reply since we'll send public message
+        await interaction.deleteReply();
 
         logger.info(`[StartWorkButton] Order ${orderId} (#${orderData.orderNumber}) started successfully via button`);
     } catch (error: any) {
@@ -45,8 +44,13 @@ export async function handleStartWork(interaction: ButtonInteraction): Promise<v
 
         const errorMessage = error?.response?.data?.message || error?.message || "Unknown error";
 
-        await interaction.editReply({
-            content: `❌ **Failed to start work**\n\n${errorMessage}\n\nPlease try again or contact support.`,
-        });
+        try {
+            await interaction.editReply({
+                content: `❌ **Failed to start work**\n\n${errorMessage}\n\nPlease try again or contact support.`,
+            });
+        } catch (replyError) {
+            // If editReply fails, try to reply directly
+            logger.error("[StartWork] Failed to edit reply:", replyError);
+        }
     }
 }

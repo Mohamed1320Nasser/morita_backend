@@ -106,6 +106,8 @@ export class OrderChannelService {
         serviceName?: string;
         jobDetails?: string;
         status: string;
+        skipMessage?: boolean; // Skip posting message (used when combining with order creation message)
+        isDirectAssign?: boolean; // Direct assign = don't pin the message
     }): Promise<TextChannel | null> {
         try {
             const channel = await this.client.channels.fetch(data.ticketChannelId);
@@ -124,7 +126,10 @@ export class OrderChannelService {
                 EmbedLinks: true,
             });
 
-            await this.postWorkerAssignmentMessage(ticketChannel, data);
+            // Only post message if not skipped
+            if (!data.skipMessage) {
+                await this.postWorkerAssignmentMessage(ticketChannel, data, data.isDirectAssign);
+            }
 
             return ticketChannel;
         } catch (error) {
@@ -144,7 +149,7 @@ export class OrderChannelService {
         serviceName?: string;
         jobDetails?: string;
         status: string;
-    }): Promise<void> {
+    }, isDirectAssign?: boolean): Promise<void> {
         try {
             const orderEmbed = this.buildOrderEmbed(
                 data.orderNumber,
@@ -152,7 +157,8 @@ export class OrderChannelService {
                 data.customerDiscordId,
                 data.workerDiscordId,
                 data.serviceName,
-                data.jobDetails
+                data.jobDetails,
+                isDirectAssign
             );
 
             const buttons = this.buildActionButtons(data.orderId, data.status);
@@ -164,7 +170,10 @@ export class OrderChannelService {
                 components: [buttonRow.toJSON() as any],
             });
 
-            await message.pin();
+            // Only pin if NOT a direct assign (job claiming flow should pin)
+            if (!isDirectAssign) {
+                await message.pin();
+            }
 
             try {
                 await discordApiClient.put(`/discord/orders/${data.orderId}/message`, {
@@ -185,14 +194,21 @@ export class OrderChannelService {
         customerDiscordId: string,
         workerDiscordId: string,
         serviceName?: string,
-        jobDetails?: string
+        jobDetails?: string,
+        isDirectAssign?: boolean
     ): EmbedBuilder {
+        // Use "ORDER CREATED" for direct assign, "WORKER ASSIGNED" for job claiming
+        const title = isDirectAssign
+            ? `📦 ORDER #${orderNumber} - ORDER CREATED`
+            : `📦 ORDER #${orderNumber} - WORKER ASSIGNED`;
+
+        const description = isDirectAssign
+            ? `Order has been created and worker assigned!\n\nThis ticket channel will now be used for order communication.`
+            : `A worker has been assigned to this order!\n\nThis ticket channel will now be used for order communication.`;
+
         const embed = new EmbedBuilder()
-            .setTitle(`📦 ORDER #${orderNumber} - WORKER ASSIGNED`)
-            .setDescription(
-                `A worker has been assigned to this order!\n\n` +
-                `This ticket channel will now be used for order communication.`
-            )
+            .setTitle(title)
+            .setDescription(description)
             .addFields([
                 { name: "👤 Customer", value: `<@${customerDiscordId}>`, inline: true },
                 { name: "👷 Worker", value: `<@${workerDiscordId}>`, inline: true },

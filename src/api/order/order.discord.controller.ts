@@ -75,7 +75,7 @@ export default class DiscordOrderController {
     @Put("/:orderId/complete")
     async completeOrder(
         @Param("orderId") orderId: string,
-        @Body() data: { workerDiscordId: string; completionNotes?: string }
+        @Body() data: { workerDiscordId: string; completionNotes?: string; completionScreenshots?: string[] }
     ) {
         return await this.orderService.completeOrderByDiscordId(orderId, data);
     }
@@ -176,5 +176,22 @@ export default class DiscordOrderController {
         }
     ) {
         return await this.orderService.updateOrderStatusByDiscordId(orderId, data);
+    }
+
+    @Put("/:orderId/proof")
+    async addProofScreenshots(
+        @Param("orderId") orderId: string,
+        @Body() data: {
+            workerDiscordId: string;
+            screenshots: string[];
+            notes?: string;
+        }
+    ) {
+        return await this.orderService.addProofScreenshots(orderId, data);
+    }
+
+    @Get("/:orderId/proof")
+    async getProofScreenshots(@Param("orderId") orderId: string) {
+        return await this.orderService.getProofScreenshots(orderId);
     }
 }

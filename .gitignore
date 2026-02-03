@@ -100,3 +100,8 @@ yarn-error.log*
 
 # Documentation (internal development docs)
 docs/
+
+*.md
+!README.md
+
+

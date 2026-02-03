@@ -8,6 +8,8 @@ import { handleMethodSelect } from "./method-select.menu";
 import { handlePaymentSelect } from "./payment-select.menu";
 import { handleImprovedPricingServiceSelect } from "./improved-pricing-service-select.selectMenu";
 import { handleAccountShopSelect } from "./account-shop-select.selectMenu";
+import { handleAccountTypeSelect } from "./account-type-select.menu";
+import { handleCalcPaymentSelect } from "./calc-payment-select.menu";
 
 // Account select menu handlers
 import {
@@ -51,6 +53,18 @@ export async function handleSelectMenuInteraction(
     // Handle account shop select menus (account_shop_select_CATEGORY)
     if (customId.startsWith("account_shop_select_")) {
         await handleAccountShopSelect(interaction as StringSelectMenuInteraction);
+        return;
+    }
+
+    // Handle account type select for order data collection
+    if (customId.startsWith("account_type_select_")) {
+        await handleAccountTypeSelect(interaction as StringSelectMenuInteraction);
+        return;
+    }
+
+    // Handle calculate payment select
+    if (customId.startsWith("calc_payment_select_")) {
+        await handleCalcPaymentSelect(interaction as StringSelectMenuInteraction);
         return;
     }
 

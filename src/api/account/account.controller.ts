@@ -130,6 +130,19 @@ export default class AccountController {
         return account;
     }
 
+    /**
+     * Get account details by ID regardless of status
+     * Used for ticket display where account may be RESERVED or SOLD
+     */
+    @Get("/detail/:id")
+    async getAccountById(@Param("id") id: string) {
+        const account = await this.accountService.getAccountById(id);
+        if (!account) {
+            throw new BadRequestError("Account not found");
+        }
+        return account;
+    }
+
     @Post("/reserve/:id")
     async reserveAccount(
         @Param("id") id: string,
@@ -151,9 +164,9 @@ export default class AccountController {
     @Post("/complete-sale/:id")
     async completeSale(
         @Param("id") id: string,
-        @Body() data: { userId: number; orderId?: string }
+        @Body() data: { userId: number; orderId?: string; supportDiscordId?: string }
     ) {
-        return await this.accountService.completeSale(id, data.userId, data.orderId);
+        return await this.accountService.completeSale(id, data.userId, data.orderId, data.supportDiscordId);
     }
 
     @Post("/release-expired")

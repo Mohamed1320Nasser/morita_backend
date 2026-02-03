@@ -1,4 +1,4 @@
-import { ButtonInteraction, EmbedBuilder, ColorResolvable, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from "discord.js";
+import { ButtonInteraction, EmbedBuilder, ColorResolvable, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import logger from "../../../common/loggers";
 import { ApiService } from "../../services/api.service";
 import { discordConfig } from "../../config/discord.config";
@@ -546,20 +546,28 @@ export async function handleAccountPaymentSent(
     try {
         await interaction.deferReply({ ephemeral: true });
 
-        const ticketId = interaction.customId.replace(
+        // Parse ticketId and accountId from button customId
+        // Format: account_payment_sent_TICKETID_ACCOUNTID
+        const buttonIdParts = interaction.customId.replace(
             ACCOUNT_BUTTON_IDS.PAYMENT_SENT,
             ""
-        );
+        ).split("_");
+        const ticketId = buttonIdParts[0];
+        const accountId = buttonIdParts[1] || "";
 
-        // Get ticket data to retrieve accountId
-        let accountId = "";
+        logger.info(`[AccountButtons] Payment sent - parsed ticketId: ${ticketId}, accountId: ${accountId}`);
+
+        // Disable the original buttons to prevent multiple clicks
         try {
-            const ticketData = await apiService.getTicketById(ticketId);
-            if (ticketData?.accountId) {
-                accountId = ticketData.accountId;
+            const originalMessage = interaction.message;
+            if (originalMessage) {
+                const disabledButtons = AccountComponentBuilder.createTicketCustomerButtonsDisabled(ticketId);
+                await originalMessage.edit({
+                    components: [disabledButtons as any],
+                });
             }
-        } catch (err) {
-            logger.warn(`[AccountButtons] Could not fetch ticket data: ${err}`);
+        } catch (editErr) {
+            logger.warn(`[AccountButtons] Could not disable original buttons: ${editErr}`);
         }
 
         // Notify staff that payment has been sent
@@ -590,7 +598,7 @@ export async function handleAccountPaymentSent(
         await interaction.channel?.send({
             content: `<@&${discordConfig.supportRoleId}> Payment notification!`,
             embeds: [notificationEmbed as any],
-            components: [staffButtons as any],
+            components: staffButtons.map(row => row as any),
         });
 
         // Confirm to user
@@ -612,7 +620,7 @@ export async function handleAccountPaymentSent(
 /**
  * Handle "Cancel Order" button in account purchase ticket
  * Shows confirmation before actually cancelling
- * Custom ID format: account_cancel_order_TICKETID
+ * Custom ID format: account_cancel_order_TICKETID_ACCOUNTID
  */
 export async function handleAccountCancelOrder(
     interaction: ButtonInteraction
@@ -620,10 +628,12 @@ export async function handleAccountCancelOrder(
     try {
         await interaction.deferReply({ ephemeral: true });
 
-        const ticketId = interaction.customId.replace(
+        // Parse ticketId (accountId is available but not needed here)
+        const buttonIdParts = interaction.customId.replace(
             ACCOUNT_BUTTON_IDS.CANCEL_ORDER,
             ""
-        );
+        ).split("_");
+        const ticketId = buttonIdParts[0];
 
         // Show confirmation embed with buttons
         const confirmEmbed = new EmbedBuilder()
@@ -760,17 +770,60 @@ export async function handleAccountKeepOrder(
 /**
  * Handle staff "Confirm Payment" button
  * Custom ID format: account_confirm_payment_TICKETID
+ * Only staff/admin can use this button
  */
 export async function handleAccountConfirmPayment(
     interaction: ButtonInteraction
 ): Promise<void> {
     try {
+        // Check if user is staff (has support role or is admin)
+        const member = interaction.guild?.members.cache.get(interaction.user.id);
+        const isStaff = member?.roles.cache.has(discordConfig.supportRoleId) ||
+                        member?.permissions.has("Administrator");
+
+        if (!isStaff) {
+            await interaction.reply({
+                content: "❌ **Permission Denied**\n\nOnly staff members can confirm payments. Please wait for a staff member to verify your payment.",
+                ephemeral: true,
+            });
+            return;
+        }
+
         await interaction.deferReply();
 
         const ticketId = interaction.customId.replace(
             "account_confirm_payment_",
             ""
         );
+
+        // Disable the staff buttons after confirming
+        try {
+            const originalMessage = interaction.message;
+            if (originalMessage) {
+                // Get accountId from the original button customId if available
+                let accountId = "";
+                const components = originalMessage.components;
+                for (const row of components) {
+                    for (const component of row.components) {
+                        if (component.customId?.startsWith("account_deliver_")) {
+                            const parts = component.customId.split("_");
+                            accountId = parts[3] || "";
+                            break;
+                        }
+                    }
+                }
+
+                const disabledButtons = AccountComponentBuilder.createTicketStaffButtonsAfterConfirm(
+                    ticketId,
+                    accountId
+                );
+                await originalMessage.edit({
+                    components: disabledButtons.map(row => row as any),
+                });
+            }
+        } catch (editErr) {
+            logger.warn(`[AccountButtons] Could not update staff buttons: ${editErr}`);
+        }
 
         const confirmEmbed = new EmbedBuilder()
             .setTitle("✅ Payment Confirmed")
@@ -798,34 +851,55 @@ export async function handleAccountConfirmPayment(
         );
     } catch (error) {
         logger.error("[AccountButtons] Error handling confirm_payment:", error);
-        await interaction.editReply({
-            content: "❌ An error occurred while confirming the payment.",
-        });
+        if (interaction.deferred || interaction.replied) {
+            await interaction.editReply({
+                content: "❌ An error occurred while confirming the payment.",
+            });
+        } else {
+            await interaction.reply({
+                content: "❌ An error occurred while confirming the payment.",
+                ephemeral: true,
+            });
+        }
     }
 }
 
 /**
  * Handle staff "Deliver Account" button - shows modal for credentials
  * Custom ID format: account_deliver_TICKETID_ACCOUNTID
+ * Only staff/admin can use this button
  */
 export async function handleAccountDeliver(
     interaction: ButtonInteraction
 ): Promise<void> {
     try {
+        // Check if user is staff (has support role or is admin)
+        const member = interaction.guild?.members.cache.get(interaction.user.id);
+        const isStaff = member?.roles.cache.has(discordConfig.supportRoleId) ||
+                        member?.permissions.has("Administrator");
+
+        if (!isStaff) {
+            await interaction.reply({
+                content: "❌ **Permission Denied**\n\nOnly staff members can deliver account credentials.",
+                ephemeral: true,
+            });
+            return;
+        }
+
         const parts = interaction.customId.split("_");
         const ticketId = parts[2];
-        const accountId = parts[3];
+        const accountId = parts[3] || "";
 
-        // Show the delivery credentials modal
+        // Show the delivery credentials modal with accountId
         const modal = AccountComponentBuilder.createDeliveryCredentialsModal(
             ticketId,
-            "Account" // We don't have the name here
+            accountId
         );
 
         await interaction.showModal(modal as any);
 
         logger.info(
-            `[AccountButtons] Staff ${interaction.user.tag} opening delivery modal for ticket ${ticketId}`
+            `[AccountButtons] Staff ${interaction.user.tag} opening delivery modal for ticket ${ticketId}, account ${accountId}`
         );
     } catch (error) {
         logger.error("[AccountButtons] Error handling account_deliver:", error);
@@ -839,11 +913,25 @@ export async function handleAccountDeliver(
 /**
  * Handle staff "Release Account" button - releases account back to inventory
  * Custom ID format: account_release_ACCOUNTID
+ * Only staff/admin can use this button
  */
 export async function handleAccountRelease(
     interaction: ButtonInteraction
 ): Promise<void> {
     try {
+        // Check if user is staff (has support role or is admin)
+        const member = interaction.guild?.members.cache.get(interaction.user.id);
+        const isStaff = member?.roles.cache.has(discordConfig.supportRoleId) ||
+                        member?.permissions.has("Administrator");
+
+        if (!isStaff) {
+            await interaction.reply({
+                content: "❌ **Permission Denied**\n\nOnly staff members can release accounts.",
+                ephemeral: true,
+            });
+            return;
+        }
+
         await interaction.deferReply();
 
         const accountId = interaction.customId.replace(
@@ -881,9 +969,16 @@ export async function handleAccountRelease(
         );
     } catch (error) {
         logger.error("[AccountButtons] Error handling account_release:", error);
-        await interaction.editReply({
-            content: "❌ An error occurred while releasing the account.",
-        });
+        if (interaction.deferred || interaction.replied) {
+            await interaction.editReply({
+                content: "❌ An error occurred while releasing the account.",
+            });
+        } else {
+            await interaction.reply({
+                content: "❌ An error occurred while releasing the account.",
+                ephemeral: true,
+            });
+        }
     }
 }
 
@@ -919,6 +1014,45 @@ export async function handleAccountConfirmDelivery(
             embeds: [confirmEmbed as any],
         });
 
+        // Disable the post-delivery buttons after confirmation
+        try {
+            const originalMessage = interaction.message;
+            if (originalMessage && originalMessage.editable) {
+                // Create disabled versions of the post-delivery buttons
+                const disabledRow1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`${ACCOUNT_BUTTON_IDS.CONFIRM_DELIVERY}${ticketId}_disabled`)
+                        .setLabel("✅ Receipt Confirmed")
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(true),
+                    new ButtonBuilder()
+                        .setCustomId(`${ACCOUNT_BUTTON_IDS.CLOSE_TICKET}${ticketId}`)
+                        .setLabel("📋 Close Ticket")
+                        .setStyle(ButtonStyle.Secondary)
+                );
+
+                const disabledRow2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`account_public_review_${ticketId}_disabled`)
+                        .setLabel("⭐ Public Review")
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(true),
+                    new ButtonBuilder()
+                        .setCustomId(`account_anonymous_review_${ticketId}_disabled`)
+                        .setLabel("⭐ Anonymous Review")
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(true)
+                );
+
+                await originalMessage.edit({
+                    components: [disabledRow1 as any, disabledRow2 as any],
+                });
+                logger.info(`[AccountButtons] Disabled post-delivery buttons after receipt confirmation`);
+            }
+        } catch (btnErr) {
+            logger.warn(`[AccountButtons] Could not disable buttons: ${btnErr}`);
+        }
+
         logger.info(
             `[AccountButtons] User ${interaction.user.tag} confirmed receipt for ticket ${ticketId}`
         );
@@ -933,6 +1067,10 @@ export async function handleAccountConfirmDelivery(
 /**
  * Handle "Close Ticket" button
  * Custom ID format: account_close_ticket_TICKETID
+ *
+ * When closing an account purchase ticket:
+ * - If account was NOT delivered (still RESERVED): Release back to inventory
+ * - If account was delivered (SOLD): Keep as sold
  */
 export async function handleAccountCloseTicket(
     interaction: ButtonInteraction
@@ -940,10 +1078,13 @@ export async function handleAccountCloseTicket(
     try {
         await interaction.deferReply();
 
-        const ticketId = interaction.customId.replace(
+        // Parse ticketId and accountId from button customId
+        const buttonIdParts = interaction.customId.replace(
             ACCOUNT_BUTTON_IDS.CLOSE_TICKET,
             ""
-        );
+        ).split("_");
+        const ticketId = buttonIdParts[0];
+        const accountIdFromButton = buttonIdParts[1] || null;
 
         // Get ticket service
         const ticketService = getTicketService(interaction.client);
@@ -955,15 +1096,54 @@ export async function handleAccountCloseTicket(
             return;
         }
 
-        // Close the ticket
+        // Get ticket data to check account status
+        let accountId: string | null = accountIdFromButton;
+        let accountReleased = false;
+        let wasDelivered = false;
+
+        try {
+            const ticketData = await apiService.getTicketById(ticketId);
+            if (ticketData) {
+                accountId = ticketData.accountId || null;
+                // Check if the account was already delivered/sold
+                // If ticket has a delivery record or account status is SOLD, don't release
+                wasDelivered = ticketData.status === "COMPLETED" ||
+                               ticketData.status === "DELIVERED" ||
+                               ticketData.accountDelivered === true;
+
+                // If account exists and was NOT delivered, release it back to inventory
+                if (accountId && !wasDelivered) {
+                    const releaseResult = await apiService.releaseAccount(accountId);
+                    accountReleased = releaseResult.success === true;
+                    if (accountReleased) {
+                        logger.info(`[AccountButtons] Released account ${accountId} back to inventory on ticket close`);
+                    } else {
+                        logger.warn(`[AccountButtons] Failed to release account ${accountId} on ticket close`);
+                    }
+                }
+            }
+        } catch (err) {
+            logger.warn(`[AccountButtons] Could not get ticket data for close: ${err}`);
+        }
+
+        // Build the close message based on account status
+        let description = `This ticket is being closed by <@${interaction.user.id}>.\n\n`;
+
+        if (wasDelivered) {
+            description += `✅ **Account Delivered** - Order completed successfully.\n\n`;
+        } else if (accountReleased) {
+            description += `🔓 **Account Released** - The reserved account has been released back to inventory.\n\n`;
+        } else if (accountId && !wasDelivered) {
+            description += `⚠️ **Note:** Could not automatically release the account. Staff may need to release it manually.\n\n`;
+        }
+
+        description += `**Thank you for choosing MORITA Gaming!**\n\n`;
+        description += `This channel will be archived shortly.`;
+
         const closeEmbed = new EmbedBuilder()
             .setTitle("📋 Ticket Closing")
-            .setDescription(
-                `This ticket is being closed by <@${interaction.user.id}>.\n\n` +
-                `**Thank you for choosing MORITA Gaming!**\n\n` +
-                `This channel will be archived shortly.`
-            )
-            .setColor(0x95a5a6 as ColorResolvable)
+            .setDescription(description)
+            .setColor(wasDelivered ? 0x2ecc71 : 0x95a5a6 as ColorResolvable) // Green if delivered, gray otherwise
             .setTimestamp()
             .setFooter({
                 text: "MORITA Gaming • Ticket Closed",
@@ -992,7 +1172,7 @@ export async function handleAccountCloseTicket(
         }, 3000);
 
         logger.info(
-            `[AccountButtons] User ${interaction.user.tag} closed ticket ${ticketId}`
+            `[AccountButtons] User ${interaction.user.tag} closed ticket ${ticketId}${accountId ? ` (Account: ${accountId}, Delivered: ${wasDelivered}, Released: ${accountReleased})` : ''}`
         );
     } catch (error) {
         logger.error("[AccountButtons] Error handling close_ticket:", error);

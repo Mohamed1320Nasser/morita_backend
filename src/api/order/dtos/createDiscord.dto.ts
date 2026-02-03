@@ -25,6 +25,11 @@ export class DiscordCreateOrderDto extends BaseOrderDto {
     @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
     ticketId?: string;
 
+    @IsString()
+    @IsOptional()
+    @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
+    discordChannelId?: string;
+
     @IsObject()
     @IsOptional()
     @Transform(({ value }) => (typeof value === "string" ? JSON.parse(value) : value))

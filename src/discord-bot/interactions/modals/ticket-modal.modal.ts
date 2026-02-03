@@ -60,7 +60,11 @@ export async function handleTicketModal(
 
         logger.info(`[TicketModal] Ticket #${ticketNumber} (${ticketType}) created for ${interaction.user.tag}`);
     } catch (error: any) {
-        logger.error("[TicketModal] Error creating ticket:", error);
+        logger.error("[TicketModal] Error creating ticket:", {
+            message: error.message,
+            response: error.response?.data,
+            status: error.response?.status,
+        });
 
         if (error.message?.includes('Unknown interaction') || error.code === 10062) {
             logger.warn("[TicketModal] Interaction expired before we could respond");

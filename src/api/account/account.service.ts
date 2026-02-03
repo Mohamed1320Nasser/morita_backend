@@ -136,6 +136,21 @@ export default class AccountService {
                             file: true,
                         },
                     },
+                    soldTo: {
+                        select: {
+                            id: true,
+                            fullname: true,
+                            email: true,
+                            discordId: true,
+                        },
+                    },
+                    reservedBy: {
+                        select: {
+                            id: true,
+                            fullname: true,
+                            discordId: true,
+                        },
+                    },
                 },
             }),
             prisma.account.count({ where }),
@@ -156,6 +171,30 @@ export default class AccountService {
                 images: {
                     include: {
                         file: true,
+                    },
+                },
+                soldTo: {
+                    select: {
+                        id: true,
+                        fullname: true,
+                        email: true,
+                        discordId: true,
+                    },
+                },
+                soldBy: {
+                    select: {
+                        id: true,
+                        fullname: true,
+                        email: true,
+                        discordId: true,
+                    },
+                },
+                reservedBy: {
+                    select: {
+                        id: true,
+                        fullname: true,
+                        email: true,
+                        discordId: true,
                     },
                 },
             },
@@ -288,6 +327,48 @@ export default class AccountService {
         };
     }
 
+    /**
+     * Get account details by ID regardless of status
+     * Used for ticket display where account may be RESERVED or SOLD
+     * Includes reservedBy and soldTo relations for customer info
+     */
+    async getAccountById(id: string) {
+        const account = await prisma.account.findFirst({
+            where: { id },
+            include: {
+                images: {
+                    include: { file: true },
+                },
+                reservedBy: {
+                    select: {
+                        id: true,
+                        fullname: true,
+                        email: true,
+                        discordId: true,
+                    },
+                },
+                soldTo: {
+                    select: {
+                        id: true,
+                        fullname: true,
+                        email: true,
+                        discordId: true,
+                    },
+                },
+            },
+        });
+
+        if (!account) {
+            return null;
+        }
+
+        return {
+            ...normalizeAccountImages(account),
+            stats: this.extractDisplayStats(account.accountData),
+            features: this.extractFeatures(account.accountData),
+        };
+    }
+
     async reserveAccount(
         accountId: string,
         userId?: number,
@@ -354,7 +435,7 @@ export default class AccountService {
         return { success: true };
     }
 
-    async completeSale(accountId: string, userId: number, orderId?: string) {
+    async completeSale(accountId: string, userId: number, orderId?: string, supportDiscordId?: string) {
         const account = await prisma.account.findFirst({
             where: { id: accountId },
         });
@@ -363,11 +444,21 @@ export default class AccountService {
             return { success: false, error: 'Account not found' };
         }
 
+        // Find support user by discordId if provided
+        let supportId: number | null = null;
+        if (supportDiscordId) {
+            const supportUser = await prisma.user.findUnique({
+                where: { discordId: supportDiscordId },
+            });
+            supportId = supportUser?.id || null;
+        }
+
         await prisma.account.update({
             where: { id: accountId },
             data: {
                 status: 'SOLD',
                 soldToId: userId,
+                soldById: supportId,
                 soldAt: new Date(),
                 // Clear reservation fields
                 reservedById: null,

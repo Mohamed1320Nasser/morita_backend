@@ -1,96 +1,94 @@
 import {
     ChatInputCommandInteraction,
     SlashCommandBuilder,
-    TextChannel,
+    EmbedBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
 } from "discord.js";
 import logger from "../../common/loggers";
 import { findOrderByNumber } from "../utils/order-search.util";
 import { extractErrorMessage } from "../utils/error-message.util";
-import { completeWorkOnOrder } from "../utils/order-actions.util";
+import { collectCompletionScreenshots, storePendingScreenshots } from "../utils/screenshot-collector.util";
 
 export const data = new SlashCommandBuilder()
     .setName("complete-work")
-    .setDescription("Mark your work as complete")
+    .setDescription("Mark your work as complete (requires screenshot proof)")
     .addStringOption((option) =>
         option
             .setName("order-number")
             .setDescription("Order Number (e.g., 11)")
             .setRequired(true)
-    )
-    .addStringOption((option) =>
-        option
-            .setName("notes")
-            .setDescription("Completion notes (optional)")
-            .setRequired(false)
-            .setMaxLength(500)
     );
 
 export default { data, execute };
 
 async function execute(interaction: ChatInputCommandInteraction) {
     try {
-        await interaction.deferReply({ ephemeral: true });
-
         const orderNumber = interaction.options.getString("order-number", true);
-        const completionNotes = interaction.options.getString("notes") || undefined;
-        const workerDiscordId = interaction.user.id;
-
-        logger.info(
-            `[CompleteWork] Worker ${interaction.user.tag} completing order #${orderNumber}`
-        );
 
         const orderSearch = await findOrderByNumber(orderNumber);
 
         if (!orderSearch) {
-            await interaction.editReply({
-                content: `❌ Order not found: **#${orderNumber}**\n\nPlease check the order number and try again.`,
+            await interaction.reply({
+                content: `❌ Order not found: **#${orderNumber}**`,
+                ephemeral: true,
             });
             return;
         }
 
         const { orderId, orderData } = orderSearch;
 
-        if (!orderData.worker || orderData.worker.discordId !== workerDiscordId) {
-            await interaction.editReply({
-                content: `❌ You are not the assigned worker for Order **#${orderNumber}**.\n\nThis order is assigned to: ${orderData.worker ? orderData.worker.fullname : "No one"}`,
+        if (!orderData.worker || orderData.worker.discordId !== interaction.user.id) {
+            await interaction.reply({
+                content: `❌ You are not the assigned worker for Order **#${orderNumber}**.`,
+                ephemeral: true,
             });
             return;
         }
 
         if (orderData.status !== "IN_PROGRESS") {
-            await interaction.editReply({
-                content: `❌ Cannot mark Order **#${orderNumber}** as complete.\n\nCurrent status: \`${orderData.status}\`\n\n${
-                    orderData.status === "ASSIGNED"
-                        ? "You must use `/start-work` to start working first."
-                        : "Order must be `IN_PROGRESS` to mark as complete."
-                }`,
+            await interaction.reply({
+                content: `❌ Cannot complete. Status: \`${orderData.status}\`. ${orderData.status === "ASSIGNED" ? "Use `/start-work` first." : ""}`,
+                ephemeral: true,
             });
             return;
         }
 
-        const orderChannel = interaction.channel instanceof TextChannel ? interaction.channel : undefined;
+        const screenshotResult = await collectCompletionScreenshots(interaction, orderId, orderData.orderNumber);
 
-        const completeResult = await completeWorkOnOrder(
-            interaction.client,
-            orderId,
-            orderData,
-            workerDiscordId,
-            completionNotes,
-            orderChannel
-        );
+        if (!screenshotResult.success) return;
 
-        await interaction.editReply({
-            embeds: [completeResult.workerEmbed.toJSON() as any],
+        storePendingScreenshots(orderId, screenshotResult.urls);
+
+        const embed = new EmbedBuilder()
+            .setTitle("📸 Screenshots Uploaded Successfully!")
+            .setDescription(`Click the button below to confirm completion of **Order #${orderNumber}**.`)
+            .setColor(0x57f287)
+            .setTimestamp();
+
+        const confirmButton = new ButtonBuilder()
+            .setCustomId(`show_completion_modal_${orderId}`)
+            .setLabel("Complete Order")
+            .setStyle(ButtonStyle.Success)
+            .setEmoji("✅");
+
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(confirmButton);
+
+        await interaction.followUp({
+            embeds: [embed.toJSON() as any],
+            components: [row.toJSON() as any],
+            ephemeral: true,
         });
-
-        logger.info(`[CompleteWork] Order ${orderId} (#${orderNumber}) completed successfully via command`);
     } catch (error: any) {
-        logger.error("[CompleteWork] Error completing work:", error);
-
+        logger.error("[CompleteWork] Error:", error);
         const errorMessage = extractErrorMessage(error);
-
-        await interaction.editReply({
-            content: `❌ **Failed to mark work as complete**\n\n${errorMessage}\n\nPlease try again or contact support.`,
-        });
+        try {
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp({ content: `❌ Failed: ${errorMessage}`, ephemeral: true });
+            } else {
+                await interaction.reply({ content: `❌ Failed: ${errorMessage}`, ephemeral: true });
+            }
+        } catch {}
     }
 }

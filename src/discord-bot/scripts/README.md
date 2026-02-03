@@ -10,9 +10,10 @@ This folder contains utility scripts for managing the Discord bot.
 
 **Purpose:** Delete all channels in ticket categories (active and closed tickets)
 
-**Categories cleaned:**
-- Active Tickets: `1444799020928073908`
-- Closed Tickets: `1451951437998330010`
+**Categories cleaned (from .env):**
+- Active Tickets: `DISCORD_TICKETS_CATEGORY_ID`
+- Closed Tickets: `DISCORD_CLOSED_TICKETS_CATEGORY_ID`
+- Additional (optional): `CLEANUP_ADDITIONAL_CATEGORY_IDS` (comma-separated)
 
 ---
 
@@ -216,7 +217,7 @@ A: About 1 second per channel (to avoid rate limits). 15 channels ≈ 15 seconds
 A: The script will continue and show which channels failed. You can run it again to clean up remaining channels.
 
 ### **Q: Can I change which categories to clean?**
-A: Yes, edit the script and change `TICKETS_CATEGORY_ID` and `CLOSED_TICKETS_CATEGORY_ID` constants.
+A: Yes, set the category IDs in your `.env` file.
 
 ---
 
@@ -224,12 +225,15 @@ A: Yes, edit the script and change `TICKETS_CATEGORY_ID` and `CLOSED_TICKETS_CAT
 
 ### **To change target categories:**
 
-Edit `cleanup-ticket-channels.ts`:
+Edit your `.env` file:
 
-```typescript
-// Change these IDs
-const TICKETS_CATEGORY_ID = "1444799020928073908";
-const CLOSED_TICKETS_CATEGORY_ID = "1451951437998330010";
+```env
+# Required: Main ticket categories
+DISCORD_TICKETS_CATEGORY_ID=1444799020928073908
+DISCORD_CLOSED_TICKETS_CATEGORY_ID=1451951437998330010
+
+# Optional: Additional categories to clean (comma-separated)
+CLEANUP_ADDITIONAL_CATEGORY_IDS=1234567890,0987654321
 ```
 
 ### **To change the delay:**

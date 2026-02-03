@@ -20,7 +20,7 @@ export default class TicketService {
      * Create a new ticket
      */
     async create(data: CreateTicketDto, ticketType?: TicketType) {
-        logger.info(`[TicketService] Creating ticket with categoryId: ${JSON.stringify(data.categoryId)}, accountId: ${data.accountId}, ticketType: ${ticketType}`);
+        logger.info(`[TicketService] Creating ticket with categoryId: ${JSON.stringify(data.categoryId)}, accountId: ${data.accountId}, customerDiscordId: ${data.customerDiscordId}, ticketType: ${ticketType}`);
 
         // Verify the category exists (only if categoryId is provided and not empty)
         if (data.categoryId && data.categoryId.trim() !== "") {
@@ -104,7 +104,7 @@ export default class TicketService {
             },
         });
 
-        logger.info(`Ticket created: #${ticket.ticketNumber} by customer ${data.customerId}`);
+        logger.info(`Ticket created: #${ticket.ticketNumber} by customer ${data.customerId}, accountId: ${ticket.accountId}, customerDiscordId: ${ticket.customerDiscordId}`);
 
         return ticket;
     }
@@ -312,6 +312,15 @@ export default class TicketService {
                 orders: {
                     orderBy: { createdAt: "desc" },
                 },
+                account: {
+                    select: {
+                        id: true,
+                        name: true,
+                        price: true,
+                        category: true,
+                        status: true,
+                    },
+                },
             },
         });
 
@@ -319,6 +328,7 @@ export default class TicketService {
             throw new NotFoundError("Ticket not found");
         }
 
+        logger.info(`[TicketService] getSingle returning ticket ${id} with accountId: ${ticket.accountId}, customerDiscordId: ${ticket.customerDiscordId}, account: ${ticket.account?.id || 'none'}`);
         return ticket;
     }
 

@@ -268,53 +268,64 @@ export class EnhancedAccountBuilder {
         const categoryLabel =
             this.CATEGORY_LABELS[account.category] || account.category;
 
-        // Build stats line
-        const stats = (account.stats || {}) as any;
-        const statsLine = [
-            stats.combatLevel ? `⚔️ CB ${stats.combatLevel}` : null,
-            stats.totalLevel ? `📊 Total ${stats.totalLevel}` : null,
-            stats.questPoints ? `📜 QP ${stats.questPoints}` : null,
-        ].filter(Boolean).join("  •  ");
-
-        // Build features/highlights from accountData
-        const highlights = (account as any).accountData?.highlights || [];
-        const highlightsText = highlights.length > 0
-            ? highlights.map((h: string) => `✅ ${h}`).join("\n")
-            : null;
-
-        // Build description from accountData
-        const accountDescription = (account as any).accountData?.description || null;
+        // Get accountData (dynamic JSON from admin)
+        const accountData = (account as any).accountData || {};
 
         // Create professional description
         let description = ``;
-        description += `\n\`\`\`\n`;
-        description += `💎 PREMIUM ACCOUNT\n`;
-        description += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-        description += `\`\`\`\n`;
 
         // Price banner
-        description += `\n> 💰 **PRICE: $${account.price.toFixed(2)} USD**\n\n`;
-
-        // Stats section
-        if (statsLine) {
-            description += `**📈 Account Stats**\n`;
-            description += `> ${statsLine}\n\n`;
-        }
+        description += `> 💰 **PRICE: $${account.price.toFixed(2)} USD**\n\n`;
 
         // Category
         description += `**${categoryEmoji} Category**\n`;
         description += `> ${categoryLabel}\n\n`;
 
-        // Description if available
-        if (accountDescription) {
-            description += `**📋 Description**\n`;
-            description += `> ${accountDescription}\n\n`;
-        }
+        // Dynamically render ALL fields from accountData
+        const allFields = Object.entries(accountData);
 
-        // Highlights/Features
-        if (highlightsText) {
-            description += `**🎯 Highlights & Features**\n`;
-            description += highlightsText + `\n\n`;
+        if (allFields.length > 0) {
+            for (const [key, value] of allFields) {
+                // Format key: camelCase to Title Case (e.g., combatLevel -> Combat Level)
+                const formattedKey = key
+                    .replace(/([A-Z])/g, ' $1')
+                    .replace(/^./, str => str.toUpperCase())
+                    .trim();
+
+                // Format value based on type
+                if (Array.isArray(value) && value.length > 0) {
+                    // Array - show as list with checkmarks
+                    description += `**🎯 ${formattedKey}**\n`;
+                    description += value.map((item: any) => `✅ ${item}`).join("\n") + `\n\n`;
+                } else if (typeof value === 'number') {
+                    description += `> **${formattedKey}:** ${value.toLocaleString()}\n`;
+                } else if (typeof value === 'boolean') {
+                    description += `> **${formattedKey}:** ${value ? '✅ Yes' : '❌ No'}\n`;
+                } else if (typeof value === 'string') {
+                    // Check if it's a long description-like text
+                    if (value.length > 50 || key.toLowerCase().includes('description') || key.toLowerCase().includes('note')) {
+                        description += `**📋 ${formattedKey}**\n`;
+                        description += `> ${value}\n\n`;
+                    } else {
+                        description += `> **${formattedKey}:** ${value}\n`;
+                    }
+                } else if (typeof value === 'object' && value !== null) {
+                    // Nested object - show as sub-fields
+                    description += `**📊 ${formattedKey}**\n`;
+                    for (const [subKey, subValue] of Object.entries(value)) {
+                        const formattedSubKey = subKey
+                            .replace(/([A-Z])/g, ' $1')
+                            .replace(/^./, str => str.toUpperCase())
+                            .trim();
+                        description += `> **${formattedSubKey}:** ${subValue}\n`;
+                    }
+                    description += `\n`;
+                }
+            }
+            // Add newline if last item was a simple field
+            if (!description.endsWith('\n\n')) {
+                description += `\n`;
+            }
         }
 
         // Stock info
@@ -393,18 +404,13 @@ export class EnhancedAccountBuilder {
             }
         }
 
-        // Create action buttons - Professional style
+        // Create action button - Purchase only
         const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
                 .setCustomId(`account_purchase_${account.id}`)
                 .setLabel("Purchase Now")
                 .setEmoji("💳")
-                .setStyle(ButtonStyle.Success),
-            new ButtonBuilder()
-                .setCustomId(`account_back_categories`)
-                .setLabel("Back to Shop")
-                .setEmoji("🔙")
-                .setStyle(ButtonStyle.Secondary)
+                .setStyle(ButtonStyle.Success)
         );
 
         return {

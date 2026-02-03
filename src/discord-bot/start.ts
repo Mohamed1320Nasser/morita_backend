@@ -145,6 +145,23 @@ app.get("/discord/channels/status", async (req, res) => {
             lastError: accountsStatus?.lastError || null,
         });
 
+        // Add PAYMENTS channel status
+        const paymentsStatus = dbStatuses.find(s => s.channelType === "PAYMENTS");
+        const paymentsChannel = isConnected && discordConfig.paymentsChannelId
+            ? discordClient.channels.cache.get(discordConfig.paymentsChannelId)
+            : null;
+
+        channels.push({
+            channelType: "PAYMENTS",
+            channelId: discordConfig.paymentsChannelId || null,
+            channelName: paymentsChannel ? (paymentsChannel as any).name : "Payments",
+            status: paymentsStatus?.status || "never_published",
+            lastPublishedAt: paymentsStatus?.lastPublishedAt || null,
+            lastPublishedBy: paymentsStatus?.lastPublishedBy || null,
+            messageCount: paymentsStatus?.messageCount || 0,
+            lastError: paymentsStatus?.lastError || null,
+        });
+
         res.json({
             success: true,
             data: {
@@ -160,7 +177,7 @@ app.get("/discord/channels/status", async (req, res) => {
 });
 
 async function updateChannelStatus(
-    channelType: "PRICING" | "TOS" | "TICKETS" | "ACCOUNTS",
+    channelType: "PRICING" | "TOS" | "TICKETS" | "ACCOUNTS" | "PAYMENTS",
     data: {
         status?: string;
         lastPublishedAt?: Date;
@@ -319,6 +336,37 @@ app.post("/discord/channels/publish/accounts", async (req, res) => {
     } catch (error: any) {
         logger.error("[Bot API] Error publishing accounts channel:", error);
         await updateChannelStatus("ACCOUNTS", { status: "error", lastError: error.message });
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post("/discord/channels/publish/payments", async (req, res) => {
+    try {
+        if (!discordClient.isReady()) {
+            return res.status(400).json({ success: false, error: "Discord bot not connected" });
+        }
+
+        if (!discordClient.paymentChannelManager) {
+            return res.status(400).json({ success: false, error: "Payment channel manager not initialized" });
+        }
+
+        const clearAllMessages = req.body.clearAllMessages === true;
+        logger.info(`[Bot API] Publishing payments channel (clearAll: ${clearAllMessages})...`);
+        await discordClient.paymentChannelManager.publishPayments(clearAllMessages);
+
+        await updateChannelStatus("PAYMENTS", {
+            status: "published",
+            lastPublishedAt: new Date(),
+            messageCount: 1,
+            channelId: discordConfig.paymentsChannelId,
+            lastError: null,
+        });
+
+        logger.info("[Bot API] Payments channel published successfully");
+        res.json({ success: true, message: "Payments channel published successfully" });
+    } catch (error: any) {
+        logger.error("[Bot API] Error publishing payments channel:", error);
+        await updateChannelStatus("PAYMENTS", { status: "error", lastError: error.message });
         res.status(500).json({ success: false, error: error.message });
     }
 });

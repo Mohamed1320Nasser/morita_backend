@@ -23,7 +23,7 @@ import { handleConfirmOrder } from "./confirm-order.button";
 
 import { handleAcceptOrder } from "./accept-order.button";
 import { handleUpdateStatus } from "./update-status.button";
-import { handleCompleteOrder } from "./complete-order.button";
+import { handleCompleteOrder, handleShowCompletionModal } from "./complete-order.button";
 import { handleCancelTicketOrder } from "./cancel-ticket-order.button";
 import { handleHelpServices } from "./help-services.button";
 import { handleHelpPricing } from "./help-pricing.button";
@@ -41,10 +41,17 @@ import { handleStartWork } from "./start-work.button";
 import { handleLeaveReviewButton } from "./leave-review.button";
 import { handleConfirmCloseTicket, handleCancelCloseTicket } from "./confirm-close-ticket.button";
 import { handleResolveIssueButton } from "./resolve-issue.button";
+import { handleSubmitAccountData } from "./submit-account-data.button";
+import { handleViewAccountData } from "./view-account-data.button";
 
 import acceptTosButton from "./accept-tos.button";
 import continueOnboardingButton from "./continue-onboarding.button";
 import retryOnboardingButton from "./retry-onboarding.button";
+
+// Payment buttons
+import { handlePaymentCrypto } from "./payment-crypto.button";
+import { handlePaymentMethods } from "./payment-methods.button";
+import { handlePaymentAll } from "./payment-all.button";
 
 // Account shop button handlers
 import {
@@ -101,6 +108,10 @@ const buttonHandlers: {
     [ACCOUNT_BUTTON_IDS.BROWSE_ACCOUNTS]: handleBrowseAccounts,
     [ACCOUNT_BUTTON_IDS.BACK_TO_CATEGORIES]: handleBackToCategories,
     [ACCOUNT_BUTTON_IDS.ACCOUNT_CANCEL]: handleAccountCancel,
+
+    // Payment buttons
+    payment_crypto: handlePaymentCrypto,
+    payment_methods: handlePaymentMethods,
 };
 
 export default Object.entries(buttonHandlers).map(([customId, execute]) => ({
@@ -194,8 +205,38 @@ export async function handleButtonInteraction(
             return;
         }
 
+        if (customId.startsWith("show_completion_modal_")) {
+            await handleShowCompletionModal(interaction);
+            return;
+        }
+
+        // Screenshot collectors - let the component collector handle these
+        if (customId.startsWith("ss_")) {
+            return;
+        }
+
+        // Proof screenshot collectors - let the component collector handle these
+        if (customId.startsWith("proof_")) {
+            return;
+        }
+
+        if (customId.startsWith("submit_account_data_")) {
+            await handleSubmitAccountData(interaction);
+            return;
+        }
+
+        if (customId.startsWith("view_account_data_")) {
+            await handleViewAccountData(interaction);
+            return;
+        }
+
         if (customId.startsWith("start_work_")) {
             await handleStartWork(interaction);
+            return;
+        }
+
+        if (customId.startsWith("payment_all_")) {
+            await handlePaymentAll(interaction);
             return;
         }
 
@@ -282,7 +323,28 @@ export async function handleButtonInteraction(
             return;
         }
 
-        // Account confirm purchase: account_confirm_ACCOUNTID
+        // IMPORTANT: All "account_confirm_*" specific handlers must come BEFORE
+        // the generic "account_confirm_" handler to avoid routing conflicts
+
+        // Staff confirm payment: account_confirm_payment_TICKETID
+        if (customId.startsWith("account_confirm_payment_")) {
+            await handleAccountConfirmPayment(interaction);
+            return;
+        }
+
+        // Customer confirm delivery: account_confirm_delivery_TICKETID
+        if (customId.startsWith(ACCOUNT_BUTTON_IDS.CONFIRM_DELIVERY)) {
+            await handleAccountConfirmDelivery(interaction);
+            return;
+        }
+
+        // Cancel confirmation: account_confirm_cancel_TICKETID
+        if (customId.startsWith("account_confirm_cancel_")) {
+            await handleAccountConfirmCancel(interaction);
+            return;
+        }
+
+        // Account confirm purchase: account_confirm_ACCOUNTID (generic - must be last)
         if (customId.startsWith(ACCOUNT_BUTTON_IDS.ACCOUNT_CONFIRM)) {
             await handleAccountConfirm(interaction);
             return;
@@ -300,12 +362,6 @@ export async function handleButtonInteraction(
             return;
         }
 
-        // Staff confirm payment: account_confirm_payment_TICKETID
-        if (customId.startsWith("account_confirm_payment_")) {
-            await handleAccountConfirmPayment(interaction);
-            return;
-        }
-
         // Staff deliver account: account_deliver_TICKETID_ACCOUNTID
         if (customId.startsWith("account_deliver_")) {
             await handleAccountDeliver(interaction);
@@ -315,12 +371,6 @@ export async function handleButtonInteraction(
         // Staff release account: account_release_ACCOUNTID
         if (customId.startsWith("account_release_")) {
             await handleAccountRelease(interaction);
-            return;
-        }
-
-        // Customer confirm delivery: account_confirm_delivery_TICKETID
-        if (customId.startsWith(ACCOUNT_BUTTON_IDS.CONFIRM_DELIVERY)) {
-            await handleAccountConfirmDelivery(interaction);
             return;
         }
 
@@ -342,12 +392,7 @@ export async function handleButtonInteraction(
             return;
         }
 
-        // Cancel confirmation buttons
-        if (customId.startsWith("account_confirm_cancel_")) {
-            await handleAccountConfirmCancel(interaction);
-            return;
-        }
-
+        // Keep order (cancel aborted): account_keep_order_TICKETID
         if (customId.startsWith("account_keep_order_")) {
             await handleAccountKeepOrder(interaction);
             return;

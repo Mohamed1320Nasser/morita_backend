@@ -159,6 +159,17 @@ client.once(Events.ClientReady, async readyClient => {
     } catch (error) {
         logger.error("Failed to setup account channel manager:", error);
     }
+
+    // Setup payment channel manager (payment methods with crypto/payment buttons)
+    try {
+        const { getPaymentChannelManager } = await import("./services/paymentChannelManager.service");
+        client.paymentChannelManager = getPaymentChannelManager(client);
+
+        await client.paymentChannelManager.setupOnly();
+        logger.info("Payment channel manager ready (use API to publish)");
+    } catch (error) {
+        logger.error("Failed to setup payment channel manager:", error);
+    }
 });
 
 client.on(Events.Error, error => {
