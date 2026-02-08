@@ -1,6 +1,6 @@
 import { Service } from "typedi";
 import { EmbedBuilder, TextChannel } from "discord.js";
-import { discordClient } from "../clients/DiscordClient";
+import discordClient from "../index";
 import { discordConfig } from "../config/discord.config";
 import logger from "../../common/loggers";
 
@@ -103,7 +103,7 @@ export default class CryptoNotificationService {
 
       // Send message
       const message = await (channel as TextChannel).send({
-        embeds: [embed],
+        embeds: [embed.toJSON()],
       });
 
       logger.info(
