@@ -103,7 +103,7 @@ export default class CryptoNotificationService {
 
       // Send message
       const message = await (channel as TextChannel).send({
-        embeds: [embed.toJSON()],
+        embeds: [embed.toJSON() as any],
       });
 
       logger.info(
