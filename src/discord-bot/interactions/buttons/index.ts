@@ -43,6 +43,8 @@ import { handleConfirmCloseTicket, handleCancelCloseTicket } from "./confirm-clo
 import { handleResolveIssueButton } from "./resolve-issue.button";
 import { handleSubmitAccountData } from "./submit-account-data.button";
 import { handleViewAccountData } from "./view-account-data.button";
+import { handleSubmitAccountNormalLegacy } from "./submit-account-normal-legacy.button";
+import { handleSubmitAccountJagexLauncher } from "./submit-account-jagex-launcher.button";
 
 import acceptTosButton from "./accept-tos.button";
 import continueOnboardingButton from "./continue-onboarding.button";
@@ -217,6 +219,16 @@ export async function handleButtonInteraction(
 
         // Proof screenshot collectors - let the component collector handle these
         if (customId.startsWith("proof_")) {
+            return;
+        }
+
+        if (customId.startsWith("submit_account_normal_legacy_")) {
+            await handleSubmitAccountNormalLegacy(interaction);
+            return;
+        }
+
+        if (customId.startsWith("submit_account_jagex_launcher_")) {
+            await handleSubmitAccountJagexLauncher(interaction);
             return;
         }
 

@@ -101,44 +101,41 @@ export class CompletedOrdersChannelService {
 
             const groupUrl = `https://morita.gg/order/${order.orderNumber}`;
 
-            // Build all embeds to send in ONE message
+            // Build all embeds array
             const allEmbeds: EmbedBuilder[] = [];
 
             // Main info embed with URL for grouping
             const mainEmbed = this.formatCompletedOrderEmbed(order, worker, customer, orderChannel);
             mainEmbed.setURL(groupUrl);
-            allEmbeds.push(mainEmbed);
 
-            // Add screenshot embeds with same URL for grid layout
-            if (allScreenshots.length > 0) {
-                for (let i = 0; i < allScreenshots.length; i++) {
+            // Conditional image display logic:
+            // - If 1 image: add to main embed directly (full-width with text)
+            // - If multiple images: show as grid below text
+            if (allScreenshots.length === 1) {
+                // Single image: add to main embed for full-width display
+                mainEmbed.setImage(allScreenshots[0]);
+                allEmbeds.push(mainEmbed);
+            } else if (allScreenshots.length > 1) {
+                // Multiple images: keep main embed text-only, add images as grid
+                allEmbeds.push(mainEmbed);
+                for (const screenshot of allScreenshots) {
                     const screenshotEmbed = new EmbedBuilder()
-                        .setURL(groupUrl)
-                        .setImage(allScreenshots[i])
+                        .setURL(groupUrl)  // Same URL groups embeds together
+                        .setImage(screenshot)  // Full-width image
                         .setColor(0x57f287 as ColorResolvable);
                     allEmbeds.push(screenshotEmbed);
                 }
+            } else {
+                // No images: just add main embed
+                allEmbeds.push(mainEmbed);
             }
 
-            // Send ALL embeds in ONE message (Discord limit is 10 embeds per message)
-            // If more than 10, we need to split but keep first batch with main embed
-            if (allEmbeds.length <= 10) {
+            // Send all embeds in batches (max 10 per message)
+            for (let i = 0; i < allEmbeds.length; i += 10) {
+                const batch = allEmbeds.slice(i, i + 10);
                 await channel.send({
-                    embeds: allEmbeds.map(e => e.toJSON() as any),
+                    embeds: batch.map(e => e.toJSON() as any),
                 });
-            } else {
-                // Send first 10 embeds (main + first 9 screenshots)
-                await channel.send({
-                    embeds: allEmbeds.slice(0, 10).map(e => e.toJSON() as any),
-                });
-                // Send remaining screenshots
-                const remaining = allEmbeds.slice(10);
-                for (let i = 0; i < remaining.length; i += 10) {
-                    const batch = remaining.slice(i, i + 10);
-                    await channel.send({
-                        embeds: batch.map(e => e.toJSON() as any),
-                    });
-                }
             }
 
             logger.info(
@@ -164,24 +161,29 @@ export class CompletedOrdersChannelService {
             .setColor(0x57f287 as ColorResolvable)
             .setTimestamp();
 
-        // Build description
+        // Build description with more details to make embed wider
         const descriptionParts: string[] = [];
+
+        // Header with decorative line
+        descriptionParts.push(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+        descriptionParts.push("");
 
         // Service info
         if (order.service) {
             const serviceEmoji = order.service.emoji || "📦";
-            descriptionParts.push(`${serviceEmoji} **${order.service.name}**`);
-            descriptionParts.push("");
+            descriptionParts.push(`${serviceEmoji} **Service:** ${order.service.name}`);
+        } else {
+            descriptionParts.push(`📦 **Service:** Custom Order`);
         }
 
         // Worker info
-        descriptionParts.push(`👷 <@${worker.id}>`);
+        descriptionParts.push(`👷 **Worker Completed By:** <@${worker.id}>`);
         descriptionParts.push("");
 
-        // Timeline
-        descriptionParts.push(`✅ Completed <t:${completedTimestamp}:R>`);
+        // Timeline with more detail
+        descriptionParts.push(`✅ **Status:** Completed <t:${completedTimestamp}:R>`);
 
-        // Duration
+        // Duration with more context
         if (createdAt && completedAt) {
             const durationMs = completedAt.getTime() - createdAt.getTime();
             const days = Math.floor(durationMs / (1000 * 60 * 60 * 24));
@@ -190,27 +192,34 @@ export class CompletedOrdersChannelService {
 
             let durationStr = "";
             if (days > 0) {
-                durationStr = `${days}d ${hours}h ${minutes}m`;
+                durationStr = `${days} day${days > 1 ? 's' : ''}, ${hours} hour${hours > 1 ? 's' : ''}, ${minutes} minute${minutes > 1 ? 's' : ''}`;
             } else if (hours > 0) {
-                durationStr = `${hours}h ${minutes}m`;
+                durationStr = `${hours} hour${hours > 1 ? 's' : ''}, ${minutes} minute${minutes > 1 ? 's' : ''}`;
             } else {
-                durationStr = `${minutes}m`;
+                durationStr = `${minutes} minute${minutes > 1 ? 's' : ''}`;
             }
-            descriptionParts.push(`⏱️ Duration: **${durationStr}**`);
+            descriptionParts.push(`⏱️ **Completion Time:** ${durationStr}`);
         }
+
+        descriptionParts.push("");
+        descriptionParts.push(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 
         // Completion notes (if any)
         if (order.completionNotes) {
             descriptionParts.push("");
-            descriptionParts.push(`> *"${order.completionNotes.substring(0, 200)}"*`);
+            descriptionParts.push(`📝 **Completion Notes:**`);
+            descriptionParts.push(`> *"${order.completionNotes.substring(0, 300)}"*`);
         }
 
-        // Screenshot count
+        // Screenshot count with more detail
         const screenshots = (order.proofScreenshots as string[] | null) || [];
         if (screenshots.length > 0) {
             descriptionParts.push("");
-            descriptionParts.push(`📸 **${screenshots.length}** screenshot${screenshots.length > 1 ? "s" : ""}`);
+            descriptionParts.push(`📸 **Proof Screenshots Attached:** ${screenshots.length} screenshot${screenshots.length > 1 ? "s" : ""} uploaded`);
         }
+
+        descriptionParts.push("");
+        descriptionParts.push(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 
         embed.setDescription(descriptionParts.join("\n"));
 

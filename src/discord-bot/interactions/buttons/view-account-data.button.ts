@@ -7,6 +7,9 @@ const FIELD_LABELS: Record<string, string> = {
     username: "Username / Email",
     password: "Password",
     bank_pin: "Bank PIN",
+    bank_value: "Bank Value",
+    in_game_name: "In-Game Name",
+    backup_codes: "Backup Codes",
     auth_codes: "Authenticator / Backup Codes",
     additional_info: "Additional Information",
 };
@@ -32,27 +35,33 @@ export async function handleViewAccountData(interaction: ButtonInteraction): Pro
         });
         const viewData = viewRes.data || viewRes;
 
-        const embed = new EmbedBuilder()
-            .setTitle(`🔐 Account Data - Order #${viewData.orderNumber}`)
-            .setDescription("**⚠️ THIS DATA CAN ONLY BE VIEWED ONCE**")
-            .setColor(0xed4245)
-            .setTimestamp();
+        // Build a single copyable code block with all data
+        let codeBlockContent = "";
+        const accountTypeLabel = viewData.accountTypeName || "Account";
 
         for (const field of viewData.fields) {
-            // Use proper label from FIELD_LABELS or fallback to field.label
             const displayLabel = FIELD_LABELS[field.fieldName] || field.label || field.fieldName;
-            embed.addFields([
-                {
-                    name: displayLabel,
-                    value: `\`\`\`${field.value}\`\`\``,
-                    inline: false,
-                },
-            ]);
+            codeBlockContent += `${displayLabel}: ${field.value}\n`;
         }
 
-        embed.addFields([
-            { name: "Submitted By", value: `<@${viewData.submittedBy}>`, inline: true },
-        ]);
+        const embed = new EmbedBuilder()
+            .setTitle(`🔐 Account Data - Order #${viewData.orderNumber}`)
+            .setDescription(
+                "**⚠️ THIS DATA CAN ONLY BE VIEWED ONCE**\n\n" +
+                "**💡 Tip:** Click the code block below to copy all account data at once.\n\n" +
+                `**Account Type:** ${accountTypeLabel}`
+            )
+            .setColor(0xed4245)
+            .addFields([
+                {
+                    name: "📋 Account Credentials",
+                    value: `\`\`\`\n${codeBlockContent}\`\`\``,
+                    inline: false,
+                },
+                { name: "Submitted By", value: `<@${viewData.submittedBy}>`, inline: true },
+                { name: "Claimed By", value: `<@${interaction.user.id}>`, inline: true },
+            ])
+            .setTimestamp();
 
         await interaction.editReply({ embeds: [embed.toJSON() as any] });
 

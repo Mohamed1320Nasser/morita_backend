@@ -26,6 +26,7 @@ export default class DailyRewardService {
                     isEnabled: true,
                     currencyName: "$",
                     currencyEmoji: "💵",
+                    gifUrl: "https://tenor.com/0Orl.gif",
                 },
             });
             logger.info("[DailyReward] Created default configuration");

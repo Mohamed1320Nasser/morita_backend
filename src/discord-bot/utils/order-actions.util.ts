@@ -70,6 +70,7 @@ export async function startWorkOnOrder(
                     currency: orderData.currency || "USD",
                     serviceName: orderData.service?.name,
                     jobDetails: orderData.jobDetails?.description,
+                    orderMessageId: orderData.orderMessageId || orderData.pinnedMessageId,
                 }
             );
         } catch (updateError) {

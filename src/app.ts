@@ -21,6 +21,7 @@ import { currentUserChecker } from "./currentUserChecker";
 import * as Sentry from "@sentry/node";
 import { nodeProfilingIntegration } from "@sentry/profiling-node";
 import getControllers from "./api";
+import CryptoMonitorService from "./services/crypto-monitor.service";
 
 (async () => {
     useContainer(Container);
@@ -108,5 +109,14 @@ import getControllers from "./api";
         logger.info(
             `server running on http://${Environment.Server.host}:${Environment.Server.port}/`
         );
+
+        // Start crypto transaction monitoring
+        try {
+            const cryptoMonitor = Container.get(CryptoMonitorService);
+            cryptoMonitor.startMonitoring();
+            logger.info("✅ Crypto transaction monitoring started");
+        } catch (error: any) {
+            logger.error("❌ Failed to start crypto monitoring:", error.message);
+        }
     });
 })();

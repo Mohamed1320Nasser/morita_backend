@@ -53,6 +53,7 @@ export const discordConfig = {
     accountShopChannelId: process.env.DISCORD_ACCOUNT_SHOP_CHANNEL_ID || "",
     dailyGiftChannelId: process.env.DISCORD_DAILY_GIFT_CHANNEL_ID || "",
     paymentsChannelId: process.env.DISCORD_PAYMENTS_CHANNEL_ID || "",
+    cryptoNotificationChannelId: process.env.CRYPTO_NOTIFICATION_CHANNEL_ID || "",
 
     serviceDetailExpiry:
         parseInt(process.env.SERVICE_DETAIL_EXPIRY_MS || "300000") || 300000, 

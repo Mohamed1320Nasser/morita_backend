@@ -1047,11 +1047,50 @@ model CryptoWallet {
   address          String                          // The wallet address
   upchargePercent  Float    @default(0)            // Upcharge percentage (e.g., 5 = 5%)
   isActive         Boolean  @default(true)
+
+  // Monitoring fields
+  lastCheckedAt    DateTime?
+  lastBalance      Decimal? @db.Decimal(20, 8)
+  lastTxHash       String?
+
   createdAt        DateTime @default(now()) @db.DateTime(0)
   updatedAt        DateTime @default(now()) @updatedAt @db.DateTime(0)
 
+  transactions     CryptoTransaction[] @relation("walletTransactions")
+
   @@index([currency])
   @@index([isActive])
+}
+
+// Crypto Transaction records (auto-detected payments)
+model CryptoTransaction {
+  id               String   @id @default(uuid())
+  walletId         String
+  wallet           CryptoWallet @relation("walletTransactions", fields: [walletId], references: [id], onDelete: Cascade)
+
+  txHash           String   @unique
+  currency         String
+  amount           Decimal  @db.Decimal(20, 8)
+  amountUsd        Decimal? @db.Decimal(20, 2)
+
+  fromAddress      String
+  toAddress        String
+
+  confirmations    Int      @default(0)
+  status           String   // "pending", "confirmed"
+  blockHeight      Int?
+
+  notifiedDiscord  Boolean  @default(false)
+  discordMessageId String?
+
+  detectedAt       DateTime @default(now()) @db.DateTime(0)
+  transactionTime  DateTime? @db.DateTime(0)
+
+  @@index([walletId])
+  @@index([txHash])
+  @@index([status])
+  @@index([detectedAt])
+  @@map("crypto_transactions")
 }
 
 // ============================================
@@ -1167,4 +1206,14 @@ model OrderAccountData {
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
+}
+
+model GoldRateConfig {
+  id        String   @id @default("default")
+  buyRate   Decimal  @db.Decimal(10, 4)
+  sellRate  Decimal  @db.Decimal(10, 4)
+  channelId String?
+  messageId String?
+  updatedAt DateTime @default(now()) @updatedAt @db.DateTime(0)
+  createdAt DateTime @default(now()) @db.DateTime(0)
 }

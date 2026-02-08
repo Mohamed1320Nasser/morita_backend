@@ -92,18 +92,25 @@ async function execute(interaction: ChatInputCommandInteraction) {
             .setTitle("🔐 Account Data Required")
             .setDescription(
                 `<@${order.customer.discordId}>, please submit your account credentials for **Order #${order.orderNumber}**.\n\n` +
-                "**Your data is encrypted and can only be viewed once by the worker/support.**"
+                "**Your data is encrypted and can only be viewed once by the worker/support.**\n\n" +
+                "**Please select your account type:**"
             )
             .setColor(0x5865f2)
             .setFooter({ text: `Order #${order.orderNumber}` })
             .setTimestamp();
 
-        const button = new ButtonBuilder()
-            .setCustomId(`submit_account_data_${order.id}`)
-            .setLabel("🔐 Submit Account Data")
+        // Two buttons - one for each account type
+        const normalLegacyButton = new ButtonBuilder()
+            .setCustomId(`submit_account_normal_legacy_${order.id}`)
+            .setLabel("📦 Normal Legacy")
             .setStyle(ButtonStyle.Primary);
 
-        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(button);
+        const jagexLauncherButton = new ButtonBuilder()
+            .setCustomId(`submit_account_jagex_launcher_${order.id}`)
+            .setLabel("🚀 Jagex Launcher")
+            .setStyle(ButtonStyle.Success);
+
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(normalLegacyButton, jagexLauncherButton);
 
         await channel.send({
             content: `<@${order.customer.discordId}>`,

@@ -19,6 +19,8 @@ import { handleResolveApproveCustomerRefundModal } from "./resolve-approve-custo
 import { handleAccountDeliveryModal } from "./account-delivery.modal";
 import { handleAccountReviewModal } from "./account-review.modal";
 import { handleAccountDataModal } from "./account-data.modal";
+import { handleAccountDataNormalLegacyModal } from "./account-data-normal-legacy.modal";
+import { handleAccountDataJagexLauncherModal } from "./account-data-jagex-launcher.modal";
 
 import onboardingQuestionnaireModal from "./onboarding-questionnaire.modal";
 
@@ -88,6 +90,14 @@ const patternModalHandlers: Array<{
     {
         pattern: /^account_review_/,
         handler: handleAccountReviewModal,
+    },
+    {
+        pattern: /^account_data_modal_normal_legacy_/,
+        handler: handleAccountDataNormalLegacyModal,
+    },
+    {
+        pattern: /^account_data_modal_jagex_launcher_/,
+        handler: handleAccountDataJagexLauncherModal,
     },
     {
         pattern: /^account_data_modal_/,

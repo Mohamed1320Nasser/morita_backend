@@ -41,6 +41,7 @@ export class OrderChannelService {
             currency: string;
             serviceName?: string;
             jobDetails?: string;
+            orderMessageId?: string;
         }
     ): Promise<void> {
         try {
@@ -51,23 +52,36 @@ export class OrderChannelService {
             }
 
             const textChannel = channel as TextChannel;
-            const pinnedMessages = await textChannel.messages.fetchPinned();
+            let orderMessage = null;
 
-            logger.info(`[OrderChannel] Found ${pinnedMessages.size} pinned messages`);
+            // Try to fetch by stored message ID first
+            if (orderData.orderMessageId) {
+                try {
+                    orderMessage = await textChannel.messages.fetch(orderData.orderMessageId);
+                    logger.info(`[OrderChannel] Found order message by ID: ${orderData.orderMessageId}`);
+                } catch (err) {
+                    logger.warn(`[OrderChannel] Could not fetch message by ID ${orderData.orderMessageId}, will search manually`);
+                }
+            }
 
-            const orderMessage = pinnedMessages.find(msg => {
-                if (msg.embeds.length === 0) return false;
-                const title = msg.embeds[0].title;
-                logger.info(`[OrderChannel] Checking pinned message title: "${title}"`);
-                return title?.includes(`ORDER #${orderNumber}`) && title?.includes("WORKER ASSIGNED");
-            });
+            // Fallback: search recent messages if ID not found
+            if (!orderMessage) {
+                logger.info(`[OrderChannel] Searching for order message in recent messages`);
+                const recentMessages = await textChannel.messages.fetch({ limit: 50 });
+
+                orderMessage = recentMessages.find(msg => {
+                    if (msg.embeds.length === 0) return false;
+                    const title = msg.embeds[0].title;
+                    return title?.includes(`ORDER #${orderNumber}`) && (title?.includes("WORKER ASSIGNED") || title?.includes("ORDER CREATED"));
+                });
+            }
 
             if (!orderMessage) {
-                logger.warn(`[OrderChannel] Could not find pinned message for Order #${orderNumber}`);
+                logger.warn(`[OrderChannel] Could not find order message for Order #${orderNumber}`);
                 return;
             }
 
-            logger.info(`[OrderChannel] Updating pinned message for Order #${orderNumber} to status: ${newStatus}`);
+            logger.info(`[OrderChannel] Updating order message for Order #${orderNumber} to status: ${newStatus}`);
 
             const updatedEmbed = this.buildOrderEmbed(
                 orderNumber,
@@ -88,7 +102,7 @@ export class OrderChannelService {
                 components: buttonRow.length > 0 ? [buttonRow[0].toJSON() as any] : [],
             });
 
-            logger.info(`[OrderChannel] Successfully updated pinned message for Order #${orderNumber}`);
+            logger.info(`[OrderChannel] Successfully updated order message for Order #${orderNumber}`);
         } catch (error) {
             logger.error("[OrderChannel] Update error:", error);
         }
@@ -170,15 +184,11 @@ export class OrderChannelService {
                 components: [buttonRow.toJSON() as any],
             });
 
-            // Only pin if NOT a direct assign (job claiming flow should pin)
-            if (!isDirectAssign) {
-                await message.pin();
-            }
-
+            // Store message ID for later updates (no pinning)
             try {
                 await discordApiClient.put(`/discord/orders/${data.orderId}/message`, {
                     ticketChannelId: channel.id,
-                    pinnedMessageId: message.id,
+                    orderMessageId: message.id,
                 });
             } catch (err) {
                 logger.warn("[OrderChannel] Failed to store message ID:", err);
@@ -253,11 +263,13 @@ export class OrderChannelService {
         }
 
         if (status === "IN_PROGRESS") {
+            // Show disabled "Start Work" button (already started)
             buttons.push(
                 new ButtonBuilder()
-                    .setCustomId(`mark_complete_${orderId}`)
-                    .setLabel("✅ Mark Complete")
-                    .setStyle(ButtonStyle.Success)
+                    .setCustomId(`start_work_disabled_${orderId}`)
+                    .setLabel("🚀 Work Started")
+                    .setStyle(ButtonStyle.Secondary)
+                    .setDisabled(true)
             );
         }
 
