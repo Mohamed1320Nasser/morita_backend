@@ -51,13 +51,13 @@ export async function handleSubmitAccountJagexLauncher(interaction: ButtonIntera
             .setMaxLength(10)
             .setPlaceholder("e.g., 1234");
 
-        const bankValueInput = new TextInputBuilder()
-            .setCustomId("bank_value")
-            .setLabel("Bank Value")
+        const inGameNameInput = new TextInputBuilder()
+            .setCustomId("in_game_name")
+            .setLabel("In-Game Name")
             .setStyle(TextInputStyle.Short)
             .setRequired(false)
             .setMaxLength(50)
-            .setPlaceholder("e.g., 100M GP");
+            .setPlaceholder("e.g., DragonSlayer123");
 
         const backupCodesInput = new TextInputBuilder()
             .setCustomId("backup_codes")
@@ -71,7 +71,7 @@ export async function handleSubmitAccountJagexLauncher(interaction: ButtonIntera
             new ActionRowBuilder<TextInputBuilder>().addComponents(usernameInput),
             new ActionRowBuilder<TextInputBuilder>().addComponents(passwordInput),
             new ActionRowBuilder<TextInputBuilder>().addComponents(bankPinInput),
-            new ActionRowBuilder<TextInputBuilder>().addComponents(bankValueInput),
+            new ActionRowBuilder<TextInputBuilder>().addComponents(inGameNameInput),
             new ActionRowBuilder<TextInputBuilder>().addComponents(backupCodesInput)
         );
 
