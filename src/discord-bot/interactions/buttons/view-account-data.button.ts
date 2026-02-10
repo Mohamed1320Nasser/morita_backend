@@ -1,4 +1,4 @@
-import { ButtonInteraction, EmbedBuilder } from "discord.js";
+import { ButtonInteraction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { discordApiClient } from "../../clients/DiscordApiClient";
 import logger from "../../../common/loggers";
 
@@ -13,6 +13,23 @@ const FIELD_LABELS: Record<string, string> = {
     auth_codes: "Authenticator / Backup Codes",
     additional_info: "Additional Information",
 };
+
+export async function handleCopyAccountDataHelp(interaction: ButtonInteraction): Promise<void> {
+    try {
+        await interaction.reply({
+            content:
+                "**📋 How to Copy Account Data:**\n\n" +
+                "1️⃣ Click inside the **code block** above (the gray box with account data)\n" +
+                "2️⃣ Press `Ctrl+A` (Windows/Linux) or `Cmd+A` (Mac) to select all\n" +
+                "3️⃣ Press `Ctrl+C` (Windows/Linux) or `Cmd+C` (Mac) to copy\n" +
+                "4️⃣ Paste anywhere with `Ctrl+V` or `Cmd+V`\n\n" +
+                "✅ **You can copy multiple times!** This message won't disappear.",
+            ephemeral: true,
+        });
+    } catch (error: any) {
+        logger.error("[CopyAccountDataHelp] Error:", error);
+    }
+}
 
 export async function handleViewAccountData(interaction: ButtonInteraction): Promise<void> {
     try {
@@ -48,13 +65,13 @@ export async function handleViewAccountData(interaction: ButtonInteraction): Pro
             .setTitle(`🔐 Account Data - Order #${viewData.orderNumber}`)
             .setDescription(
                 "**⚠️ THIS DATA CAN ONLY BE VIEWED ONCE**\n\n" +
-                "**💡 Tip:** Click the code block below to copy all account data at once.\n\n" +
+                "**💡 Tip:** Click inside the code block below, press `Ctrl+A` (or `Cmd+A` on Mac), then `Ctrl+C` to copy all data.\n\n" +
                 `**Account Type:** ${accountTypeLabel}`
             )
             .setColor(0xed4245)
             .addFields([
                 {
-                    name: "📋 Account Credentials",
+                    name: "📋 Account Credentials (Click to Copy)",
                     value: `\`\`\`\n${codeBlockContent}\`\`\``,
                     inline: false,
                 },
@@ -63,7 +80,18 @@ export async function handleViewAccountData(interaction: ButtonInteraction): Pro
             ])
             .setTimestamp();
 
-        await interaction.editReply({ embeds: [embed.toJSON() as any] });
+        // Add copy button for easier access
+        const copyButton = new ButtonBuilder()
+            .setCustomId(`copy_account_data_${orderId}_${Date.now()}`)
+            .setLabel("📋 How to Copy")
+            .setStyle(ButtonStyle.Secondary);
+
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(copyButton);
+
+        await interaction.editReply({
+            embeds: [embed.toJSON() as any],
+            components: [row.toJSON() as any]
+        });
 
         // Update the original message to show claimed
         try {

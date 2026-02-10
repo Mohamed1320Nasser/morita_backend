@@ -61,7 +61,7 @@ async function execute(interaction: ChatInputCommandInteraction) {
             return;
         }
 
-        // Check if account data already submitted
+        // Check if account data already submitted and delete it to allow resubmission
         try {
             const accountDataRes: any = await discordApiClient.get(`/account-data/order/${order.id}`);
             logger.info(`[RequestAccountData] Account data response raw:`, JSON.stringify(accountDataRes));
@@ -69,11 +69,18 @@ async function execute(interaction: ChatInputCommandInteraction) {
             logger.info(`[RequestAccountData] Existing data:`, JSON.stringify(existingData));
 
             if (existingData && existingData.id) {
-                logger.info(`[RequestAccountData] Account data already exists with id: ${existingData.id}`);
-                await interaction.editReply({
-                    content: `❌ Account data already submitted for Order #${orderNumber}.${existingData.isClaimed ? " (Already viewed)" : " Use the View button to see it."}`
-                });
-                return;
+                // Delete existing data to allow resubmission
+                logger.info(`[RequestAccountData] Account data already exists with id: ${existingData.id} - deleting to allow resubmission`);
+                try {
+                    await discordApiClient.delete(`/account-data/${existingData.id}`);
+                    logger.info(`[RequestAccountData] Successfully deleted existing account data, customer can now resubmit`);
+                } catch (deleteErr: any) {
+                    logger.error(`[RequestAccountData] Error deleting existing data:`, deleteErr.message);
+                    await interaction.editReply({
+                        content: `❌ Failed to delete existing account data: ${deleteErr?.response?.data?.message || deleteErr.message}`
+                    });
+                    return;
+                }
             }
         } catch (err: any) {
             logger.info(`[RequestAccountData] Error checking existing data: status=${err?.response?.status}, message=${err.message}`);
