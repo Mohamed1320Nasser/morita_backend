@@ -18,6 +18,7 @@ import { Decimal } from "@prisma/client/runtime/library";
 import logger from "../../common/loggers";
 import WalletService from "../wallet/wallet.service";
 import OrderRewardService from "../orderReward/order-reward.service";
+import LoyaltyTierService from "../loyalty-tier/loyalty-tier.service";
 import { withTransactionRetry, checkWalletBalanceWithLock, updateWalletBalance, deductFromWorkerWallet } from "../../common/utils/transaction.util";
 import { PAYOUT_STRUCTURE, FINANCIAL_LIMITS, isValidAmount } from "../../common/constants/security.constants";
 import { InsufficientBalanceError } from "../../common/utils/errorHandler.util";
@@ -27,7 +28,8 @@ import { OrderStatus as PrismaOrderStatus } from "@prisma/client";
 export default class OrderService {
     constructor(
         private walletService: WalletService,
-        private orderRewardService: OrderRewardService
+        private orderRewardService: OrderRewardService,
+        private loyaltyTierService: LoyaltyTierService
     ) {}
 
     async createOrder(data: CreateOrderDto) {
@@ -980,6 +982,11 @@ export default class OrderService {
         } catch (error) {
             // Log error but don't fail the order completion
             logger.error(`[OrderService] Failed to process order reward for ${data.orderId}:`, error);
+        }
+
+        const result = await this.loyaltyTierService.updateUserTier(order.customerId);
+        if (result.tierChanged) {
+            logger.info(`[OrderService] Loyalty tier updated for customer ${order.customerId}: ${result.oldTier?.name || 'None'} → ${result.newTier?.name || 'None'}`);
         }
 
         return this.getOrderById(data.orderId);

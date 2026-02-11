@@ -4,6 +4,8 @@ import { NotFoundError, BadRequestError } from "routing-controllers";
 import { getXpBetweenLevels, formatXp } from "../../common/utils/xpCalculator";
 import logger from "../../common/loggers";
 import { getRedisService } from "../../common/services/redis.service";
+import LoyaltyTierService from "../loyalty-tier/loyalty-tier.service";
+import { Decimal } from "@prisma/client/runtime/library";
 
 export interface PriceCalculationRequest {
     methodId: string;
@@ -11,6 +13,7 @@ export interface PriceCalculationRequest {
     quantity?: number; // For PER_LEVEL, PER_KILL, PER_ITEM, PER_HOUR
     serviceModifierIds?: string[]; // Selected service-level modifier IDs
     customConditions?: Record<string, any>; // For modifier conditions
+    userId?: number; // For loyalty discount
 }
 
 export interface PriceCalculationResult {
@@ -47,11 +50,19 @@ export interface PriceCalculationResult {
         name: string;
         type: string;
     };
+    loyaltyDiscount?: {
+        tierName: string;
+        tierEmoji: string;
+        discountPercent: number;
+        discountAmount: number;
+        originalPrice: number;
+    };
     breakdown: {
         subtotal: number;
         serviceModifiersTotal: number;
         methodModifiersTotal: number;
         totalModifiers: number;
+        loyaltyDiscountAmount: number;
         finalPrice: number;
     };
 }
@@ -62,6 +73,7 @@ export interface LevelRangeCalculationRequest {
     endLevel: number;
     groupName?: string; // Optional: filter methods by group name (e.g., "zulrah", "vorkath")
     skipModifiers?: boolean; // Optional: skip applying modifiers (for calculator commands)
+    userId?: number; // For loyalty discount
 }
 
 export interface MethodOption {
@@ -88,6 +100,13 @@ export interface MethodOption {
     modifiersTotal: number;
     finalPrice: number;
     isCheapest: boolean;
+    loyaltyDiscount?: {
+        tierName: string;
+        tierEmoji: string;
+        discountPercent: number;
+        discountAmount: number;
+        originalPrice: number;
+    };
     segments?: Array<{ // For combined methods
         startLevel: number;
         endLevel: number;
@@ -124,7 +143,7 @@ export default class PricingCalculatorService {
         PAYMENT_METHODS: 60 * 60,     // 1 hour
     };
 
-    constructor() {
+    constructor(private loyaltyTierService: LoyaltyTierService) {
         logger.info('[PricingCalculator] Service initialized with Redis caching');
     }
 
@@ -372,19 +391,62 @@ export default class PricingCalculatorService {
             })),
         ];
 
+        // Apply loyalty discount if userId provided
+        let finalPrice = calculatedPrice;
+        let loyaltyDiscountData: {
+            tierName: string;
+            tierEmoji: string;
+            discountPercent: number;
+            discountAmount: number;
+            originalPrice: number;
+        } | undefined = undefined;
+        let loyaltyDiscountAmount = 0;
+
+        if (request.userId) {
+            try {
+                const loyaltyResult = await this.loyaltyTierService.applyLoyaltyDiscount(
+                    request.userId,
+                    new Decimal(calculatedPrice)
+                );
+
+                if (loyaltyResult.discountPercent.greaterThan(0)) {
+                    loyaltyDiscountAmount = loyaltyResult.discountAmount.toNumber();
+                    finalPrice = loyaltyResult.finalPrice.toNumber();
+
+                    loyaltyDiscountData = {
+                        tierName: loyaltyResult.tierName,
+                        tierEmoji: loyaltyResult.tierEmoji,
+                        discountPercent: loyaltyResult.discountPercent.toNumber(),
+                        discountAmount: loyaltyDiscountAmount,
+                        originalPrice: calculatedPrice,
+                    };
+
+                    logger.info(
+                        `[PricingCalculator] Loyalty discount applied for user ${request.userId}: ` +
+                        `${loyaltyResult.tierName} (${loyaltyResult.discountPercent}%) - ` +
+                        `Original: $${calculatedPrice.toFixed(2)}, Final: $${finalPrice.toFixed(2)}`
+                    );
+                }
+            } catch (error) {
+                logger.warn(`[PricingCalculator] Failed to apply loyalty discount for user ${request.userId}:`, error);
+            }
+        }
+
         const result: PriceCalculationResult = {
             basePrice: basePrice,
-            finalPrice: Math.round(calculatedPrice * 100) / 100,
+            finalPrice: Math.round(finalPrice * 100) / 100,
             serviceModifiers: serviceModifiersApplied,
             methodModifiers: methodModifiersApplied,
             modifiers: allModifiers, // Legacy
             paymentMethod: paymentMethod,
+            loyaltyDiscount: loyaltyDiscountData,
             breakdown: {
                 subtotal: Math.round(subtotal * 100) / 100,
                 serviceModifiersTotal: Math.round(serviceModifiersTotal * 100) / 100,
                 methodModifiersTotal: Math.round(methodModifiersTotal * 100) / 100,
                 totalModifiers: Math.round((serviceModifiersTotal + methodModifiersTotal) * 100) / 100,
-                finalPrice: Math.round(calculatedPrice * 100) / 100,
+                loyaltyDiscountAmount: Math.round(loyaltyDiscountAmount * 100) / 100,
+                finalPrice: Math.round(finalPrice * 100) / 100,
             },
         };
 
@@ -524,7 +586,7 @@ export default class PricingCalculatorService {
     async calculateLevelRangePrice(
         request: LevelRangeCalculationRequest
     ): Promise<LevelRangeCalculationResult> {
-        const { serviceId, startLevel, endLevel, groupName, skipModifiers } = request;
+        const { serviceId, startLevel, endLevel, groupName, skipModifiers, userId } = request;
 
         // Validate input
         if (startLevel < 1 || startLevel > 99) {
@@ -537,7 +599,7 @@ export default class PricingCalculatorService {
             throw new BadRequestError("Start level must be less than end level");
         }
 
-        // Generate cache key
+        // Generate cache key (WITHOUT userId to avoid leaking discounts)
         const cacheKey = this.generateLevelRangeCacheKey(
             serviceId,
             startLevel,
@@ -546,11 +608,19 @@ export default class PricingCalculatorService {
         );
 
         // Try to get from cache
+        let result: LevelRangeCalculationResult | null = null;
         try {
             const cached = await this.redis.get<LevelRangeCalculationResult>(cacheKey);
             if (cached) {
                 logger.info(`[PricingCalculator] 🎯 Cache HIT: Level range ${startLevel}-${endLevel} for service ${serviceId}`);
-                return cached;
+                result = cached;
+
+                // Apply loyalty discount if userId provided (after getting from cache)
+                if (userId) {
+                    result = await this.applyLoyaltyDiscountToLevelRange(result, userId);
+                }
+
+                return result;
             }
             logger.info(`[PricingCalculator] 💨 Cache MISS: Level range ${startLevel}-${endLevel} for service ${serviceId}`);
         } catch (error) {
@@ -654,7 +724,7 @@ export default class PricingCalculatorService {
             );
         }
 
-        // Find cheapest option and mark it
+        // Find cheapest option and mark it (BEFORE caching, without loyalty discount)
         const cheapestOption = methodOptions.reduce((min, curr) =>
             curr.finalPrice < min.finalPrice ? curr : min
         );
@@ -663,7 +733,7 @@ export default class PricingCalculatorService {
         logger.info(`[PricingCalculator] 🎯 Generated ${methodOptions.length} method option(s)`);
         logger.info(`[PricingCalculator] 💰 Cheapest: "${cheapestOption.methodName}" at $${cheapestOption.finalPrice.toFixed(2)}`);
 
-        const result: LevelRangeCalculationResult = {
+        result = {
             service: {
                 id: service.id,
                 name: service.name,
@@ -678,7 +748,7 @@ export default class PricingCalculatorService {
             methodOptions,
         };
 
-        // Cache the result
+        // Cache the result (WITHOUT loyalty discount)
         try {
             await this.redis.set(cacheKey, result, this.CACHE_TTL.PRICING_CALCULATION);
             logger.debug(`[PricingCalculator] 💾 Cached level range result: ${cacheKey}`);
@@ -686,7 +756,63 @@ export default class PricingCalculatorService {
             logger.warn('[PricingCalculator] Cache write error:', error);
         }
 
+        // Apply loyalty discount if userId provided (AFTER caching)
+        if (userId) {
+            result = await this.applyLoyaltyDiscountToLevelRange(result, userId);
+        }
+
         return result;
+    }
+
+    private async applyLoyaltyDiscountToLevelRange(
+        result: LevelRangeCalculationResult,
+        userId: number
+    ): Promise<LevelRangeCalculationResult> {
+        try {
+            logger.info(`[PricingCalculator] 🎁 Applying loyalty discount for user ${userId} to level range results`);
+
+            // Clone the result to avoid mutating cached data
+            const discountedResult = JSON.parse(JSON.stringify(result));
+
+            for (const option of discountedResult.methodOptions) {
+                const originalPrice = option.finalPrice;
+                const loyaltyResult = await this.loyaltyTierService.applyLoyaltyDiscount(
+                    userId,
+                    new Decimal(originalPrice)
+                );
+
+                if (loyaltyResult.discountPercent.greaterThan(0)) {
+                    option.loyaltyDiscount = {
+                        tierName: loyaltyResult.tierName,
+                        tierEmoji: loyaltyResult.tierEmoji,
+                        discountPercent: loyaltyResult.discountPercent.toNumber(),
+                        discountAmount: loyaltyResult.discountAmount.toNumber(),
+                        originalPrice: originalPrice,
+                    };
+                    option.finalPrice = loyaltyResult.finalPrice.toNumber();
+
+                    logger.info(
+                        `[PricingCalculator] 💰 Discount applied to "${option.methodName}": ` +
+                        `${loyaltyResult.tierName} (${loyaltyResult.discountPercent}%) - ` +
+                        `$${originalPrice.toFixed(2)} → $${option.finalPrice.toFixed(2)}`
+                    );
+                }
+            }
+
+            // Recalculate cheapest option after applying discounts
+            const newCheapest = discountedResult.methodOptions.reduce((min: MethodOption, curr: MethodOption) =>
+                curr.finalPrice < min.finalPrice ? curr : min
+            );
+
+            // Reset all isCheapest flags and mark the new cheapest
+            discountedResult.methodOptions.forEach((opt: MethodOption) => opt.isCheapest = false);
+            newCheapest.isCheapest = true;
+
+            return discountedResult;
+        } catch (error) {
+            logger.warn(`[PricingCalculator] Failed to apply loyalty discount for user ${userId}:`, error);
+            return result; // Return original result if discount fails
+        }
     }
 
     private generateAllMethodOptions(

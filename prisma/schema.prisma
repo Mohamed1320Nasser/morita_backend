@@ -50,6 +50,11 @@ model User {
   discordDisplayName String?
   discordRole        DiscordRole? @default(customer)
 
+  // Loyalty Tier System
+  loyaltyTierId      String?
+  totalSpent         Decimal      @default(0) @db.Decimal(18, 8)  // Auto-calculated from completed orders
+  lastTierUpdate     DateTime?                                     // Last time tier was updated
+
   sessions                  Session[]
   otpRequests               OtpRequest[]
   files                     File[]               @relation("fileUploader")
@@ -73,11 +78,15 @@ model User {
   soldAccounts              Account[]            @relation("accountSoldBy")
   dailyRewardClaims         DailyRewardClaim[]   @relation("userDailyRewardClaims")
   orderRewardClaims         OrderRewardClaim[]   @relation("userOrderRewardClaims")
+  loyaltyTier               LoyaltyTier?         @relation("userLoyaltyTier", fields: [loyaltyTierId], references: [id])
+  tierHistory               LoyaltyTierHistory[] @relation("userTierHistory")
 
   @@index([email])
   @@index([role])
   @@index([discordId])
   @@index([discordRole])
+  @@index([loyaltyTierId])
+  @@index([totalSpent])
 }
 
 model Session {
@@ -1216,4 +1225,47 @@ model GoldRateConfig {
   messageId String?
   updatedAt DateTime @default(now()) @updatedAt @db.DateTime(0)
   createdAt DateTime @default(now()) @db.DateTime(0)
+}
+
+// ============================================
+// LOYALTY TIER SYSTEM
+// ============================================
+
+// Loyalty Tiers Configuration (Admin-managed)
+model LoyaltyTier {
+  id               String   @id @default(uuid())
+  name             String   @unique              // "Client", "Regular", "VIP", etc.
+  emoji            String   @default("👤")       // Display emoji
+  minSpending      Decimal  @db.Decimal(18, 2)  // Minimum spending to qualify ($1, $250, $2000)
+  maxSpending      Decimal? @db.Decimal(18, 2)  // Maximum spending (null = unlimited)
+  discountPercent  Decimal  @db.Decimal(5, 2)   // Discount percentage (2.00 = 2%)
+  discordRoleId    String?                       // Discord role ID (e.g., "1234567890")
+  sortOrder        Int      @default(0)          // Display order (1, 2, 3...)
+  isActive         Boolean  @default(true)       // Enable/disable tier
+  createdAt        DateTime @default(now()) @db.DateTime(0)
+  updatedAt        DateTime @default(now()) @updatedAt @db.DateTime(0)
+
+  users            User[]              @relation("userLoyaltyTier")
+  tierHistory      LoyaltyTierHistory[] @relation("tierHistory")
+
+  @@index([minSpending])
+  @@index([isActive])
+  @@index([sortOrder])
+}
+
+// Loyalty Tier History (Audit trail)
+model LoyaltyTierHistory {
+  id           String   @id @default(uuid())
+  userId       Int      @db.UnsignedInt
+  fromTierId   String?
+  toTierId     String
+  totalSpent   Decimal  @db.Decimal(18, 8)      // Total spending at time of change
+  changedAt    DateTime @default(now()) @db.DateTime(0)
+  reason       String?  @db.Text                // "automatic", "manual_admin", etc.
+
+  user         User         @relation("userTierHistory", fields: [userId], references: [id])
+  tier         LoyaltyTier  @relation("tierHistory", fields: [toTierId], references: [id])
+
+  @@index([userId])
+  @@index([changedAt])
 }

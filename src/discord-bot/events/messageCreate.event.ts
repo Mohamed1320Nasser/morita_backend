@@ -3,6 +3,7 @@ import logger from "../../common/loggers";
 import { ApiService } from "../services/api.service";
 import { discordConfig } from "../config/discord.config";
 import PricingCalculatorService from "../../api/pricingCalculator/pricingCalculator.service";
+import LoyaltyTierService from "../../api/loyalty-tier/loyalty-tier.service";
 import {
     sendEphemeralError,
     sendServiceNotFoundError,
@@ -42,6 +43,28 @@ function isCalculatorAllowedChannel(message: Message): boolean {
 }
 
 const apiService = new ApiService(discordConfig.apiBaseUrl);
+const loyaltyTierService = new LoyaltyTierService();
+const pricingService = new PricingCalculatorService(loyaltyTierService);
+
+/**
+ * Fetch user by Discord ID for loyalty discount calculation
+ */
+async function getUserByDiscordId(discordId: string): Promise<number | undefined> {
+    try {
+        const userResponse: any = await discordApiClient.get(`/discord/users/discord/${discordId}`);
+        const user = userResponse.data || userResponse;
+
+        if (user && user.id) {
+            return user.id;
+        }
+
+        logger.warn(`[Calculator] User not found for Discord ID: ${discordId}`);
+        return undefined;
+    } catch (error) {
+        logger.warn(`[Calculator] Failed to fetch user for Discord ID ${discordId}:`, error);
+        return undefined;
+    }
+}
 
 export default {
     name: Events.MessageCreate,
@@ -314,7 +337,7 @@ async function processSingleSkillRequest(message: Message, requestString: string
     }
 
     try {
-        const pricingService = new PricingCalculatorService();
+        const userId = await getUserByDiscordId(message.author.id);
 
         const result = await pricingService.calculateLevelRangePrice({
             serviceId: service.id,
@@ -322,6 +345,7 @@ async function processSingleSkillRequest(message: Message, requestString: string
             endLevel,
             groupName: groupNameToUse,
             skipModifiers: true, // Disable modifiers for calculator commands
+            userId,
         });
 
         const data = result;
@@ -481,6 +505,10 @@ async function processSingleSkillRequest(message: Message, requestString: string
                             : `+$${mod.value.toFixed(2)}`;
                         pricingSummary += `${mod.name}:`.padEnd(16) + `${modValue}\n`;
                     }
+                }
+
+                if (cheapest.loyaltyDiscount) {
+                    pricingSummary += `${cheapest.loyaltyDiscount.tierEmoji} ${cheapest.loyaltyDiscount.tierName}:`.padEnd(16) + `-$${cheapest.loyaltyDiscount.discountAmount.toFixed(2)}\n`;
                 }
 
                 pricingSummary += `\`\`\``;
@@ -688,7 +716,6 @@ async function processSingleBossCalculation(
     }
 
     try {
-        const pricingService = new PricingCalculatorService();
 
         if (!service.pricingMethods || service.pricingMethods.length === 0) {
             return { success: false, error: `No pricing methods found for "${serviceName}"` };
@@ -756,10 +783,19 @@ async function processSingleBossCalculation(
             basePrice: number;
             modifiers: Array<{ name: string; value: number; type: string }>;
             finalPrice: number;
+            loyaltyDiscount?: {
+                tierName: string;
+                tierEmoji: string;
+                discountPercent: number;
+                discountAmount: number;
+                originalPrice: number;
+            };
         }> = [];
 
         const defaultPaymentMethod = paymentMethods[0];
         const serviceModifierIds: string[] = [];
+
+        const userId = await getUserByDiscordId(message.author.id);
 
         for (const method of allMethods) {
             try {
@@ -768,6 +804,7 @@ async function processSingleBossCalculation(
                     paymentMethodId: defaultPaymentMethod.id,
                     quantity: killCount,
                     serviceModifierIds,
+                    userId,
                 });
 
                 const appliedModifiers = result.modifiers
@@ -785,6 +822,7 @@ async function processSingleBossCalculation(
                     basePrice: result.basePrice,
                     modifiers: appliedModifiers,
                     finalPrice: result.finalPrice,
+                    loyaltyDiscount: result.loyaltyDiscount,
                 });
             } catch (err) {
                 logger.warn(`[PvM] Failed to calculate for ${method.name}:`, err);
@@ -797,7 +835,7 @@ async function processSingleBossCalculation(
             tierSection += `\`\`\`fix\n${tier.tier}\n\`\`\``;
 
             tierSection += `**${tier.notes}** • \`$${tier.pricePerKill.toFixed(2)}/kc\`\n`;
-            if (tier.modifiers.length > 0) {
+            if (tier.modifiers.length > 0 || tier.loyaltyDiscount) {
 
                 tierSection += `\`\`\`diff\n`;
                 tierSection += `  Base Price           $${tier.basePrice.toFixed(2)}\n`;
@@ -807,6 +845,10 @@ async function processSingleBossCalculation(
                     const absValue = Math.abs(mod.value);
                     const displayValue = mod.type === 'PERCENTAGE' ? `${absValue.toFixed(0)}%` : `$${absValue.toFixed(2)}`;
                     tierSection += `${symbol} ${mod.name.substring(0, 18).padEnd(18)} ${displayValue}\n`;
+                }
+
+                if (tier.loyaltyDiscount) {
+                    tierSection += `- ${tier.loyaltyDiscount.tierEmoji} ${tier.loyaltyDiscount.tierName} Loyalty    -$${tier.loyaltyDiscount.discountAmount.toFixed(2)}\n`;
                 }
 
                 tierSection += `\n= Total              $${tier.finalPrice.toFixed(2)}\n`;
@@ -1070,7 +1112,6 @@ async function handleBatchMinigameQuote(
 
     try {
         const services = await apiService.getAllServicesWithPricing();
-        const pricingService = new PricingCalculatorService();
         const paymentMethods = await apiService.getPaymentMethods();
 
         if (!paymentMethods || paymentMethods.length === 0) {
@@ -1088,6 +1129,8 @@ async function handleBatchMinigameQuote(
         }> = [];
 
         let totalPrice = 0;
+
+        const userId = await getUserByDiscordId(message.author.id);
 
         for (const item of items) {
             const searchResult = findMinigameItem(services, item.name);
@@ -1109,7 +1152,7 @@ async function handleBatchMinigameQuote(
 
             let method = specificMethod;
             if (!method) {
-                
+
                 const allMethods = fullService.pricingMethods.filter((m: any) => m.pricingUnit === 'PER_ITEM');
                 let cheapestMethod = allMethods[0];
                 let cheapestPrice = Infinity;
@@ -1120,6 +1163,7 @@ async function handleBatchMinigameQuote(
                         paymentMethodId: defaultPaymentMethod.id,
                         quantity: item.quantity,
                         serviceModifierIds,
+                        userId,
                     });
                     if (result.finalPrice < cheapestPrice) {
                         cheapestPrice = result.finalPrice;
@@ -1134,6 +1178,7 @@ async function handleBatchMinigameQuote(
                 paymentMethodId: defaultPaymentMethod.id,
                 quantity: item.quantity,
                 serviceModifierIds,
+                userId,
             });
 
             calculations.push({
@@ -1157,6 +1202,10 @@ async function handleBatchMinigameQuote(
             const calc = calculations[i];
             itemsList += `${i + 1}. ${calc.method.name}\n`;
             itemsList += `   Quantity:    ${calc.quantity.toLocaleString()} items\n`;
+            if (calc.result.loyaltyDiscount) {
+                itemsList += `   Base:        $${calc.result.loyaltyDiscount.originalPrice.toFixed(2)}\n`;
+                itemsList += `   ${calc.result.loyaltyDiscount.tierEmoji} Discount:  -$${calc.result.loyaltyDiscount.discountAmount.toFixed(2)}\n`;
+            }
             itemsList += `   Price:       $${calc.result.finalPrice.toFixed(2)}\n`;
             if (i < calculations.length - 1) {
                 itemsList += `\n`;
@@ -1304,7 +1353,6 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
 
         const fullService = await apiService.getServiceWithPricing(service.id);
 
-        const pricingService = new PricingCalculatorService();
 
         const paymentMethods = await apiService.getPaymentMethods();
         if (!paymentMethods || paymentMethods.length === 0) {
@@ -1335,6 +1383,8 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
                 throw new Error('No PER_ITEM pricing methods found for this service');
             }
 
+            const userId = await getUserByDiscordId(message.author.id);
+
             const methodResults = [];
             for (const method of allMethods) {
                 const result = await pricingService.calculatePrice({
@@ -1342,6 +1392,7 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
                     paymentMethodId: defaultPaymentMethod.id,
                     quantity: quantity,
                     serviceModifierIds,
+                    userId,
                 });
 
                 methodResults.push({
@@ -1403,6 +1454,11 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
                 breakdown += `─────────────────────────────────────────\n`;
             }
 
+            if (cheapest.result.loyaltyDiscount) {
+                breakdown += `${cheapest.result.loyaltyDiscount.tierEmoji} ${cheapest.result.loyaltyDiscount.tierName} Loyalty:`.padEnd(20) + `-$${cheapest.result.loyaltyDiscount.discountAmount.toFixed(2)}\n`;
+                breakdown += `─────────────────────────────────────────\n`;
+            }
+
             breakdown += `\`\`\``;
             breakdown += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${cheapest.result.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
 
@@ -1423,6 +1479,8 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
         else {
             logger.info(`[Minigames] 🎯 Showing specific method: ${specificMethod.name}`);
 
+            const userId = await getUserByDiscordId(message.author.id);
+
             const method = specificMethod;
 
             const result = await pricingService.calculatePrice({
@@ -1430,6 +1488,7 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
                 paymentMethodId: defaultPaymentMethod.id,
                 quantity: quantity,
                 serviceModifierIds,
+                userId,
             });
 
             const embed = new EmbedBuilder()
@@ -1457,6 +1516,11 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
                         : `$${mod.value.toFixed(2)}`;
                     priceCalc += `${displayName}:`.padEnd(20) + `${modValue}\n`;
                 }
+                priceCalc += `─────────────────────────────────────────\n`;
+            }
+
+            if (result.loyaltyDiscount) {
+                priceCalc += `${result.loyaltyDiscount.tierEmoji} ${result.loyaltyDiscount.tierName} Loyalty:`.padEnd(20) + `-$${result.loyaltyDiscount.discountAmount.toFixed(2)}\n`;
                 priceCalc += `─────────────────────────────────────────\n`;
             }
 
@@ -1626,7 +1690,6 @@ async function handleBatchIronmanQuote(
 
     try {
         const services = await apiService.getAllServicesWithPricing();
-        const pricingService = new PricingCalculatorService();
         const paymentMethods = await apiService.getPaymentMethods();
 
         if (!paymentMethods || paymentMethods.length === 0) {
@@ -1643,6 +1706,8 @@ async function handleBatchIronmanQuote(
         }> = [];
 
         let totalPrice = 0;
+
+        const userId = await getUserByDiscordId(message.author.id);
 
         for (const item of items) {
             const searchResult = findIronmanItem(services, item.name);
@@ -1680,6 +1745,7 @@ async function handleBatchIronmanQuote(
                         paymentMethodId: defaultPaymentMethod.id,
                         quantity: item.quantity,
                         serviceModifierIds,
+                        userId,
                     });
                     if (result.finalPrice < cheapestPrice) {
                         cheapestPrice = result.finalPrice;
@@ -1694,6 +1760,7 @@ async function handleBatchIronmanQuote(
                 paymentMethodId: defaultPaymentMethod.id,
                 quantity: item.quantity,
                 serviceModifierIds,
+                userId,
             });
 
             calculations.push({
@@ -1717,6 +1784,10 @@ async function handleBatchIronmanQuote(
             const calc = calculations[i];
             itemsList += `${i + 1}. ${calc.method.name}\n`;
             itemsList += `   Quantity:    ${calc.quantity.toLocaleString()} items\n`;
+            if (calc.result.loyaltyDiscount) {
+                itemsList += `   Base:        $${calc.result.loyaltyDiscount.originalPrice.toFixed(2)}\n`;
+                itemsList += `   ${calc.result.loyaltyDiscount.tierEmoji} Discount:  -$${calc.result.loyaltyDiscount.discountAmount.toFixed(2)}\n`;
+            }
             itemsList += `   Price:       $${calc.result.finalPrice.toFixed(2)}\n`;
             if (i < calculations.length - 1) {
                 itemsList += `\n`;
@@ -1864,7 +1935,6 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
 
         const fullService = await apiService.getServiceWithPricing(service.id);
 
-        const pricingService = new PricingCalculatorService();
 
         const paymentMethods = await apiService.getPaymentMethods();
         if (!paymentMethods || paymentMethods.length === 0) {
@@ -1895,13 +1965,16 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
                 throw new Error('NO PER_ITEM pricing methods found for this service');
             }
 
+            const userId = await getUserByDiscordId(message.author.id);
+
             const methodResults = [];
             for (const method of allMethods) {
                 const result = await pricingService.calculatePrice({
                     methodId: method.id,
                     paymentMethodId: defaultPaymentMethod.id,
                     quantity: quantity,
-                    serviceModifierIds, 
+                    serviceModifierIds,
+                    userId,
                 });
 
                 methodResults.push({
@@ -1971,6 +2044,11 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
                 breakdown += `─────────────────────────────────────────\n`;
             }
 
+            if (cheapest.result.loyaltyDiscount) {
+                breakdown += `${cheapest.result.loyaltyDiscount.tierEmoji} ${cheapest.result.loyaltyDiscount.tierName}:`.padEnd(16) + `-$${cheapest.result.loyaltyDiscount.discountAmount.toFixed(2)}\n`;
+                breakdown += `─────────────────────────────────────────\n`;
+            }
+
             breakdown += `\`\`\``;
             breakdown += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${cheapest.result.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
 
@@ -1991,13 +2069,16 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
         else {
             logger.info(`[Ironman] 🎯 Showing specific method: ${specificMethod.name}`);
 
+            const userId = await getUserByDiscordId(message.author.id);
+
             const method = specificMethod;
 
             const result = await pricingService.calculatePrice({
                 methodId: method.id,
                 paymentMethodId: defaultPaymentMethod.id,
                 quantity: quantity,
-                serviceModifierIds, 
+                serviceModifierIds,
+                userId,
             });
 
             const embed = new EmbedBuilder()
@@ -2026,6 +2107,11 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
                     const displayName = `${icon}${mod.name}`;
                     priceCalc += `${displayName}:`.padEnd(16) + `${modValue}\n`;
                 }
+                priceCalc += `─────────────────────────────────────────\n`;
+            }
+
+            if (result.loyaltyDiscount) {
+                priceCalc += `${result.loyaltyDiscount.tierEmoji} ${result.loyaltyDiscount.tierName}:`.padEnd(16) + `-$${result.loyaltyDiscount.discountAmount.toFixed(2)}\n`;
                 priceCalc += `─────────────────────────────────────────\n`;
             }
 

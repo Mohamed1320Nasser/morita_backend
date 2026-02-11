@@ -3,6 +3,8 @@ import logger from "../../../common/loggers";
 import { discordApiClient } from "../../clients/DiscordApiClient";
 import { confirmOrderCompletion } from "../../utils/order-actions.util";
 import { discordConfig } from "../../config/discord.config";
+import { DiscordLoyaltyTierService } from "../../services/loyalty-tier.service";
+import { LoyaltyRoleSetupService } from "../../services/loyalty-role-setup.service";
 
 export async function handleConfirmCompleteButton(interaction: ButtonInteraction): Promise<void> {
     try {
@@ -77,6 +79,26 @@ export async function handleConfirmCompleteButton(interaction: ButtonInteraction
         );
 
         logger.info(`[ConfirmComplete] All Discord notifications sent for order ${orderId}`);
+
+        // Handle loyalty tier role assignment
+        try {
+            const loyaltyRoleSetupService = new LoyaltyRoleSetupService(interaction.client);
+            const loyaltyService = new DiscordLoyaltyTierService(interaction.client, loyaltyRoleSetupService);
+            const tierHistory = await discordApiClient.get(`/loyalty-tiers/user/${updatedOrderData.customerId}`);
+            const tierData = tierHistory.data || tierHistory;
+
+            if (tierData.tierHistory && tierData.tierHistory.length > 0) {
+                const latestChange = tierData.tierHistory[0];
+                await loyaltyService.handleTierChange(
+                    updatedOrderData.customerId,
+                    latestChange.fromTierId,
+                    latestChange.toTierId
+                );
+                logger.info(`[ConfirmComplete] Loyalty tier role updated for customer ${updatedOrderData.customerId}`);
+            }
+        } catch (tierError) {
+            logger.warn(`[ConfirmComplete] Could not update loyalty tier role:`, tierError);
+        }
 
         // Send order reward notification to customer
         try {

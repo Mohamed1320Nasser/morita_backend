@@ -113,7 +113,7 @@ import CryptoMonitorService from "./services/crypto-monitor.service";
         // Start crypto transaction monitoring
         try {
             const cryptoMonitor = Container.get(CryptoMonitorService);
-            cryptoMonitor.startMonitoring();
+            // cryptoMonitor.startMonitoring();
             logger.info("✅ Crypto transaction monitoring started");
         } catch (error: any) {
             logger.error("❌ Failed to start crypto monitoring:", error.message);

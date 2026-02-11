@@ -2,9 +2,27 @@ import { ModalSubmitInteraction, EmbedBuilder } from "discord.js";
 import logger from "../../../common/loggers";
 import { discordConfig } from "../../config/discord.config";
 import PricingCalculatorService from "../../../api/pricingCalculator/pricingCalculator.service";
-import Container from "typedi";
+import LoyaltyTierService from "../../../api/loyalty-tier/loyalty-tier.service";
+import { discordApiClient } from "../../clients/DiscordApiClient";
 
 const CALCULATOR_VERSION = "v3.0-improved-segments-display";
+
+// Create shared service instances
+const loyaltyTierService = new LoyaltyTierService();
+const pricingService = new PricingCalculatorService(loyaltyTierService);
+
+async function getUserByDiscordId(discordId: string): Promise<number | undefined> {
+    try {
+        const userResponse: any = await discordApiClient.get(`/discord/users/discord/${discordId}`);
+        const user = userResponse.data || userResponse;
+        if (user && user.id) {
+            return user.id;
+        }
+        return undefined;
+    } catch (error) {
+        return undefined;
+    }
+}
 
 export async function handleCalculatorModal(
     interaction: ModalSubmitInteraction
@@ -73,12 +91,13 @@ export async function handleCalculatorModal(
         try {
             logger.info(`[Calculator] Calculating with serviceId: ${serviceId}, levels: ${startLevel}-${endLevel}`);
 
-            const pricingService = Container.get(PricingCalculatorService);
+            const userId = await getUserByDiscordId(interaction.user.id);
 
             const result = await pricingService.calculateLevelRangePrice({
                 serviceId,
                 startLevel,
                 endLevel,
+                userId,
             });
 
             logger.info(`[Calculator] ${CALCULATOR_VERSION} - Calculation completed successfully`);
