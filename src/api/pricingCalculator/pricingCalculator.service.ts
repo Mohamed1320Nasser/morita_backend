@@ -151,20 +151,24 @@ export default class PricingCalculatorService {
         methodId: string,
         paymentMethodId: string,
         quantity: number,
-        serviceModifierIds: string[]
+        serviceModifierIds: string[],
+        userId?: number
     ): string {
         const modifiersKey = serviceModifierIds.sort().join(',') || 'none';
-        return `pricing:calc:${methodId}:${paymentMethodId}:${quantity}:${modifiersKey}`;
+        const userKey = userId ? userId.toString() : 'guest';
+        return `pricing:calc:${methodId}:${paymentMethodId}:${quantity}:${modifiersKey}:${userKey}`;
     }
 
     private generateLevelRangeCacheKey(
         serviceId: string,
         startLevel: number,
         endLevel: number,
-        groupName?: string
+        groupName?: string,
+        userId?: number
     ): string {
         const groupKey = groupName || 'all';
-        return `pricing:range:${serviceId}:${startLevel}-${endLevel}:${groupKey}`;
+        const userKey = userId ? userId.toString() : 'guest';
+        return `pricing:range:${serviceId}:${startLevel}-${endLevel}:${groupKey}:${userKey}`;
     }
 
     async invalidateServiceCache(serviceId: string): Promise<void> {
@@ -187,14 +191,16 @@ export default class PricingCalculatorService {
             quantity = 1,
             serviceModifierIds = [],
             customConditions = {},
+            userId,
         } = request;
 
-        // Generate cache key
+        // Generate cache key (includes userId for loyalty discount)
         const cacheKey = this.generatePricingCacheKey(
             methodId,
             paymentMethodId,
             quantity,
-            serviceModifierIds
+            serviceModifierIds,
+            userId
         );
 
         // Try to get from cache
@@ -599,12 +605,13 @@ export default class PricingCalculatorService {
             throw new BadRequestError("Start level must be less than end level");
         }
 
-        // Generate cache key (WITHOUT userId to avoid leaking discounts)
+        // Generate cache key (includes userId for loyalty discount)
         const cacheKey = this.generateLevelRangeCacheKey(
             serviceId,
             startLevel,
             endLevel,
-            groupName
+            groupName,
+            userId
         );
 
         // Try to get from cache

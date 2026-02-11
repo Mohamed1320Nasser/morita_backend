@@ -14,22 +14,6 @@ const FIELD_LABELS: Record<string, string> = {
     additional_info: "Additional Information",
 };
 
-export async function handleCopyAccountDataHelp(interaction: ButtonInteraction): Promise<void> {
-    try {
-        await interaction.reply({
-            content:
-                "**📋 How to Copy Account Data:**\n\n" +
-                "1️⃣ Click inside the **code block** above (the gray box with account data)\n" +
-                "2️⃣ Press `Ctrl+A` (Windows/Linux) or `Cmd+A` (Mac) to select all\n" +
-                "3️⃣ Press `Ctrl+C` (Windows/Linux) or `Cmd+C` (Mac) to copy\n" +
-                "4️⃣ Paste anywhere with `Ctrl+V` or `Cmd+V`\n\n" +
-                "✅ **You can copy multiple times!** This message won't disappear.",
-            ephemeral: true,
-        });
-    } catch (error: any) {
-        logger.error("[CopyAccountDataHelp] Error:", error);
-    }
-}
 
 export async function handleViewAccountData(interaction: ButtonInteraction): Promise<void> {
     try {
@@ -65,13 +49,13 @@ export async function handleViewAccountData(interaction: ButtonInteraction): Pro
             .setTitle(`🔐 Account Data - Order #${viewData.orderNumber}`)
             .setDescription(
                 "**⚠️ THIS DATA CAN ONLY BE VIEWED ONCE**\n\n" +
-                "**💡 Tip:** Click inside the code block below, press `Ctrl+A` (or `Cmd+A` on Mac), then `Ctrl+C` to copy all data.\n\n" +
-                `**Account Type:** ${accountTypeLabel}`
+                `**Account Type:** ${accountTypeLabel}\n\n` +
+                "**Click inside the gray box below and press Ctrl+A (or Cmd+A) to select all, then Ctrl+C (or Cmd+C) to copy.**"
             )
             .setColor(0xed4245)
             .addFields([
                 {
-                    name: "📋 Account Credentials (Click to Copy)",
+                    name: "📋 Account Credentials",
                     value: `\`\`\`\n${codeBlockContent}\`\`\``,
                     inline: false,
                 },
@@ -80,17 +64,8 @@ export async function handleViewAccountData(interaction: ButtonInteraction): Pro
             ])
             .setTimestamp();
 
-        // Add copy button for easier access
-        const copyButton = new ButtonBuilder()
-            .setCustomId(`copy_account_data_${orderId}_${Date.now()}`)
-            .setLabel("📋 How to Copy")
-            .setStyle(ButtonStyle.Secondary);
-
-        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(copyButton);
-
         await interaction.editReply({
             embeds: [embed.toJSON() as any],
-            components: [row.toJSON() as any]
         });
 
         // Update the original message to show claimed

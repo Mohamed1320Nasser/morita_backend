@@ -51,17 +51,19 @@ const pricingService = new PricingCalculatorService(loyaltyTierService);
  */
 async function getUserByDiscordId(discordId: string): Promise<number | undefined> {
     try {
+        logger.info(`[Calculator] 🔍 Fetching user for Discord ID: ${discordId}`);
         const userResponse: any = await discordApiClient.get(`/discord/users/discord/${discordId}`);
         const user = userResponse.data || userResponse;
 
         if (user && user.id) {
+            logger.info(`[Calculator] ✅ Found user ID: ${user.id} for Discord ID: ${discordId}`);
             return user.id;
         }
 
-        logger.warn(`[Calculator] User not found for Discord ID: ${discordId}`);
+        logger.warn(`[Calculator] ⚠️ User not found for Discord ID: ${discordId}`);
         return undefined;
     } catch (error) {
-        logger.warn(`[Calculator] Failed to fetch user for Discord ID ${discordId}:`, error);
+        logger.warn(`[Calculator] ❌ Failed to fetch user for Discord ID ${discordId}:`, error);
         return undefined;
     }
 }
@@ -338,6 +340,7 @@ async function processSingleSkillRequest(message: Message, requestString: string
 
     try {
         const userId = await getUserByDiscordId(message.author.id);
+        logger.info(`[Skills Calculator] 💰 Calculating price for user ${message.author.tag} (userId: ${userId || 'undefined'})`);
 
         const result = await pricingService.calculateLevelRangePrice({
             serviceId: service.id,
@@ -366,13 +369,32 @@ async function processSingleSkillRequest(message: Message, requestString: string
             mod.type === 'PERCENTAGE' ? sum + Math.abs(Number(mod.value)) : sum, 0
         );
 
-        let levelRangeValue =
-            `**${data.levels.start}  →  ${data.levels.end}**\n` +
-            `\`\`\`ansi\n\u001b[36m${data.levels.formattedXp} XP Required\u001b[0m\n\`\`\``;
+        // Get loyalty discount info from any method option
+        const loyaltyDiscount = data.methodOptions.find((m: any) => m.loyaltyDiscount)?.loyaltyDiscount;
 
-        if (totalDiscountPercent > 0) {
-            levelRangeValue += `\`\`\`ansi\n\u001b[32mDiscount: ${totalDiscountPercent.toFixed(1)}%\u001b[0m\n\`\`\``;
-        }
+        // Build level range display with ANSI table like !p calculator
+        const discountText = loyaltyDiscount
+            ? `${loyaltyDiscount.discountPercent.toFixed(1)}% ${loyaltyDiscount.tierEmoji}`
+            : '0.0%';
+
+        let levelRangeValue = `\`\`\`ansi\n`;
+        levelRangeValue += `\u001b[0;37mSkill:        Start  End    Discount\u001b[0m\n`;
+        levelRangeValue += `\u001b[0;37m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m\n`;
+
+        const skillName = data.service.name.substring(0, 12).padEnd(12);
+        const startLevelStr = String(data.levels.start).padEnd(5);
+        const endLevelStr = String(data.levels.end).padEnd(5);
+        const discountDisplay = totalDiscountPercent > 0
+            ? `\u001b[0;32m${discountText}\u001b[0m`
+            : `\u001b[0;37m${discountText}\u001b[0m`;
+
+        levelRangeValue += `\u001b[0;36m${skillName}\u001b[0m  \u001b[0;36m${startLevelStr}\u001b[0m  \u001b[0;36m${endLevelStr}\u001b[0m  ${discountDisplay}\n`;
+        levelRangeValue += `\`\`\`\n`;
+
+        // XP Required on new line with green color
+        levelRangeValue += `\`\`\`ansi\n`;
+        levelRangeValue += `\u001b[0;32m${data.levels.formattedXp} XP Required\u001b[0m\n`;
+        levelRangeValue += `\`\`\``;
 
         embed.addFields({
             name: "📊 Level Range",
@@ -414,10 +436,18 @@ async function processSingleSkillRequest(message: Message, requestString: string
                     const levelMatch = method.methodName.match(/\((\d+-\d+)\)/);
                     const levelRange = levelMatch ? levelMatch[1] : '';
                     const price = method.finalPrice.toFixed(2);
-                    priceLines.push(`  📊 [ ${levelRange} ] — $${price}`);
+
+                    // Show loyalty discount if present
+                    let priceText = `$${price}`;
+                    if (method.loyaltyDiscount) {
+                        const originalPrice = method.loyaltyDiscount.originalPrice.toFixed(2);
+                        priceText = `$${originalPrice} → $${price} (${method.loyaltyDiscount.tierEmoji} ${method.loyaltyDiscount.discountPercent}%)`;
+                    }
+
+                    priceLines.push(`  ► [ ${levelRange} ] — ${priceText}`);
                 }
 
-                priceLines.push(`  💰 **Total: $${totalPrice.toFixed(2)}**`);
+                priceLines.push(`  **Total: $${totalPrice.toFixed(2)}**`);
                 priceLines.push('');
             }
 
@@ -755,9 +785,40 @@ async function processSingleBossCalculation(
         const discountModifiers = serviceModifiers.filter((m: any) =>
             m.active && m.modifierType === 'PERCENTAGE' && Number(m.value) < 0
         );
-        const totalDiscountPercent = discountModifiers.reduce((sum: number, mod: any) =>
+        const serviceDiscountPercent = discountModifiers.reduce((sum: number, mod: any) =>
             sum + Math.abs(Number(mod.value)), 0
         );
+
+        // Get user ID for loyalty discount calculation
+        const userId = await getUserByDiscordId(message.author.id);
+
+        // Calculate loyalty discount by making a test calculation with the first method
+        const defaultPaymentMethod = paymentMethods[0];
+        const serviceModifierIds: string[] = [];
+        let loyaltyDiscountPercent = 0;
+        let loyaltyTierEmoji = '';
+
+        if (userId && allMethods.length > 0) {
+            try {
+                const testResult = await pricingService.calculatePrice({
+                    methodId: allMethods[0].id,
+                    paymentMethodId: defaultPaymentMethod.id,
+                    quantity: killCount,
+                    serviceModifierIds,
+                    userId,
+                });
+
+                if (testResult.loyaltyDiscount) {
+                    loyaltyDiscountPercent = testResult.loyaltyDiscount.discountPercent;
+                    loyaltyTierEmoji = testResult.loyaltyDiscount.tierEmoji;
+                }
+            } catch (err) {
+                logger.warn('[PvM] Failed to calculate loyalty discount for top table:', err);
+            }
+        }
+
+        // Total discount = service discount + loyalty discount
+        const totalDiscountPercent = serviceDiscountPercent + loyaltyDiscountPercent;
 
         // Use specific method name if matched, otherwise use groupName or service name
         const displayName = specificMethod?.name || groupNameFilter || service.name;
@@ -768,7 +829,7 @@ async function processSingleBossCalculation(
 
         const monsterName = displayName.substring(0, 25).padEnd(25);
         const discountDisplay = totalDiscountPercent > 0
-            ? `\u001b[0;32m${totalDiscountPercent.toFixed(0)}%\u001b[0m`
+            ? `\u001b[0;32m${totalDiscountPercent.toFixed(1)}% ${loyaltyTierEmoji}\u001b[0m`
             : `\u001b[0;37mNone\u001b[0m`;
 
         tableText += `\u001b[0;36m${monsterName}\u001b[0m  \u001b[0;36m${killCount.toString().padStart(6)}\u001b[0m  ${discountDisplay}\n`;
@@ -791,11 +852,6 @@ async function processSingleBossCalculation(
                 originalPrice: number;
             };
         }> = [];
-
-        const defaultPaymentMethod = paymentMethods[0];
-        const serviceModifierIds: string[] = [];
-
-        const userId = await getUserByDiscordId(message.author.id);
 
         for (const method of allMethods) {
             try {
@@ -1408,18 +1464,45 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
                 .setColor(0xfca311)
                 .setTimestamp();
 
+            // Get loyalty discount from cheapest method for top table
+            const cheapest = methodResults[0];
+            const loyaltyDiscountPercent = cheapest.result.loyaltyDiscount?.discountPercent || 0;
+            const loyaltyTierEmoji = cheapest.result.loyaltyDiscount?.tierEmoji || '';
+
+            // Build styled ANSI table like !p and !s
+            let tableValue = `\`\`\`ansi\n`;
+            tableValue += `\u001b[0;37mGame:                      Amount    Discount\u001b[0m\n`;
+            tableValue += `\u001b[0;37m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m\n`;
+
+            const gameName = service.name.substring(0, 25).padEnd(25);
+            const amountStr = quantity.toString().padStart(8);
+            const discountDisplay = loyaltyDiscountPercent > 0
+                ? `\u001b[0;32m${loyaltyDiscountPercent.toFixed(1)}% ${loyaltyTierEmoji}\u001b[0m`
+                : `\u001b[0;37m0.0%\u001b[0m`;
+
+            tableValue += `\u001b[0;36m${gameName}\u001b[0m  \u001b[0;36m${amountStr}\u001b[0m  ${discountDisplay}\n`;
+            tableValue += `\`\`\``;
+
             embed.addFields({
-                name: "🎮 Quantity",
-                value: `\`\`\`ansi\n\u001b[36m${quantity.toLocaleString()} items\u001b[0m\n\`\`\``,
+                name: "🎮 Game Info",
+                value: tableValue,
                 inline: false,
             });
 
             const priceLines: string[] = [];
             for (let i = 0; i < methodResults.length; i++) {
                 const { method, result } = methodResults[i];
-                const indicator = i === 0 ? "✅" : "◻️"; 
+                const indicator = i === 0 ? "✅" : "◻️";
                 priceLines.push(`${indicator} **${method.name}**`);
-                priceLines.push(`   💰 \`$${result.finalPrice.toFixed(2)}\``);
+
+                // Show loyalty discount if present (original → final with emoji and %)
+                let priceText = `$${result.finalPrice.toFixed(2)}`;
+                if (result.loyaltyDiscount) {
+                    const originalPrice = result.loyaltyDiscount.originalPrice.toFixed(2);
+                    priceText = `$${originalPrice} → $${result.finalPrice.toFixed(2)} (${result.loyaltyDiscount.tierEmoji} ${result.loyaltyDiscount.discountPercent}%)`;
+                }
+
+                priceLines.push(`  ► ${priceText}`);
                 priceLines.push('');
             }
             priceLines.pop(); 
@@ -1430,7 +1513,6 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
                 inline: false,
             });
 
-            const cheapest = methodResults[0];
             const appliedModifiers = cheapest.result.modifiers.filter((m: any) => m.applied);
             const cheapestBaseCost = cheapest.result.breakdown?.subtotal ?? (cheapest.method.basePrice * quantity);
 
@@ -1495,6 +1577,30 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
                 .setTitle(`${service.emoji || '🎮'} ${service.name}`)
                 .setColor(0xfca311)
                 .setTimestamp();
+
+            // Get loyalty discount for top table
+            const loyaltyDiscountPercent = result.loyaltyDiscount?.discountPercent || 0;
+            const loyaltyTierEmoji = result.loyaltyDiscount?.tierEmoji || '';
+
+            // Build styled ANSI table like !p and !s
+            let tableValue = `\`\`\`ansi\n`;
+            tableValue += `\u001b[0;37mGame:                      Amount    Discount\u001b[0m\n`;
+            tableValue += `\u001b[0;37m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m\n`;
+
+            const gameName = service.name.substring(0, 25).padEnd(25);
+            const amountStr = quantity.toString().padStart(8);
+            const discountDisplay = loyaltyDiscountPercent > 0
+                ? `\u001b[0;32m${loyaltyDiscountPercent.toFixed(1)}% ${loyaltyTierEmoji}\u001b[0m`
+                : `\u001b[0;37m0.0%\u001b[0m`;
+
+            tableValue += `\u001b[0;36m${gameName}\u001b[0m  \u001b[0;36m${amountStr}\u001b[0m  ${discountDisplay}\n`;
+            tableValue += `\`\`\``;
+
+            embed.addFields({
+                name: "🎮 Game Info",
+                value: tableValue,
+                inline: false,
+            });
 
             const baseCost = result.breakdown?.subtotal ?? (method.basePrice * quantity);
 
@@ -1987,12 +2093,31 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
 
             const embed = new EmbedBuilder()
                 .setTitle(`${service.emoji || '🔗'} ${service.name}`)
-                .setColor(0xfca311) 
+                .setColor(0xfca311)
                 .setTimestamp();
+
+            // Get loyalty discount from cheapest method for top table
+            const cheapest = methodResults[0];
+            const loyaltyDiscountPercent = cheapest.result.loyaltyDiscount?.discountPercent || 0;
+            const loyaltyTierEmoji = cheapest.result.loyaltyDiscount?.tierEmoji || '';
+
+            // Build styled ANSI table like !p and !s
+            let tableValue = `\`\`\`ansi\n`;
+            tableValue += `\u001b[0;37mItem:                      Amount    Discount\u001b[0m\n`;
+            tableValue += `\u001b[0;37m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m\n`;
+
+            const itemName = service.name.substring(0, 25).padEnd(25);
+            const amountStr = quantity.toString().padStart(8);
+            const discountDisplay = loyaltyDiscountPercent > 0
+                ? `\u001b[0;32m${loyaltyDiscountPercent.toFixed(1)}% ${loyaltyTierEmoji}\u001b[0m`
+                : `\u001b[0;37m0.0%\u001b[0m`;
+
+            tableValue += `\u001b[0;36m${itemName}\u001b[0m  \u001b[0;36m${amountStr}\u001b[0m  ${discountDisplay}\n`;
+            tableValue += `\`\`\``;
 
             embed.addFields({
                 name: "🔗 Ironman Gathering",
-                value: `\`\`\`ansi\n\u001b[36m${quantity} items\u001b[0m\n\`\`\``,
+                value: tableValue,
                 inline: false,
             });
 
@@ -2000,15 +2125,22 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
 
             for (let i = 0; i < methodResults.length; i++) {
                 const { method, result } = methodResults[i];
-                const indicator = i === 0 ? "✅" : "◻️"; 
-                const price = result.finalPrice.toFixed(2);
+                const indicator = i === 0 ? "✅" : "◻️";
                 const rate = method.basePrice.toFixed(6);
 
-                logger.info(`[Ironman] 💰 ${method.name}: $${price} (${rate}/item)`);
+                logger.info(`[Ironman] 💰 ${method.name}: $${result.finalPrice.toFixed(2)} (${rate}/item)`);
 
                 priceLines.push(`${indicator} **${method.name}**`);
-                priceLines.push(`   💰 \`$${price}\` • Rate: \`$${rate}/item\``);
-                priceLines.push(''); 
+
+                // Show loyalty discount if present (original → final with emoji and %)
+                let priceText = `$${result.finalPrice.toFixed(2)}`;
+                if (result.loyaltyDiscount) {
+                    const originalPrice = result.loyaltyDiscount.originalPrice.toFixed(2);
+                    priceText = `$${originalPrice} → $${result.finalPrice.toFixed(2)} (${result.loyaltyDiscount.tierEmoji} ${result.loyaltyDiscount.discountPercent}%)`;
+                }
+
+                priceLines.push(`  ► ${priceText} • Rate: \`$${rate}/item\``);
+                priceLines.push('');
             }
 
             if (priceLines.length > 0) {
@@ -2021,7 +2153,6 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
                 inline: false,
             });
 
-            const cheapest = methodResults[0];
             const cheapestBaseCost = cheapest.result.breakdown?.subtotal ?? (cheapest.method.basePrice * quantity);
 
             let breakdown = `\`\`\`yml\n`;
@@ -2083,8 +2214,32 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
 
             const embed = new EmbedBuilder()
                 .setTitle(`${service.emoji || '🔗'} ${service.name}`)
-                .setColor(0xfca311) 
+                .setColor(0xfca311)
                 .setTimestamp();
+
+            // Get loyalty discount for top table
+            const loyaltyDiscountPercent = result.loyaltyDiscount?.discountPercent || 0;
+            const loyaltyTierEmoji = result.loyaltyDiscount?.tierEmoji || '';
+
+            // Build styled ANSI table like !p and !s
+            let tableValue = `\`\`\`ansi\n`;
+            tableValue += `\u001b[0;37mItem:                      Amount    Discount\u001b[0m\n`;
+            tableValue += `\u001b[0;37m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m\n`;
+
+            const itemName = service.name.substring(0, 25).padEnd(25);
+            const amountStr = quantity.toString().padStart(8);
+            const discountDisplay = loyaltyDiscountPercent > 0
+                ? `\u001b[0;32m${loyaltyDiscountPercent.toFixed(1)}% ${loyaltyTierEmoji}\u001b[0m`
+                : `\u001b[0;37m0.0%\u001b[0m`;
+
+            tableValue += `\u001b[0;36m${itemName}\u001b[0m  \u001b[0;36m${amountStr}\u001b[0m  ${discountDisplay}\n`;
+            tableValue += `\`\`\``;
+
+            embed.addFields({
+                name: "🔗 Ironman Gathering",
+                value: tableValue,
+                inline: false,
+            });
 
             const baseCost = result.breakdown?.subtotal ?? (method.basePrice * quantity);
 
@@ -2172,19 +2327,23 @@ async function handleQuoteCommand(message: Message, apiService: ApiService) {
     );
 
     try {
-        
+        const userId = await getUserByDiscordId(message.author.id);
+        logger.info(`[Quote] 💰 Calculating prices for user ${message.author.tag} (userId: ${userId || 'undefined'})`);
+
         const services = await apiService.getAllServicesWithPricing();
+        const paymentMethods = await apiService.getPaymentMethods();
+        const defaultPaymentMethod = paymentMethods[0];
 
         if (isBatchRequest) {
-            
+
             const itemNames = input.split(',').map(s => s.trim().toLowerCase());
-            const foundMethods: Array<{ name: string; price: number; displayOrder: number; groupName?: string }> = [];
+            const foundMethods: Array<{ name: string; price: number; displayOrder: number; groupName?: string; loyaltyDiscount?: any }> = [];
             const notFound: string[] = [];
 
             for (const itemName of itemNames) {
-                const result = findQuoteMatch(services, itemName);
+                const result = await findQuoteMatch(services, itemName, userId, defaultPaymentMethod.id);
                 if (result && result.methods.length > 0) {
-                    
+
                     foundMethods.push(...result.methods);
                 } else {
                     notFound.push(itemName);
@@ -2210,12 +2369,12 @@ async function handleQuoteCommand(message: Message, apiService: ApiService) {
                 notFound,
             };
 
-            await sendQuoteEmbed(thinkingMsg, batchResult);
+            await sendQuoteEmbed(thinkingMsg, batchResult, userId);
             logger.info(`[Quote] ✅ Batch quote sent: ${foundMethods.length} found, ${notFound.length} not found`);
 
         } else {
-            
-            const result = findQuoteMatch(services, input.toLowerCase());
+
+            const result = await findQuoteMatch(services, input.toLowerCase(), userId, defaultPaymentMethod.id);
 
             if (!result) {
                 await deleteThinkingMessage(thinkingMsg);
@@ -2228,7 +2387,7 @@ async function handleQuoteCommand(message: Message, apiService: ApiService) {
                 return;
             }
 
-            await sendQuoteEmbed(thinkingMsg, result);
+            await sendQuoteEmbed(thinkingMsg, result, userId);
             logger.info(`[Quote] ✅ Quote sent for "${result.title}" (${result.methods.length} methods) to ${message.author.tag}`);
         }
 
@@ -2239,12 +2398,12 @@ async function handleQuoteCommand(message: Message, apiService: ApiService) {
     }
 }
 
-function findQuoteMatch(services: any[], searchName: string): {
+async function findQuoteMatch(services: any[], searchName: string, userId?: number, paymentMethodId?: string): Promise<{
     title: string;
     description: string;
     emoji: string;
-    methods: Array<{ name: string; price: number; displayOrder: number; groupName?: string }>;
-} | null {
+    methods: Array<{ name: string; price: number; displayOrder: number; groupName?: string; originalPrice?: number; loyaltyDiscount?: any }>;
+} | null> {
     const normalized = normalizeQuestName(searchName);
 
     const fixedServices = services.filter((s: any) =>
@@ -2261,21 +2420,56 @@ function findQuoteMatch(services: any[], searchName: string): {
         );
     };
 
+    // Helper to calculate prices with loyalty discount
+    const calculateMethodPrices = async (methodsData: any[]) => {
+        const methods = [];
+        for (const m of methodsData) {
+            if (userId && paymentMethodId) {
+                try {
+                    const result = await pricingService.calculatePrice({
+                        methodId: m.id,
+                        paymentMethodId,
+                        quantity: 1,
+                        serviceModifierIds: [],
+                        userId,
+                    });
+                    methods.push({
+                        name: m.name,
+                        price: result.finalPrice,
+                        originalPrice: result.basePrice,
+                        displayOrder: m.displayOrder ?? 999,
+                        groupName: m.groupName || null,
+                        loyaltyDiscount: result.loyaltyDiscount,
+                    });
+                } catch (error) {
+                    logger.warn(`[Quote] Failed to calculate price for ${m.name}, using base price`);
+                    methods.push({
+                        name: m.name,
+                        price: Number(m.basePrice),
+                        displayOrder: m.displayOrder ?? 999,
+                        groupName: m.groupName || null,
+                    });
+                }
+            } else {
+                methods.push({
+                    name: m.name,
+                    price: Number(m.basePrice),
+                    displayOrder: m.displayOrder ?? 999,
+                    groupName: m.groupName || null,
+                });
+            }
+        }
+        return methods.sort((a: any, b: any) => a.displayOrder - b.displayOrder);
+    };
+
     // 1. Exact service name/slug/shortcut match → show ALL methods
     for (const service of fixedServices) {
         if (normalizeQuestName(service.name) === normalized ||
             normalizeQuestName(service.slug) === normalized ||
             matchesShortcuts(service.shortcuts, normalized, true)) {
 
-            const fixedMethods = service.pricingMethods
-                .filter((m: any) => m.pricingUnit === 'FIXED')
-                .map((m: any) => ({
-                    name: m.name,
-                    price: Number(m.basePrice),
-                    displayOrder: m.displayOrder ?? 999,
-                    groupName: m.groupName || null,
-                }))
-                .sort((a: any, b: any) => a.displayOrder - b.displayOrder);
+            const fixedMethodsData = service.pricingMethods.filter((m: any) => m.pricingUnit === 'FIXED');
+            const fixedMethods = await calculateMethodPrices(fixedMethodsData);
 
             logger.info(`[Quote] ✅ Exact service match: "${service.name}" (${fixedMethods.length} methods)`);
 
@@ -2299,14 +2493,7 @@ function findQuoteMatch(services: any[], searchName: string): {
         if (methodsInGroup && methodsInGroup.length > 0) {
             logger.info(`[Quote] ✅ Exact group match: "${methodsInGroup[0].groupName}" (${methodsInGroup.length} methods)`);
 
-            const methods = methodsInGroup
-                .map((m: any) => ({
-                    name: m.name,
-                    price: Number(m.basePrice),
-                    displayOrder: m.displayOrder ?? 999,
-                    groupName: m.groupName || null,
-                }))
-                .sort((a: any, b: any) => a.displayOrder - b.displayOrder);
+            const methods = await calculateMethodPrices(methodsInGroup);
 
             return {
                 title: methodsInGroup[0].groupName,
@@ -2328,16 +2515,13 @@ function findQuoteMatch(services: any[], searchName: string): {
         if (methodMatch) {
             logger.info(`[Quote] ✅ Exact method match: "${methodMatch.name}" in "${service.name}"`);
 
+            const methods = await calculateMethodPrices([methodMatch]);
+
             return {
                 title: methodMatch.name,
                 description: service.description || 'Fixed price quest',
                 emoji: service.emoji || '⭐',
-                methods: [{
-                    name: methodMatch.name,
-                    price: Number(methodMatch.basePrice),
-                    displayOrder: methodMatch.displayOrder ?? 0,
-                    groupName: methodMatch.groupName || null,
-                }],
+                methods,
             };
         }
     }
@@ -2354,15 +2538,8 @@ function findQuoteMatch(services: any[], searchName: string): {
             curr.name.length < shortest.name.length ? curr : shortest
         );
 
-        const fixedMethods = bestMatch.pricingMethods
-            .filter((m: any) => m.pricingUnit === 'FIXED')
-            .map((m: any) => ({
-                name: m.name,
-                price: Number(m.basePrice),
-                displayOrder: m.displayOrder ?? 999,
-                groupName: m.groupName || null,
-            }))
-            .sort((a: any, b: any) => a.displayOrder - b.displayOrder);
+        const fixedMethodsData = bestMatch.pricingMethods.filter((m: any) => m.pricingUnit === 'FIXED');
+        const fixedMethods = await calculateMethodPrices(fixedMethodsData);
 
         logger.info(`[Quote] ✅ Partial service match: "${bestMatch.name}" (${fixedMethods.length} methods)`);
 
@@ -2385,14 +2562,7 @@ function findQuoteMatch(services: any[], searchName: string): {
         if (methodsInGroup && methodsInGroup.length > 0) {
             logger.info(`[Quote] ✅ Partial group match: "${methodsInGroup[0].groupName}" (${methodsInGroup.length} methods)`);
 
-            const methods = methodsInGroup
-                .map((m: any) => ({
-                    name: m.name,
-                    price: Number(m.basePrice),
-                    displayOrder: m.displayOrder ?? 999,
-                    groupName: m.groupName || null,
-                }))
-                .sort((a: any, b: any) => a.displayOrder - b.displayOrder);
+            const methods = await calculateMethodPrices(methodsInGroup);
 
             return {
                 title: methodsInGroup[0].groupName,
@@ -2414,16 +2584,13 @@ function findQuoteMatch(services: any[], searchName: string): {
         if (methodMatch) {
             logger.info(`[Quote] ✅ Partial method match: "${methodMatch.name}"`);
 
+            const methods = await calculateMethodPrices([methodMatch]);
+
             return {
                 title: methodMatch.name,
                 description: service.description || 'Fixed price quest',
                 emoji: service.emoji || '⭐',
-                methods: [{
-                    name: methodMatch.name,
-                    price: Number(methodMatch.basePrice),
-                    displayOrder: methodMatch.displayOrder ?? 0,
-                    groupName: methodMatch.groupName || null,
-                }],
+                methods,
             };
         }
     }
@@ -2438,14 +2605,32 @@ async function sendQuoteEmbed(
         title: string;
         description: string;
         emoji: string;
-        methods: Array<{ name: string; price: number; displayOrder: number; groupName?: string }>;
+        methods: Array<{ name: string; price: number; displayOrder: number; groupName?: string; originalPrice?: number; loyaltyDiscount?: any }>;
         notFound?: string[];
-    }
+    },
+    userId?: number
 ) {
     const embed = new EmbedBuilder()
         .setTitle(`${result.emoji} ${result.title}`)
         .setColor(0xfca311)
         .setTimestamp();
+
+    // Get loyalty discount from first method (all should have same discount %)
+    const loyaltyDiscountPercent = result.methods[0]?.loyaltyDiscount?.discountPercent || 0;
+    const loyaltyTierEmoji = result.methods[0]?.loyaltyDiscount?.tierEmoji || '';
+
+    // If user has loyalty discount, show it in top section
+    if (loyaltyDiscountPercent > 0) {
+        let discountInfo = `\`\`\`ansi\n`;
+        discountInfo += `\u001b[0;32mLoyalty Discount: ${loyaltyDiscountPercent.toFixed(1)}% ${loyaltyTierEmoji}\u001b[0m\n`;
+        discountInfo += `\`\`\``;
+
+        embed.addFields({
+            name: "🎁 Your Discount",
+            value: discountInfo,
+            inline: false,
+        });
+    }
 
     const priceLines: string[] = [];
     let totalPrice = 0;
@@ -2454,7 +2639,13 @@ async function sendQuoteEmbed(
 
     for (const method of sortedMethods) {
         priceLines.push(`**${method.name}**`);
-        priceLines.push(`  💰 $${method.price.toFixed(2)}`);
+
+        // Show loyalty discount if present
+        if (method.loyaltyDiscount && method.originalPrice) {
+            priceLines.push(`  ► $${method.originalPrice.toFixed(2)} → $${method.price.toFixed(2)} (${method.loyaltyDiscount.tierEmoji} ${method.loyaltyDiscount.discountPercent}%)`);
+        } else {
+            priceLines.push(`  ► $${method.price.toFixed(2)}`);
+        }
         priceLines.push('');
         totalPrice += method.price;
     }

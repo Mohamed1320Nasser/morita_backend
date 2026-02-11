@@ -42,7 +42,7 @@ import { handleLeaveReviewButton } from "./leave-review.button";
 import { handleConfirmCloseTicket, handleCancelCloseTicket } from "./confirm-close-ticket.button";
 import { handleResolveIssueButton } from "./resolve-issue.button";
 import { handleSubmitAccountData } from "./submit-account-data.button";
-import { handleViewAccountData, handleCopyAccountDataHelp } from "./view-account-data.button";
+import { handleViewAccountData } from "./view-account-data.button";
 import { handleSubmitAccountNormalLegacy } from "./submit-account-normal-legacy.button";
 import { handleSubmitAccountJagexLauncher } from "./submit-account-jagex-launcher.button";
 
@@ -239,11 +239,6 @@ export async function handleButtonInteraction(
 
         if (customId.startsWith("view_account_data_")) {
             await handleViewAccountData(interaction);
-            return;
-        }
-
-        if (customId.startsWith("copy_account_data_")) {
-            await handleCopyAccountDataHelp(interaction);
             return;
         }
 

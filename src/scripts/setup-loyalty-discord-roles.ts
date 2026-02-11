@@ -163,7 +163,11 @@ async function processTier(
   tier: any,
   results: SetupResult
 ): Promise<void> {
-  const roleName = `${tier.emoji} ${tier.name}`;
+  // Format role name with spending requirement and discount
+  // Example: "🐐 GOAT +$4000 (15%)"
+  const spendingText = tier.minSpending > 0 ? `+$${tier.minSpending}` : '$0';
+  const discountText = `(${tier.discountPercent}%)`;
+  const roleName = `${tier.emoji} ${tier.name} ${spendingText} ${discountText}`;
   const roleColor = TIER_COLORS[tier.name] || 0x99aab5; // Default gray
 
   let existingRole: Role | undefined;
@@ -184,6 +188,13 @@ async function processTier(
   if (!existingRole) {
     console.log(`  🔍 Searching for role by name: "${roleName}"`);
     existingRole = guild.roles.cache.find((r: Role) => r.name === roleName);
+
+    // If not found, try searching for old format (without spending/discount)
+    if (!existingRole) {
+      const oldRoleName = `${tier.emoji} ${tier.name}`;
+      console.log(`  🔍 Trying old format: "${oldRoleName}"`);
+      existingRole = guild.roles.cache.find((r: Role) => r.name === oldRoleName);
+    }
 
     if (existingRole) {
       console.log(`  ✅ Found existing role by name: ${existingRole.id}`);
