@@ -309,7 +309,7 @@ export class TicketService {
             }
 
             // Create the ticket channel with PURCHASE_ACCOUNT type
-            const ticketCategory = await this.getOrCreateTicketsCategory(guild);
+            const ticketCategory = await this.getTicketCategoryByType(guild, TicketType.PURCHASE_ACCOUNT);
             const username = user.username.replace(/[^a-z0-9_-]/gi, '').toLowerCase();
             const tempTimestamp = Date.now().toString().slice(-6);
             const tempChannelName = `temp-account-${tempTimestamp}`;
@@ -603,12 +603,95 @@ export class TicketService {
         }
     }
 
+    /**
+     * Map ticket types to shared category groups
+     */
+    private getTicketCategoryGroup(ticketType: TicketType): string {
+        const groups: Record<TicketType, string> = {
+            [TicketType.BUY_GOLD_OSRS]: "gold",
+            [TicketType.BUY_GOLD_RS3]: "gold",
+            [TicketType.SELL_GOLD_OSRS]: "gold",
+            [TicketType.SELL_GOLD_RS3]: "gold",
+            [TicketType.PURCHASE_SERVICES_OSRS]: "services",
+            [TicketType.PURCHASE_SERVICES_RS3]: "services",
+            [TicketType.SWAP_CRYPTO]: "crypto-swap",
+            [TicketType.PURCHASE_ACCOUNT]: "account-purchase",
+            [TicketType.GENERAL]: "general",
+        };
+        return groups[ticketType] || "general";
+    }
+
+    /**
+     * Get category name for a group
+     */
+    private getCategoryNameForGroup(group: string): string {
+        const names: Record<string, string> = {
+            "gold": "💰 GOLD TICKETS",
+            "services": "🎮 SERVICES TICKETS",
+            "crypto-swap": "🔄 SWAP CRYPTO TICKETS",
+            "account-purchase": "🛒 ACCOUNT PURCHASE TICKETS",
+            "general": "💬 GENERAL SUPPORT TICKETS",
+        };
+        return names[group] || "📁 TICKETS";
+    }
+
+    /**
+     * Get or create category for a ticket type (grouped by category)
+     */
     private async getTicketCategoryByType(
         guild: Guild,
         ticketType: TicketType
     ): Promise<CategoryChannel | null> {
+        try {
+            // 1. Get the group and category name for this ticket type
+            const group = this.getTicketCategoryGroup(ticketType);
+            const categoryName = this.getCategoryNameForGroup(group);
 
-        return await this.getOrCreateTicketsCategory(guild);
+            logger.info(`[TicketService] Looking for category "${categoryName}" for ticket type ${ticketType}`);
+
+            // 2. Check if category exists in Discord by NAME
+            const existingCategory = guild.channels.cache.find(
+                (c) => c.name === categoryName && c.type === ChannelType.GuildCategory
+            ) as CategoryChannel | undefined;
+
+            if (existingCategory) {
+                logger.info(`[TicketService] Found existing category: ${existingCategory.name} (${existingCategory.id})`);
+                return existingCategory;
+            }
+
+            // 3. Category doesn't exist - create it
+            logger.info(`[TicketService] Creating new category: ${categoryName}`);
+            const newCategory = await guild.channels.create({
+                name: categoryName,
+                type: ChannelType.GuildCategory,
+                permissionOverwrites: [
+                    {
+                        id: guild.id,
+                        deny: [PermissionFlagsBits.ViewChannel],
+                    },
+                    {
+                        id: discordConfig.supportRoleId,
+                        allow: [
+                            PermissionFlagsBits.ViewChannel,
+                            PermissionFlagsBits.SendMessages,
+                            PermissionFlagsBits.ManageChannels,
+                            PermissionFlagsBits.ManageMessages,
+                        ],
+                    },
+                    {
+                        id: discordConfig.adminRoleId,
+                        allow: [PermissionFlagsBits.Administrator],
+                    },
+                ],
+            });
+
+            logger.info(`[TicketService] Created category: ${newCategory.name} (${newCategory.id})`);
+            return newCategory;
+        } catch (error) {
+            logger.error("[TicketService] Error getting/creating ticket category:", error);
+            // Fallback to old method
+            return await this.getOrCreateTicketsCategory(guild);
+        }
     }
 
     private getChannelPrefixByType(ticketType: TicketType): string {

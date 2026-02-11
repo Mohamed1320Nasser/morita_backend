@@ -177,7 +177,7 @@ export class TicketCategoryManager {
             { name: "purchase-gold", key: "purchaseGoldChannelId" },
             { name: "sell-gold", key: "sellGoldChannelId" },
             { name: "swap-crypto", key: "swapCryptoChannelId" },
-            { name: "account-shop", key: "accountShopChannelId" },
+            // Removed: account-shop (now uses new dropdown system)
         ];
 
         for (const config of channelConfigs) {
@@ -256,10 +256,7 @@ export class TicketCategoryManager {
                 await this.ensureAndSendMessage(swapCryptoChannel, await buildSwapCryptoMessage());
             }
 
-            const accountShopChannel = this.channels.get("accountShopChannelId");
-            if (accountShopChannel) {
-                await this.ensureAndSendMessage(accountShopChannel, await buildAccountShopMessage());
-            }
+            // Removed: accountShopChannel (now uses new dropdown system in dedicated channel)
 
             logger.info("[TicketCategoryManager] Messages ensured in all channels");
         } catch (error) {
