@@ -423,7 +423,7 @@ app.post("/discord/channels/publish/all", async (req, res) => {
             await updateChannelStatus("TICKETS", {
                 status: "published",
                 lastPublishedAt: new Date(),
-                messageCount: 5,
+                messageCount: 4,
                 channelId: discordConfig.createTicketCategoryId,
                 lastError: null,
             });
@@ -434,6 +434,26 @@ app.post("/discord/channels/publish/all", async (req, res) => {
     } catch (error: any) {
         await updateChannelStatus("TICKETS", { status: "error", lastError: error.message });
         results.push({ channel: "TICKETS", success: false, error: error.message });
+    }
+
+    // Publish Account Shop (NEW dropdown system)
+    try {
+        if (discordClient.isReady() && discordClient.accountChannelManager) {
+            await discordClient.accountChannelManager.rebuildChannel(clearAllMessages);
+            await updateChannelStatus("ACCOUNTS", {
+                status: "published",
+                lastPublishedAt: new Date(),
+                messageCount: 1,
+                channelId: discordConfig.accountShopChannelId,
+                lastError: null,
+            });
+            results.push({ channel: "ACCOUNTS", success: true });
+        } else {
+            results.push({ channel: "ACCOUNTS", success: false, error: "Not ready" });
+        }
+    } catch (error: any) {
+        await updateChannelStatus("ACCOUNTS", { status: "error", lastError: error.message });
+        results.push({ channel: "ACCOUNTS", success: false, error: error.message });
     }
 
     const allSuccess = results.every(r => r.success);
