@@ -123,20 +123,35 @@ export class AccountDataService {
         if (order.customer.discordId !== submittedBy) {
             throw new Error("Only the customer can submit account data");
         }
-        if (order.accountData) {
-            throw new Error("Account data already submitted");
-        }
 
         const encryptedData = encrypt(JSON.stringify(data));
 
-        return prisma.orderAccountData.create({
-            data: {
-                orderId,
-                accountType,
-                encryptedData,
-                submittedBy,
-            },
-        });
+        // Upsert: Update if exists, create if not
+        if (order.accountData) {
+            // Update existing account data and reset claimed status
+            return prisma.orderAccountData.update({
+                where: { id: order.accountData.id },
+                data: {
+                    accountType,
+                    encryptedData,
+                    submittedBy,
+                    isClaimed: false,
+                    claimedAt: null,
+                    claimedBy: null,
+                    claimedByRole: null,
+                },
+            });
+        } else {
+            // Create new account data
+            return prisma.orderAccountData.create({
+                data: {
+                    orderId,
+                    accountType,
+                    encryptedData,
+                    submittedBy,
+                },
+            });
+        }
     }
 
     async viewAccountData(orderId: string, viewerDiscordId: string) {
@@ -217,9 +232,9 @@ export class AccountDataService {
 
         if (!order) return { canSubmit: false, reason: "Order not found" };
         if (order.customer.discordId !== discordId) return { canSubmit: false, reason: "Not the customer" };
-        if (order.accountData) return { canSubmit: false, reason: "Already submitted" };
 
-        return { canSubmit: true, orderNumber: order.orderNumber };
+        // Allow resubmission - customer can update account data anytime
+        return { canSubmit: true, orderNumber: order.orderNumber, isUpdate: !!order.accountData };
     }
 
     async canViewAccountData(orderId: string, discordId: string) {

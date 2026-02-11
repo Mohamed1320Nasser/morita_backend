@@ -49,8 +49,7 @@ export async function handleViewAccountData(interaction: ButtonInteraction): Pro
             .setTitle(`🔐 Account Data - Order #${viewData.orderNumber}`)
             .setDescription(
                 "**⚠️ THIS DATA CAN ONLY BE VIEWED ONCE**\n\n" +
-                `**Account Type:** ${accountTypeLabel}\n\n` +
-                "**Click inside the gray box below and press Ctrl+A (or Cmd+A) to select all, then Ctrl+C (or Cmd+C) to copy.**"
+                `**Account Type:** ${accountTypeLabel}`
             )
             .setColor(0xed4245)
             .addFields([

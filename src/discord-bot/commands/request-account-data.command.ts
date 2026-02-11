@@ -61,31 +61,19 @@ async function execute(interaction: ChatInputCommandInteraction) {
             return;
         }
 
-        // Check if account data already submitted and delete it to allow resubmission
+        // Check if account data already exists (will be updated on resubmission)
         try {
             const accountDataRes: any = await discordApiClient.get(`/account-data/order/${order.id}`);
-            logger.info(`[RequestAccountData] Account data response raw:`, JSON.stringify(accountDataRes));
             const existingData = accountDataRes.data ?? accountDataRes;
-            logger.info(`[RequestAccountData] Existing data:`, JSON.stringify(existingData));
 
             if (existingData && existingData.id) {
-                // Delete existing data to allow resubmission
-                logger.info(`[RequestAccountData] Account data already exists with id: ${existingData.id} - deleting to allow resubmission`);
-                try {
-                    await discordApiClient.delete(`/account-data/${existingData.id}`);
-                    logger.info(`[RequestAccountData] Successfully deleted existing account data, customer can now resubmit`);
-                } catch (deleteErr: any) {
-                    logger.error(`[RequestAccountData] Error deleting existing data:`, deleteErr.message);
-                    await interaction.editReply({
-                        content: `❌ Failed to delete existing account data: ${deleteErr?.response?.data?.message || deleteErr.message}`
-                    });
-                    return;
-                }
+                logger.info(`[RequestAccountData] Account data already exists with id: ${existingData.id} - will be updated on resubmission`);
             }
         } catch (err: any) {
-            logger.info(`[RequestAccountData] Error checking existing data: status=${err?.response?.status}, message=${err.message}`);
-            // 404 means no data exists, which is fine
-            if (err?.response?.status !== 404) {
+            // 404 means no data exists, which is fine - will be created on submission
+            if (err?.response?.status === 404) {
+                logger.info(`[RequestAccountData] No existing account data found - will be created on submission`);
+            } else {
                 logger.warn("[RequestAccountData] Error checking existing data:", err.message);
             }
         }
