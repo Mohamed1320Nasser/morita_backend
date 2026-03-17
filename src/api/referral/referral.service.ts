@@ -254,6 +254,13 @@ export default class ReferralService {
         },
       });
 
+      const leftCount = await prisma.referral.count({
+        where: {
+          referrerId: user.id,
+          hasLeftServer: true,
+        },
+      });
+
       return {
         userId: user.id,
         discordId: user.discordId,
@@ -261,6 +268,7 @@ export default class ReferralService {
         totalReferrals: user.totalReferrals,
         successfulReferrals,
         pendingReferrals,
+        leftCount,
         totalRewards: user.referralRewards.toNumber(),
         recentReferrals: user.referrals.map((r) => ({
           id: r.id,
@@ -270,6 +278,8 @@ export default class ReferralService {
           onboardedAt: r.onboardedAt,
           rewardGiven: r.rewardGiven,
           rewardAmount: r.rewardAmount?.toNumber() || 0,
+          hasLeftServer: r.hasLeftServer,
+          daysInServer: r.daysInServer,
         })),
       };
   }
@@ -337,12 +347,29 @@ export default class ReferralService {
 
       const where: any = {};
 
-      if (dto.rewardGiven !== undefined) {
-        where.rewardGiven = dto.rewardGiven;
-      }
+      // Handle status filter (takes precedence over individual boolean filters)
+      if (dto.status && dto.status !== 'all') {
+        switch (dto.status) {
+          case 'rewarded':
+            where.rewardGiven = true;
+            break;
+          case 'pending':
+            where.rewardGiven = false;
+            where.onboardedAt = { not: null };
+            break;
+          case 'not_onboarded':
+            where.onboardedAt = null;
+            break;
+        }
+      } else {
+        // Fallback to individual boolean filters if status not provided
+        if (dto.rewardGiven !== undefined) {
+          where.rewardGiven = dto.rewardGiven;
+        }
 
-      if (dto.onboarded !== undefined) {
-        where.onboardedAt = dto.onboarded ? { not: null } : null;
+        if (dto.onboarded !== undefined) {
+          where.onboardedAt = dto.onboarded ? { not: null } : null;
+        }
       }
 
       const [referrals, total] = await Promise.all([
@@ -389,7 +416,6 @@ export default class ReferralService {
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-      // Find users with suspicious high referral rates
       const suspiciousUsers = await prisma.user.findMany({
         where: {
           totalReferrals: { gt: 0 },
@@ -420,7 +446,6 @@ export default class ReferralService {
         take: 20,
       });
 
-      // Calculate referral rates
       const usersWithRates = await Promise.all(suspiciousUsers.map(async (user) => {
         const last24hCount = user.referrals.length;
 
@@ -457,7 +482,62 @@ export default class ReferralService {
         };
       }));
 
-      // Get overall stats
+      const allTopReferrers = await prisma.user.findMany({
+        where: {
+          totalReferrals: { gt: 0 },
+        },
+        select: {
+          id: true,
+          discordId: true,
+          discordUsername: true,
+          discordDisplayName: true,
+          totalReferrals: true,
+          referralRewards: true,
+        },
+        orderBy: { totalReferrals: 'desc' },
+        take: 10,
+      });
+
+      const topReferrersWithRetention = await Promise.all(allTopReferrers.map(async (user) => {
+        const leftCount = await prisma.referral.count({
+          where: {
+            referrerId: user.id,
+            hasLeftServer: true,
+          },
+        });
+
+        const activeCount = user.totalReferrals - leftCount;
+        const retentionRate = user.totalReferrals > 0 ? (activeCount / user.totalReferrals) * 100 : 0;
+
+        const last24hCount = await prisma.referral.count({
+          where: {
+            referrerId: user.id,
+            joinedAt: { gte: twentyFourHoursAgo },
+          },
+        });
+
+        let riskLevel = 'LOW';
+        if (last24hCount >= 8 || (user.totalReferrals >= 10 && retentionRate < 30)) {
+          riskLevel = 'HIGH';
+        } else if (last24hCount >= 5 || (user.totalReferrals >= 5 && retentionRate < 50)) {
+          riskLevel = 'MEDIUM';
+        }
+
+        return {
+          userId: user.id,
+          discordId: user.discordId,
+          discordUsername: user.discordUsername,
+          discordDisplayName: user.discordDisplayName,
+          totalReferrals: user.totalReferrals,
+          activeCount,
+          leftCount,
+          retentionRate,
+          totalRewards: user.referralRewards.toNumber(),
+          last24hReferrals: last24hCount,
+          riskLevel,
+        };
+      }));
+
       const [
         totalReferrals,
         pendingReferrals,
@@ -481,11 +561,11 @@ export default class ReferralService {
           last7dReferrals,
         },
         suspiciousUsers: usersWithRates.filter((u) => u.riskLevel !== 'LOW'),
-        topReferrers: usersWithRates.slice(0, 10),
+        topReferrers: topReferrersWithRetention,
       };
   }
 
-  async getReferralNetwork(userId: number) {
+  async getReferralNetwork(userId: number, filter?: string) {
     try {
       const user = await prisma.user.findUnique({
         where: { id: userId },
@@ -525,7 +605,47 @@ export default class ReferralService {
         throw new NotFoundError('User not found');
       }
 
-      // Build network tree
+      const leftCount = await prisma.referral.count({
+        where: {
+          referrerId: user.id,
+          hasLeftServer: true,
+        },
+      });
+
+      const activeCount = user.totalReferrals - leftCount;
+      const retentionRate = user.totalReferrals > 0 ? (activeCount / user.totalReferrals) * 100 : 0;
+
+      let allReferrals = user.referrals.map((ref) => ({
+        id: ref.id,
+        referredUserId: ref.referredUserId,
+        referredDiscordId: ref.referredDiscordId,
+        referredUser: ref.referredUser,
+        rewardGiven: ref.rewardGiven,
+        onboardedAt: ref.onboardedAt,
+        hasLeftServer: ref.hasLeftServer,
+        daysInServer: ref.daysInServer,
+        theirReferrals: ref.referredUser?.referrals || [],
+      }));
+
+      if (filter && filter !== 'all') {
+        allReferrals = allReferrals.filter((ref) => {
+          switch (filter) {
+            case 'active':
+              return !ref.hasLeftServer && ref.rewardGiven;
+            case 'left':
+              return ref.hasLeftServer;
+            case 'rewarded':
+              return ref.rewardGiven;
+            case 'pending':
+              return !ref.rewardGiven && ref.onboardedAt !== null;
+            case 'not_onboarded':
+              return ref.onboardedAt === null;
+            default:
+              return true;
+          }
+        });
+      }
+
       const network = {
         user: {
           id: user.id,
@@ -533,18 +653,14 @@ export default class ReferralService {
           discordDisplayName: user.discordDisplayName,
           totalReferrals: user.totalReferrals,
           totalRewards: user.referralRewards.toNumber(),
+          activeCount,
+          leftCount,
+          retentionRate,
         },
         referredBy: user.referredBy,
-        directReferrals: user.referrals.map((ref) => ({
-          id: ref.id,
-          referredUserId: ref.referredUserId,
-          referredDiscordId: ref.referredDiscordId,
-          referredUser: ref.referredUser,
-          rewardGiven: ref.rewardGiven,
-          onboardedAt: ref.onboardedAt,
-          // Second level referrals (grandchildren)
-          theirReferrals: ref.referredUser?.referrals || [],
-        })),
+        directReferrals: allReferrals,
+        filteredCount: allReferrals.length,
+        totalCount: user.referrals.length,
       };
 
       return network;

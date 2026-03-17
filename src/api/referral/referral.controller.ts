@@ -16,6 +16,7 @@ import {
   GiveRewardDto,
   GetLeaderboardDto,
   GetReferralsDto,
+  GetNetworkDto,
 } from './dtos';
 import API from '../../common/config/api.types';
 import logger from '../../common/loggers';
@@ -107,8 +108,11 @@ export default class ReferralController {
   @Get('/admin/network/:userId')
   @Authorized(API.Role.admin)
   @HttpCode(200)
-  async getReferralNetwork(@Param('userId') userId: number) {
-    return await this.referralService.getReferralNetwork(userId);
+  async getReferralNetwork(
+    @Param('userId') userId: number,
+    @QueryParams() query: GetNetworkDto
+  ) {
+    return await this.referralService.getReferralNetwork(userId, query.filter);
   }
 
   @Post('/invite/get-or-create')
