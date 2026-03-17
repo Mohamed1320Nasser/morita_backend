@@ -15,6 +15,7 @@ import {
 import { discordApiClient } from "../clients/DiscordApiClient";
 // Wallet embeds moved to slash commands /w and /t
 import { getMentionTrackerService } from "../services/mention-tracker.service";
+import { getEngagementTrackerService } from "../services/engagement-tracker.service";
 
 /**
  * Check if a channel is allowed for calculator commands
@@ -68,6 +69,74 @@ async function getUserByDiscordId(discordId: string): Promise<number | undefined
     }
 }
 
+/**
+ * Track ticket message to database for Support First Response Time KPI
+ * Saves all messages sent in ticket channels to TicketMessage table
+ */
+async function trackTicketMessage(message: Message): Promise<void> {
+    try {
+        const channelId = message.channel.id;
+        const discordId = message.author.id;
+        const authorName = message.author.displayName || message.author.username;
+        const content = message.content;
+        const discordMessageId = message.id;
+
+        logger.debug(`[TicketMessage] Processing message in channel ${channelId} from ${authorName}`);
+
+        // 1. Get ticket by channel ID
+        const ticketResponse: any = await discordApiClient.get(`/api/discord/tickets/channel/${channelId}`);
+        let ticket = ticketResponse.data || ticketResponse;
+
+        // Handle nested data structure (API returns data.data)
+        if (ticket.data && !ticket.id) {
+            ticket = ticket.data;
+        }
+
+        if (!ticket || !ticket.id) {
+            logger.warn(`[TicketMessage] No ticket found for channel ${channelId}`);
+            return;
+        }
+
+        logger.debug(`[TicketMessage] Found ticket #${ticket.ticketNumber} (${ticket.id})`);
+
+        // 2. Get user by Discord ID to get database user ID
+        const userResponse: any = await discordApiClient.get(`/discord/users/discord/${discordId}`);
+        const user = userResponse.data || userResponse;
+
+        if (!user || !user.id) {
+            logger.warn(`[TicketMessage] User not found for Discord ID ${discordId}, cannot track message`);
+            return;
+        }
+
+        logger.debug(`[TicketMessage] Found user ID ${user.id} (${user.discordRole || 'customer'})`);
+
+        // 3. Save message to database
+        const messageData = {
+            authorId: user.id,
+            authorDiscordId: discordId,
+            authorName: authorName,
+            content: content,
+            discordMessageId: discordMessageId,
+            isSystem: false,
+            isWelcome: false,
+        };
+
+        await discordApiClient.post(`/api/discord/tickets/${ticket.id}/messages`, messageData);
+
+        logger.info(
+            `[TicketMessage] ✅ Saved message to ticket #${ticket.ticketNumber} from ${authorName} (${user.discordRole || 'customer'})`
+        );
+    } catch (error: any) {
+        // Silently handle duplicate message errors (already saved)
+        if (error.response?.status === 400 && error.response?.data?.message?.includes('discordMessageId')) {
+            logger.debug(`[TicketMessage] Message already saved (duplicate discordMessageId)`);
+            return;
+        }
+
+        logger.error(`[TicketMessage] Failed to track ticket message:`, error.response?.data || error.message);
+    }
+}
+
 export default {
     name: Events.MessageCreate,
     async execute(message: Message) {
@@ -86,6 +155,33 @@ export default {
         mentionTracker.trackMention(message).catch(err =>
             logger.error("[MessageCreate] Error tracking mention:", err)
         );
+
+        // Track engagement for KPI #3: Discord Engagement & Interaction
+        const engagementTracker = getEngagementTrackerService(message.client);
+        engagementTracker.trackMessage(message).catch(err =>
+            logger.error("[MessageCreate] Error tracking engagement:", err)
+        );
+
+        // Track ticket messages for KPI: Support First Response Time
+        // Check if message is in a ticket channel and save to database
+        if (message.channel.type === 0 && 'parentId' in message.channel && message.channel.parentId) {
+            const parentId = message.channel.parentId;
+            const parentName = message.channel.parent?.name?.toLowerCase() || '';
+
+            // Check if channel is in ticket categories
+            // Method 1: Check configured category IDs
+            const isConfiguredCategory = parentId === discordConfig.ticketCategoryId ||
+                                        parentId === discordConfig.closedTicketsCategoryId;
+
+            // Method 2: Check if parent category name contains "ticket"
+            const isTicketCategory = parentName.includes('ticket') || parentName.includes('support');
+
+            if (isConfiguredCategory || isTicketCategory) {
+                trackTicketMessage(message).catch(err =>
+                    logger.error("[MessageCreate] Error tracking ticket message:", err)
+                );
+            }
+        }
 
         const prefix = discordConfig.prefix;
         const content = message.content.toLowerCase().trim();

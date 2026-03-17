@@ -21,6 +21,23 @@ export default class DiscordChannelsService {
         }
     }
 
+    /**
+     * Get ALL Discord channels from the guild (not just system channels)
+     * @returns All text channels in the Discord server
+     */
+    async getAllGuildChannels(): Promise<any> {
+        try {
+            const response = await axios.get(`${BOT_API_URL}/discord/channels/all`);
+            return response.data?.data || response.data;
+        } catch (error: any) {
+            logger.error("[DiscordChannelsService] Error getting all guild channels:", error.message);
+            return {
+                botConnected: false,
+                channels: [],
+            };
+        }
+    }
+
     async publishAllChannels(userId?: number, clearAllMessages: boolean = false): Promise<any> {
         try {
             const response = await axios.post(`${BOT_API_URL}/discord/channels/publish/all`, { userId, clearAllMessages });
@@ -79,5 +96,46 @@ export default class DiscordChannelsService {
             logger.error("[DiscordChannelsService] Error publishing payments channel:", error.message);
             throw new Error(error.response?.data?.error || "Failed to publish payments channel");
         }
+    }
+
+    /**
+     * Get channel name by channel ID
+     * @param channelId - Discord channel ID
+     * @returns Channel name or null if not found
+     */
+    async getChannelNameById(channelId: string): Promise<string | null> {
+        try {
+            const channelsData = await this.getAllChannelsStatus();
+            const channel = channelsData.channels?.find((ch: any) => ch.id === channelId);
+            return channel?.name || null;
+        } catch (error: any) {
+            logger.error(`[DiscordChannelsService] Error getting channel name for ${channelId}:`, error.message);
+            return null;
+        }
+    }
+
+    /**
+     * Get multiple channel names by IDs
+     * @param channelIds - Array of Discord channel IDs
+     * @returns Map of channel ID to channel name
+     */
+    async getChannelNamesByIds(channelIds: string[]): Promise<Map<string, string>> {
+        const channelMap = new Map<string, string>();
+
+        try {
+            const channelsData = await this.getAllChannelsStatus();
+            const channels = channelsData.channels || [];
+
+            channelIds.forEach(channelId => {
+                const channel = channels.find((ch: any) => ch.id === channelId);
+                if (channel?.name) {
+                    channelMap.set(channelId, channel.name);
+                }
+            });
+        } catch (error: any) {
+            logger.error("[DiscordChannelsService] Error getting channel names:", error.message);
+        }
+
+        return channelMap;
     }
 }

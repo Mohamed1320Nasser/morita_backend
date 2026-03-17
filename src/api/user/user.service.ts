@@ -377,4 +377,64 @@ export default class UserService {
 
         return normalizedUser;
     }
+
+    /**
+     * Get users with their orders for repeat customer KPI analysis
+     * Used by KPI Service for Repeat Customer Rate calculation
+     */
+    async getUsersWithOrdersForKPI(filter: {
+        startDate?: Date;
+        endDate?: Date;
+        minOrderValue?: number;
+        includeAllStatuses?: boolean;
+    }) {
+        const orderFilter: any = {
+            createdAt: filter.startDate || filter.endDate
+                ? {
+                    ...(filter.startDate && { gte: filter.startDate }),
+                    ...(filter.endDate && { lte: filter.endDate })
+                  }
+                : undefined,
+        };
+
+        if (!filter.includeAllStatuses) {
+            orderFilter.status = { in: ['COMPLETED', 'AWAITING_CONFIRM'] };
+        }
+
+        if (filter.minOrderValue) {
+            orderFilter.orderValue = { gte: filter.minOrderValue };
+        }
+
+        return await prisma.user.findMany({
+            where: {
+                customerOrders: {
+                    some: orderFilter
+                }
+            },
+            select: {
+                id: true,
+                username: true,
+                discordUsername: true,
+                discordDisplayName: true,
+                discordId: true,
+                createdAt: true,
+                customerOrders: {
+                    where: orderFilter,
+                    select: {
+                        id: true,
+                        orderValue: true,
+                        createdAt: true,
+                        status: true
+                    },
+                    orderBy: { createdAt: 'asc' }
+                },
+                loyaltyTier: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                }
+            }
+        });
+    }
 }

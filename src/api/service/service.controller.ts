@@ -57,4 +57,5 @@ export default class ServiceController {
         const result = await this.serviceService.delete(id);
         return result;
     }
+
 }

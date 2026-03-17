@@ -10,9 +10,12 @@ import {
 } from "./dtos";
 import logger from "../../common/loggers";
 import discordClient from "../../discord-bot/index";
+import ReferralService from "../referral/referral.service";
 
 @Service()
 export default class OnboardingService {
+    constructor(private referralService: ReferralService) {}
+
     // ============================================
     // TERMS OF SERVICE METHODS
     // ============================================
@@ -100,26 +103,23 @@ export default class OnboardingService {
     }
 
     async recordAcceptance(data: AcceptTosDto) {
-        // Find or create user by discordId
         let user = await prisma.user.findUnique({
             where: { discordId: data.discordId }
         });
 
-        // If user doesn't exist, create a temporary one (will be updated later)
         if (!user) {
             user = await prisma.user.create({
                 data: {
                     discordId: data.discordId,
                     discordUsername: data.discordUsername,
                     fullname: data.discordUsername,
-                    email: `${data.discordId}@temp.discord`, // Temporary email
+                    email: `${data.discordId}@temp.discord`,
                     discordRole: "customer",
                     role: "user"
                 }
             });
         }
 
-        // Check if already accepted
         const existingAcceptance = await prisma.tosAcceptance.findUnique({
             where: {
                 userId_tosId: {
@@ -133,7 +133,6 @@ export default class OnboardingService {
             return existingAcceptance;
         }
 
-        // Create acceptance record
         const acceptance = await prisma.tosAcceptance.create({
             data: {
                 userId: user.id,
@@ -144,7 +143,6 @@ export default class OnboardingService {
             }
         });
 
-        // Update or create onboarding session
         await prisma.onboardingSession.upsert({
             where: { discordId: data.discordId },
             update: { tosAccepted: true },
@@ -202,11 +200,37 @@ export default class OnboardingService {
     // ============================================
 
     async createSession(data: CreateSessionDto) {
-        return await prisma.onboardingSession.upsert({
-            where: { discordId: data.discordId },
-            create: data,
-            update: { discordUsername: data.discordUsername }
-        });
+        try {
+            const session = await prisma.onboardingSession.upsert({
+                where: { discordId: data.discordId },
+                create: {
+                    discordId: data.discordId,
+                    discordUsername: data.discordUsername
+                },
+                update: {
+                    discordUsername: data.discordUsername
+                }
+            });
+
+            logger.info(`[Onboarding] Session ready for ${data.discordUsername}`);
+            return session;
+        } catch (error: any) {
+            if (error.code === 'P2002') {
+                const existing = await prisma.onboardingSession.findUnique({
+                    where: { discordId: data.discordId }
+                });
+
+                if (existing) {
+                    return await prisma.onboardingSession.update({
+                        where: { discordId: data.discordId },
+                        data: { discordUsername: data.discordUsername }
+                    });
+                }
+            }
+
+            logger.error(`[Onboarding] Session creation failed:`, error);
+            throw error;
+        }
     }
 
     async getSession(discordId: string) {
@@ -252,13 +276,11 @@ export default class OnboardingService {
     // ============================================
 
     async registerUser(data: RegisterUserDto) {
-        // Check if user already exists by discordId
         let user = await prisma.user.findUnique({
             where: { discordId: data.discordId }
         });
 
         if (user) {
-            // Update existing user with complete data
             user = await prisma.user.update({
                 where: { id: user.id },
                 data: {
@@ -272,7 +294,6 @@ export default class OnboardingService {
                 }
             });
         } else {
-            // Create new user
             user = await prisma.user.create({
                 data: {
                     fullname: data.fullname,
@@ -287,7 +308,6 @@ export default class OnboardingService {
                 }
             });
 
-            // Create wallet for new customer
             await prisma.wallet.create({
                 data: {
                     userId: user.id,
@@ -298,6 +318,10 @@ export default class OnboardingService {
             });
         }
 
+        this.referralService.linkReferralToUser(data.discordId, user.id)
+            .then(() => logger.info(`[Onboarding] Referral linked for ${data.discordUsername}`))
+            .catch((error: any) => logger.debug(`[Onboarding] No referral to link: ${error.message}`));
+
         return user;
     }
 
@@ -306,7 +330,6 @@ export default class OnboardingService {
     // ============================================
 
     async publishTosToDiscord(id: string) {
-        // Get TOS by ID
         const tos = await prisma.termsOfService.findUnique({
             where: { id }
         });
@@ -315,15 +338,13 @@ export default class OnboardingService {
             throw new Error("Terms of Service not found");
         }
 
-        // Check if Discord bot is initialized
         if (!discordClient.tosManager) {
             throw new Error("Discord bot TOS manager not initialized");
         }
 
-        // Refresh the TOS channel with the latest data
         await discordClient.tosManager.refreshTosChannel();
 
-        logger.info(`TOS published to Discord: ${tos.title} (ID: ${id})`);
+        logger.info(`[Onboarding] TOS published: ${tos.title}`);
 
         return {
             success: true,

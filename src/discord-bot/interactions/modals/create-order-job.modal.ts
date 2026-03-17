@@ -123,13 +123,54 @@ async function validateCustomerBalance(
 }
 
 async function createOrder(orderData: any, ticketId: string | null, jobDetails: string | null) {
+    let serviceId = null;
+    let categoryId = null;
+    let serviceName = null;
+
+    // 1. If service_name provided, look it up
+    if (orderData.serviceName && orderData.serviceName.trim() !== "") {
+        const lookupResult = await lookupService(orderData.serviceName);
+
+        if (!lookupResult.success || !lookupResult.found) {
+            // Service not found or multiple matches
+            const errorMessage = lookupResult.message || "Service not found";
+            const suggestionsList = lookupResult.suggestions && lookupResult.suggestions.length > 0
+                ? `\n\n**Did you mean:**\n${lookupResult.suggestions.map((s: any) => `• ${s.fullName}`).join("\n")}`
+                : "";
+
+            throw new Error(`❌ ${errorMessage}${suggestionsList}`);
+        }
+
+        // Exactly one match found
+        serviceId = lookupResult.service.id;
+        categoryId = lookupResult.service.category?.id || null;
+        serviceName = lookupResult.service.name;
+    }
+
+    // 2. If no service_name but ticket exists, try to use ticket's service
+    if (!serviceId && ticketId) {
+        try {
+            const ticketResponse = await discordApiClient.get(`/api/tickets/${ticketId}`);
+            const ticketData = ticketResponse.data.data || ticketResponse.data;
+
+            if (ticketData?.serviceId) {
+                serviceId = ticketData.serviceId;
+                categoryId = ticketData.categoryId || null;
+                serviceName = ticketData.service?.name || null;
+            }
+        } catch (err) {
+            // Ignore ticket fetch errors - order can still be created without service
+            logger.warn("[CreateOrderJob] Failed to fetch ticket service:", err);
+        }
+    }
+
     const createOrderData = {
         customerDiscordId: orderData.customerDiscordId,
         workerDiscordId: orderData.workerDiscordId,
         supportDiscordId: orderData.supportDiscordId,
         ticketId: ticketId || null,
-        discordChannelId: orderData.channelId || null, // Store the ticket channel ID
-        serviceId: null,
+        discordChannelId: orderData.channelId || null,
+        serviceId: serviceId,
         methodId: null,
         paymentMethodId: null,
         orderValue: orderData.orderValue,
@@ -141,14 +182,44 @@ async function createOrder(orderData: any, ticketId: string | null, jobDetails: 
     const response: any = await discordApiClient.post("/discord/orders/create", createOrderData);
     const outerData = response.data || response;
     const order = outerData.data || outerData;
-    
+
+    // 3. Update ticket conversion status if ticket exists
+    if (ticketId) {
+        try {
+            await discordApiClient.patch(`/api/discord/tickets/${ticketId}`, {
+                convertedToOrder: true,
+                conversionAt: new Date(),
+            });
+        } catch (err) {
+            // Log but don't fail order creation if ticket update fails
+            logger.warn("[CreateOrderJob] Failed to update ticket conversion status:", err);
+        }
+    }
 
     return {
         orderNumber: order.orderNumber,
         orderId: order.orderId || order.id,
         status: order.status || "PENDING",
-        service: order.service,
+        service: order.service || { name: serviceName },
     };
+}
+
+async function lookupService(serviceName: string) {
+    try {
+        const response = await discordApiClient.get("/api/public/services/lookup/by-name", {
+            params: { name: serviceName },
+        });
+
+        return response.data || response;
+    } catch (error: any) {
+        logger.error("[CreateOrderJob] Service lookup error:", error);
+        return {
+            success: false,
+            found: false,
+            message: "Failed to lookup service",
+            suggestions: [],
+        };
+    }
 }
 
 function buildConfirmationEmbed(
@@ -180,6 +251,17 @@ function buildConfirmationEmbed(
         .setFooter({
             text: order.orderNumber ? `Order #${order.orderNumber}` : `Order ID: ${order.orderId}`
         });
+
+    // Show service name if linked
+    if (order.service && order.service.name) {
+        embed.addFields([
+            {
+                name: "🎯 Service",
+                value: order.service.name,
+                inline: true
+            },
+        ]);
+    }
 
     if (jobDetails) {
         embed.addFields([

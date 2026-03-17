@@ -636,7 +636,8 @@ export default class TicketService {
         authorName: string,
         content: string,
         discordMessageId?: string,
-        isSystem: boolean = false
+        isSystem: boolean = false,
+        isWelcome: boolean = false
     ) {
         const ticket = await prisma.ticket.findUnique({
             where: { id: ticketId },
@@ -655,6 +656,7 @@ export default class TicketService {
                 content,
                 discordMessageId,
                 isSystem,
+                isWelcome,
             },
         });
 
@@ -720,5 +722,185 @@ export default class TicketService {
         });
 
         return metadata;
+    }
+
+    async getTicketsWithFirstResponseForKPI(filter: {
+        startDate?: Date;
+        endDate?: Date;
+        ticketType?: string;
+        supportUserId?: number;
+    }) {
+        const ticketFilter: any = {
+            createdAt: filter.startDate || filter.endDate
+                ? {
+                    ...(filter.startDate && { gte: filter.startDate }),
+                    ...(filter.endDate && { lte: filter.endDate })
+                  }
+                : undefined,
+        };
+
+        if (filter.ticketType) {
+            ticketFilter.ticketType = filter.ticketType;
+        }
+
+        const messageFilter: any = {
+            isSystem: false,
+            isWelcome: false,
+            author: {
+                discordRole: { in: ['admin', 'support'] }
+            }
+        };
+
+        if (filter.supportUserId) {
+            messageFilter.authorId = filter.supportUserId;
+        }
+
+        return await prisma.ticket.findMany({
+            where: ticketFilter,
+            select: {
+                id: true,
+                ticketNumber: true,
+                ticketType: true,
+                createdAt: true,
+                messages: {
+                    where: messageFilter,
+                    orderBy: { createdAt: 'asc' },
+                    take: 1,
+                    select: {
+                        id: true,
+                        content: true,
+                        createdAt: true,
+                        authorId: true,
+                        author: {
+                            select: {
+                                id: true,
+                                fullname: true,
+                                username: true,
+                                discordUsername: true
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    async getTicketsWithOrdersForKPI(filter: {
+        startDate?: Date;
+        endDate?: Date;
+        ticketType?: string;
+    }) {
+        const ticketFilter: any = {
+            createdAt: filter.startDate || filter.endDate
+                ? {
+                    ...(filter.startDate && { gte: filter.startDate }),
+                    ...(filter.endDate && { lte: filter.endDate })
+                  }
+                : undefined,
+        };
+
+        if (filter.ticketType) {
+            ticketFilter.ticketType = filter.ticketType;
+        }
+
+        return await prisma.ticket.findMany({
+            where: ticketFilter,
+            select: {
+                id: true,
+                ticketNumber: true,
+                ticketType: true,
+                createdAt: true,
+                orders: {
+                    orderBy: { createdAt: 'asc' },
+                    take: 1,
+                    select: {
+                        id: true,
+                        createdAt: true,
+                        serviceId: true,
+                        service: {
+                            select: {
+                                id: true,
+                                name: true
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    async getTicketsForPeakTimesKPI(filter: {
+        startDate?: Date;
+        endDate?: Date;
+        ticketType?: string;
+    }) {
+        const where: any = {
+            createdAt: filter.startDate || filter.endDate
+                ? {
+                    ...(filter.startDate && { gte: filter.startDate }),
+                    ...(filter.endDate && { lte: filter.endDate })
+                  }
+                : undefined,
+        };
+
+        if (filter.ticketType) {
+            where.ticketType = filter.ticketType;
+        }
+
+        return await prisma.ticket.findMany({
+            where,
+            select: {
+                id: true,
+                createdAt: true,
+                ticketType: true
+            }
+        });
+    }
+
+    async getTicketMessagesForReplySpeedKPI(filter: {
+        startDate?: Date;
+        endDate?: Date;
+        ticketType?: string;
+    }) {
+        const where: any = {
+            createdAt: filter.startDate || filter.endDate
+                ? {
+                    ...(filter.startDate && { gte: filter.startDate }),
+                    ...(filter.endDate && { lte: filter.endDate })
+                  }
+                : undefined,
+        };
+
+        if (filter.ticketType) {
+            where.ticket = { ticketType: filter.ticketType };
+        }
+
+        return await prisma.ticketMessage.findMany({
+            where,
+            select: {
+                id: true,
+                ticketId: true,
+                content: true,
+                createdAt: true,
+                author: {
+                    select: {
+                        id: true,
+                        fullname: true,
+                        role: true,
+                        discordRole: true
+                    }
+                },
+                ticket: {
+                    select: {
+                        ticketNumber: true,
+                        ticketType: true
+                    }
+                }
+            },
+            orderBy: [
+                { ticketId: 'asc' },
+                { createdAt: 'asc' }
+            ]
+        });
     }
 }

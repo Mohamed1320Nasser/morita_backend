@@ -1,10 +1,11 @@
-import { Client, GatewayIntentBits, Collection, Events } from "discord.js";
+import { Client, GatewayIntentBits, Collection, Events, Partials } from "discord.js";
 import { join } from "path";
 import { readdirSync } from "fs";
 import { Command } from "./types/discord.types";
 import { ApiService } from "./services/api.service";
 import { ChannelManagerService } from "./services/channelManager.service";
 import { ImprovedChannelManager } from "./services/improvedChannelManager.service";
+import { InviteCacheService } from "./services/inviteCache.service";
 import { EmbedBuilder } from "./utils/embedBuilder";
 import { discordConfig } from "./config/discord.config";
 import logger from "../common/loggers";
@@ -14,7 +15,16 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers, 
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildInvites,
+        GatewayIntentBits.GuildModeration, // Required for audit logs (referral tracking)
+        GatewayIntentBits.GuildMessageReactions, // Required for reaction tracking
+        GatewayIntentBits.GuildEmojisAndStickers, // Required for custom emoji reactions
+    ],
+    partials: [
+        Partials.Message, // Required to receive reactions on uncached messages
+        Partials.Channel,
+        Partials.Reaction, // Required for reaction events
     ],
     rest: {
         timeout: 30000,
@@ -24,6 +34,7 @@ const client = new Client({
 client.commands = new Collection<string, Command>();
 client.apiService = new ApiService(discordConfig.apiBaseUrl);
 client.improvedChannelManager = new ImprovedChannelManager(client);
+client.inviteCache = new InviteCacheService();
 const loadCommands = async () => {
     const commandsPath = join(__dirname, "commands");
     const commandFiles = readdirSync(commandsPath).filter(
@@ -170,6 +181,24 @@ client.once(Events.ClientReady, async readyClient => {
     } catch (error) {
         logger.error("Failed to setup payment channel manager:", error);
     }
+
+    // Initialize invite cache for referral tracking
+    try {
+        if (client.inviteCache) {
+            const guild = readyClient.guilds.cache.get(discordConfig.guildId);
+            if (guild) {
+                await client.inviteCache.cacheGuildInvites(guild);
+                logger.info("✅ Invite cache initialized for referral tracking");
+            } else {
+                logger.warn("⚠️ Could not find guild to cache invites");
+            }
+        }
+    } catch (error) {
+        logger.error("Failed to initialize invite cache:", error);
+    }
+
+    const { startMemberSyncCron } = await import('./cron/sync-members.cron');
+    startMemberSyncCron(client);
 });
 
 client.on(Events.Error, error => {

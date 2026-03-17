@@ -846,12 +846,36 @@ export default class OrderService {
             this.validateStatusTransition(order.status, data.status);
         }
 
+        // Calculate completion time when order is marked as AWAITING_CONFIRM (completed by worker)
+        let actualCompletionHours: number | null = null;
+        let completionEfficiency: number | null = null;
+
+        if (data.status === OrderStatus.AWAITING_CONFIRM && order.startedAt) {
+            const startTime = new Date(order.startedAt).getTime();
+            const endTime = Date.now();
+            actualCompletionHours = (endTime - startTime) / (1000 * 60 * 60); // Convert to hours
+
+            // Calculate efficiency if estimate exists
+            if (order.estimatedCompletionHours) {
+                const estimated = parseFloat(order.estimatedCompletionHours.toString());
+                completionEfficiency = (estimated / actualCompletionHours) * 100;
+            }
+        }
+
         const updatedOrder = await prisma.order.update({
             where: { id: orderId },
             data: {
                 status: data.status,
                 ...(data.status === OrderStatus.IN_PROGRESS && { startedAt: new Date() }),
-                ...(data.status === OrderStatus.AWAITING_CONFIRM && { completedAt: new Date() }),
+                ...(data.status === OrderStatus.AWAITING_CONFIRM && {
+                    completedAt: new Date(),
+                    ...(actualCompletionHours !== null && {
+                        actualCompletionHours: parseFloat(actualCompletionHours.toFixed(2))
+                    }),
+                    ...(completionEfficiency !== null && {
+                        completionEfficiency: parseFloat(completionEfficiency.toFixed(2))
+                    }),
+                }),
                 ...(data.status === OrderStatus.COMPLETED && { confirmedAt: new Date() }),
                 ...(data.status === OrderStatus.CANCELLED && { cancelledAt: new Date() }),
                 ...(data.notes && { completionNotes: data.notes }),
@@ -1987,5 +2011,119 @@ export default class OrderService {
             proofScreenshots: screenshots, // backward compatibility
             screenshotCount: screenshots.length,
         };
+    }
+
+    async getOrderIssuesForKPI(filter: {
+        startDate?: Date;
+        endDate?: Date;
+        status?: string;
+        priority?: string;
+    }) {
+        const where: any = {
+            createdAt: filter.startDate || filter.endDate
+                ? {
+                    ...(filter.startDate && { gte: filter.startDate }),
+                    ...(filter.endDate && { lte: filter.endDate })
+                  }
+                : undefined,
+        };
+
+        if (filter.status) {
+            where.status = filter.status;
+        }
+
+        if (filter.priority) {
+            where.priority = filter.priority;
+        }
+
+        return await prisma.orderIssue.findMany({
+            where,
+            select: {
+                id: true,
+                orderId: true,
+                issueDescription: true,
+                status: true,
+                priority: true,
+                createdAt: true,
+                resolvedAt: true,
+                reportedBy: {
+                    select: {
+                        id: true,
+                        fullname: true
+                    }
+                },
+                resolvedBy: {
+                    select: {
+                        id: true,
+                        fullname: true
+                    }
+                },
+                order: {
+                    select: {
+                        id: true,
+                        orderNumber: true,
+                        serviceId: true,
+                        service: {
+                            select: {
+                                id: true,
+                                name: true
+                            }
+                        }
+                    }
+                }
+            },
+            orderBy: {
+                createdAt: 'desc'
+            }
+        });
+    }
+
+    async getCompletedOrdersForKPI(filter: {
+        startDate?: Date;
+        endDate?: Date;
+    }) {
+        const where: any = {
+            status: 'COMPLETED',
+            completedAt: {
+                not: null
+            },
+            startedAt: {
+                not: null
+            }
+        };
+
+        if (filter.startDate || filter.endDate) {
+            where.completedAt = {
+                ...(where.completedAt || {}),
+                ...(filter.startDate && { gte: filter.startDate }),
+                ...(filter.endDate && { lte: filter.endDate })
+            };
+        }
+
+        return await prisma.order.findMany({
+            where,
+            select: {
+                id: true,
+                orderNumber: true,
+                startedAt: true,
+                completedAt: true,
+                serviceId: true,
+                service: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                },
+                worker: {
+                    select: {
+                        id: true,
+                        fullname: true
+                    }
+                }
+            },
+            orderBy: {
+                completedAt: 'desc'
+            }
+        });
     }
 }

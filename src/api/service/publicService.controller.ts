@@ -35,4 +35,10 @@ export default class PublicServiceController {
             data: service,
         };
     }
+
+        @Get("/lookup/by-name")
+    async lookupServiceByName(@QueryParams() query: { name: string }) {
+        const result = await this.serviceService.lookupByName(query.name);
+        return result;
+    }
 }

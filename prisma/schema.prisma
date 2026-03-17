@@ -51,9 +51,14 @@ model User {
   discordRole        DiscordRole? @default(customer)
 
   // Loyalty Tier System
-  loyaltyTierId      String?
-  totalSpent         Decimal      @default(0) @db.Decimal(18, 8)  // Auto-calculated from completed orders
-  lastTierUpdate     DateTime?                                     // Last time tier was updated
+  loyaltyTierId  String?
+  totalSpent     Decimal   @default(0) @db.Decimal(18, 8) // Auto-calculated from completed orders
+  lastTierUpdate DateTime? // Last time tier was updated
+
+  // Referral System
+  referredByUserId Int?    @db.UnsignedInt
+  totalReferrals   Int     @default(0)
+  referralRewards  Decimal @default(0) @db.Decimal(18, 8)
 
   sessions                  Session[]
   otpRequests               OtpRequest[]
@@ -80,6 +85,16 @@ model User {
   orderRewardClaims         OrderRewardClaim[]   @relation("userOrderRewardClaims")
   loyaltyTier               LoyaltyTier?         @relation("userLoyaltyTier", fields: [loyaltyTierId], references: [id])
   tierHistory               LoyaltyTierHistory[] @relation("userTierHistory")
+  referredBy                User?                @relation("referredByUser", fields: [referredByUserId], references: [id])
+  referrals                 Referral[]           @relation("referrerReferrals")
+  referredUsers             Referral[]           @relation("referredUserReferrals")
+  referralRewardsGiven      ReferralReward[]       @relation("referrerRewards")
+  referralRewardsReceived   ReferralReward[]       @relation("referredRewards")
+  referralMilestones        ReferralMilestone[]    @relation("userMilestones")
+  usersReferredBy           User[]                 @relation("referredByUser")
+  discordInvites            DiscordInvite[]        @relation("userDiscordInvites")
+  expensesCreated           OperationalExpense[]   @relation("expenseCreator")
+  engagementRanks           EngagementRank[]       @relation("userEngagementRanks")
 
   @@index([email])
   @@index([role])
@@ -87,6 +102,7 @@ model User {
   @@index([discordRole])
   @@index([loyaltyTierId])
   @@index([totalSpent])
+  @@index([referredByUserId])
 }
 
 model Session {
@@ -379,26 +395,26 @@ model MethodPrice {
 model Account {
   id String @id @default(uuid())
 
-  name              String
-  price             Decimal         @db.Decimal(10, 2)
-  quantity          Int             @default(1)
-  source            String?
-  category          AccountCategory
-  accountData       Json?
-  status            AccountStatus   @default(IN_STOCK)
+  name        String
+  price       Decimal         @db.Decimal(10, 2)
+  quantity    Int             @default(1)
+  source      String?
+  category    AccountCategory
+  accountData Json?
+  status      AccountStatus   @default(IN_STOCK)
 
   // Reservation tracking
-  reservedById      Int?            @db.UnsignedInt
-  reservedAt        DateTime?       @db.DateTime(0)
-  reservationExpiry DateTime?       @db.DateTime(0)
+  reservedById      Int?      @db.UnsignedInt
+  reservedAt        DateTime? @db.DateTime(0)
+  reservationExpiry DateTime? @db.DateTime(0)
 
   // Sale tracking
-  soldToId          Int?            @db.UnsignedInt
-  soldById          Int?            @db.UnsignedInt  // Support staff who delivered the account
-  soldAt            DateTime?       @db.DateTime(0)
+  soldToId Int?      @db.UnsignedInt
+  soldById Int?      @db.UnsignedInt // Support staff who delivered the account
+  soldAt   DateTime? @db.DateTime(0)
 
-  createdAt         DateTime        @default(now()) @db.DateTime(0)
-  updatedAt         DateTime        @default(now()) @updatedAt() @db.DateTime(0)
+  createdAt DateTime @default(now()) @db.DateTime(0)
+  updatedAt DateTime @default(now()) @updatedAt() @db.DateTime(0)
 
   images     AccountImage[]
   reservedBy User?          @relation("accountReservedBy", fields: [reservedById], references: [id])
@@ -454,7 +470,7 @@ model Order {
   status             OrderStatus @default(PENDING)
   jobDetails         Json?
   completionNotes    String?     @db.Text
-  proofScreenshots   Json?       // All screenshots uploaded by worker (via /add-proof and completion)
+  proofScreenshots   Json? // All screenshots uploaded by worker (via /add-proof and completion)
   cancellationReason String?     @db.Text
   rating             Int?
   review             String?     @db.Text
@@ -462,12 +478,17 @@ model Order {
   createdAt          DateTime    @default(now()) @db.DateTime(0)
   updatedAt          DateTime    @default(now()) @updatedAt @db.DateTime(0)
   assignedAt         DateTime?
-  claimedAt          DateTime?
-  startedAt          DateTime?
-  completedAt        DateTime?
-  confirmedAt        DateTime?
-  cancelledAt        DateTime?
-  version            Int         @default(0)
+  claimedAt                DateTime?
+  startedAt                DateTime?
+  completedAt              DateTime?
+  confirmedAt              DateTime?
+  cancelledAt              DateTime?
+  estimatedCompletionHours Decimal?  @db.Decimal(10, 2)
+  actualCompletionHours    Decimal?  @db.Decimal(10, 2)
+  completionEfficiency     Decimal?  @db.Decimal(5, 2)
+  estimatedBy              Int?      @db.UnsignedInt
+  estimatedAt              DateTime? @db.DateTime(0)
+  version                  Int       @default(0)
 
   customer           User                 @relation("customerOrders", fields: [customerId], references: [id])
   worker             User?                @relation("workerOrders", fields: [workerId], references: [id])
@@ -492,6 +513,8 @@ model Order {
   @@index([createdAt])
   @@index([workerId, status])
   @@index([customerId, status])
+  @@index([estimatedCompletionHours])
+  @@index([completionEfficiency])
 }
 
 model OrderStatusHistory {
@@ -702,6 +725,10 @@ model Ticket {
   createdAt         DateTime     @default(now()) @db.DateTime(0)
   updatedAt         DateTime     @default(now()) @updatedAt @db.DateTime(0)
   closedAt          DateTime?    @db.DateTime(0)
+
+  // Service Request Measurement KPI
+  convertedToOrder Boolean   @default(false)
+  conversionAt     DateTime? @db.DateTime(0)
 
   customer      User             @relation("customerTickets", fields: [customerId], references: [id])
   support       User?            @relation("supportTickets", fields: [supportId], references: [id])
@@ -986,14 +1013,14 @@ model MentionTracker {
 // Daily Reward Configuration (Admin-managed)
 model DailyRewardConfig {
   id            String   @id @default("default-config")
-  minAmount     Int      @default(100)     // Minimum reward amount
-  maxAmount     Int      @default(10000)   // Maximum reward amount
-  cooldownHours Int      @default(24)      // Hours between claims
-  isEnabled     Boolean  @default(true)    // Enable/disable feature
+  minAmount     Int      @default(100) // Minimum reward amount
+  maxAmount     Int      @default(10000) // Maximum reward amount
+  cooldownHours Int      @default(24) // Hours between claims
+  isEnabled     Boolean  @default(true) // Enable/disable feature
   currencyName  String   @default("coins") // e.g., "coins", "gold", "points"
-  currencyEmoji String   @default("🪙")    // Emoji for display
-  gifUrl        String?  @db.Text          // GIF URL for reward message (default handled in code)
-  thumbnailUrl  String?  @db.Text          // Thumbnail for embed
+  currencyEmoji String   @default("🪙") // Emoji for display
+  gifUrl        String?  @db.Text // GIF URL for reward message (default handled in code)
+  thumbnailUrl  String?  @db.Text // Thumbnail for embed
   createdAt     DateTime @default(now()) @db.DateTime(0)
   updatedAt     DateTime @default(now()) @updatedAt @db.DateTime(0)
 }
@@ -1002,7 +1029,7 @@ model DailyRewardConfig {
 model DailyRewardClaim {
   id        String   @id @default(uuid())
   userId    Int      @db.UnsignedInt
-  amount    Int                          // Amount received
+  amount    Int // Amount received
   claimedAt DateTime @default(now()) @db.DateTime(0)
 
   user User @relation("userDailyRewardClaims", fields: [userId], references: [id])
@@ -1014,30 +1041,65 @@ model DailyRewardClaim {
 
 // Order Reward Configuration (Admin configurable)
 model OrderRewardConfig {
-  id               String          @id @default("default-config")
-  isEnabled        Boolean         @default(false)
-  rewardType       OrderRewardType @default(PERCENTAGE)
-  fixedAmount      Decimal         @default(5) @db.Decimal(18, 2)      // Fixed reward amount
-  percentage       Decimal         @default(2) @db.Decimal(5, 2)       // Percentage of order value
-  minReward        Decimal         @default(1) @db.Decimal(18, 2)      // Min reward (for percentage)
-  maxReward        Decimal         @default(50) @db.Decimal(18, 2)     // Max reward cap
-  minOrderAmount   Decimal         @default(20) @db.Decimal(18, 2)     // Min order to qualify
-  firstOrderBonus  Decimal         @default(0) @db.Decimal(18, 2)      // Bonus for first order
-  notifyDiscord    Boolean         @default(true)                       // Send Discord notification
-  currencyName     String          @default("$")
-  createdAt        DateTime        @default(now()) @db.DateTime(0)
-  updatedAt        DateTime        @default(now()) @updatedAt @db.DateTime(0)
+  id              String          @id @default("default-config")
+  isEnabled       Boolean         @default(false)
+  rewardType      OrderRewardType @default(PERCENTAGE)
+  fixedAmount     Decimal         @default(5) @db.Decimal(18, 2) // Fixed reward amount
+  percentage      Decimal         @default(2) @db.Decimal(5, 2) // Percentage of order value
+  minReward       Decimal         @default(1) @db.Decimal(18, 2) // Min reward (for percentage)
+  maxReward       Decimal         @default(50) @db.Decimal(18, 2) // Max reward cap
+  minOrderAmount  Decimal         @default(20) @db.Decimal(18, 2) // Min order to qualify
+  firstOrderBonus Decimal         @default(0) @db.Decimal(18, 2) // Bonus for first order
+  notifyDiscord   Boolean         @default(true) // Send Discord notification
+  currencyName    String          @default("$")
+  createdAt       DateTime        @default(now()) @db.DateTime(0)
+  updatedAt       DateTime        @default(now()) @updatedAt @db.DateTime(0)
+}
+
+// Referral Reward Configuration (Admin configurable)
+model ReferralRewardConfig {
+  id                   String   @id @default("default-config")
+  isEnabled            Boolean  @default(true)
+
+  // Reward Mode: PER_REFERRAL, MILESTONE, HYBRID
+  rewardMode           String   @default("HYBRID")
+
+  // Per-Referral Settings
+  perReferralEnabled   Boolean  @default(true)
+  perReferralAmount    Decimal  @default(1.00) @db.Decimal(18, 2)
+
+  // Milestone Settings
+  milestonesEnabled    Boolean  @default(true)
+  milestones           Json?    // Array of {count, reward, type}
+
+  // Quality Requirements
+  requireOnboarding    Boolean  @default(true)
+  minimumRetentionRate Int      @default(70) // % of referrals must still be in server
+  minimumDaysInServer  Int      @default(7)  // Days a member must stay to count
+  countOnlyActive      Boolean  @default(true) // Only count active members for milestones
+
+  // Fraud Prevention
+  maxRewardsPerDay     Int      @default(10)
+  cooldownMinutes      Int      @default(5) // Min time between referrals
+
+  // Notifications
+  notifyDiscord        Boolean  @default(true)
+  notifyDM             Boolean  @default(true)
+
+  currencyName         String   @default("$")
+  createdAt            DateTime @default(now()) @db.DateTime(0)
+  updatedAt            DateTime @default(now()) @updatedAt @db.DateTime(0)
 }
 
 // Order Reward Claims (Track each order reward)
 model OrderRewardClaim {
-  id          String   @id @default(uuid())
-  orderId     String   @unique
-  userId      Int      @db.UnsignedInt
-  orderAmount Decimal  @db.Decimal(18, 2)  // Original order value
-  rewardAmount Decimal @db.Decimal(18, 2)  // Reward given
-  isFirstOrder Boolean @default(false)      // Was this their first order
-  claimedAt   DateTime @default(now()) @db.DateTime(0)
+  id           String   @id @default(uuid())
+  orderId      String   @unique
+  userId       Int      @db.UnsignedInt
+  orderAmount  Decimal  @db.Decimal(18, 2) // Original order value
+  rewardAmount Decimal  @db.Decimal(18, 2) // Reward given
+  isFirstOrder Boolean  @default(false) // Was this their first order
+  claimedAt    DateTime @default(now()) @db.DateTime(0)
 
   user  User  @relation("userOrderRewardClaims", fields: [userId], references: [id])
   order Order @relation("orderRewardClaim", fields: [orderId], references: [id])
@@ -1049,23 +1111,23 @@ model OrderRewardClaim {
 
 // Crypto Wallet addresses for receiving payments
 model CryptoWallet {
-  id               String   @id @default(uuid())
-  name             String                          // "Main LTC Wallet", "BTC Payments"
-  currency         String                          // LTC, BTC, ETH, USDT
-  network          String                          // litecoin, bitcoin, ethereum, tron
-  address          String                          // The wallet address
-  upchargePercent  Float    @default(0)            // Upcharge percentage (e.g., 5 = 5%)
-  isActive         Boolean  @default(true)
+  id              String  @id @default(uuid())
+  name            String // "Main LTC Wallet", "BTC Payments"
+  currency        String // LTC, BTC, ETH, USDT
+  network         String // litecoin, bitcoin, ethereum, tron
+  address         String // The wallet address
+  upchargePercent Float   @default(0) // Upcharge percentage (e.g., 5 = 5%)
+  isActive        Boolean @default(true)
 
   // Monitoring fields
-  lastCheckedAt    DateTime?
-  lastBalance      Decimal? @db.Decimal(20, 8)
-  lastTxHash       String?
+  lastCheckedAt DateTime?
+  lastBalance   Decimal?  @db.Decimal(20, 8)
+  lastTxHash    String?
 
-  createdAt        DateTime @default(now()) @db.DateTime(0)
-  updatedAt        DateTime @default(now()) @updatedAt @db.DateTime(0)
+  createdAt DateTime @default(now()) @db.DateTime(0)
+  updatedAt DateTime @default(now()) @updatedAt @db.DateTime(0)
 
-  transactions     CryptoTransaction[] @relation("walletTransactions")
+  transactions CryptoTransaction[] @relation("walletTransactions")
 
   @@index([currency])
   @@index([isActive])
@@ -1073,27 +1135,27 @@ model CryptoWallet {
 
 // Crypto Transaction records (auto-detected payments)
 model CryptoTransaction {
-  id               String   @id @default(uuid())
-  walletId         String
-  wallet           CryptoWallet @relation("walletTransactions", fields: [walletId], references: [id], onDelete: Cascade)
+  id       String       @id @default(uuid())
+  walletId String
+  wallet   CryptoWallet @relation("walletTransactions", fields: [walletId], references: [id], onDelete: Cascade)
 
-  txHash           String   @unique
-  currency         String
-  amount           Decimal  @db.Decimal(20, 8)
-  amountUsd        Decimal? @db.Decimal(20, 2)
+  txHash    String   @unique
+  currency  String
+  amount    Decimal  @db.Decimal(20, 8)
+  amountUsd Decimal? @db.Decimal(20, 2)
 
-  fromAddress      String
-  toAddress        String
+  fromAddress String
+  toAddress   String
 
-  confirmations    Int      @default(0)
-  status           String   // "pending", "confirmed"
-  blockHeight      Int?
+  confirmations Int    @default(0)
+  status        String // "pending", "confirmed"
+  blockHeight   Int?
 
-  notifiedDiscord  Boolean  @default(false)
+  notifiedDiscord  Boolean @default(false)
   discordMessageId String?
 
-  detectedAt       DateTime @default(now()) @db.DateTime(0)
-  transactionTime  DateTime? @db.DateTime(0)
+  detectedAt      DateTime  @default(now()) @db.DateTime(0)
+  transactionTime DateTime? @db.DateTime(0)
 
   @@index([walletId])
   @@index([txHash])
@@ -1119,10 +1181,10 @@ enum ManualPaymentType {
 
 // Manual Payment Options (PayPal, Zelle, Wise, etc.)
 model ManualPaymentOption {
-  id              String            @id @default(uuid())
-  name            String                              // Display name: "PayPal", "Zelle"
-  type            ManualPaymentType                   // Type enum
-  icon            String?           @default("💳")   // Emoji icon
+  id   String            @id @default(uuid())
+  name String // Display name: "PayPal", "Zelle"
+  type ManualPaymentType // Type enum
+  icon String?           @default("💳") // Emoji icon
 
   // Dynamic details stored as JSON
   // PayPal: { email, paypalMe }
@@ -1133,17 +1195,17 @@ model ManualPaymentOption {
   // CashApp: { cashtag }
   // Venmo: { username }
   // Other: { customLabel, customValue }
-  details         Json
+  details Json
 
   // Instructions shown to customer
-  instructions    String?           @db.Text
+  instructions String? @db.Text
 
-  upchargePercent Float             @default(0)      // Upcharge percentage (e.g., 5 = 5%)
-  isActive        Boolean           @default(true)
-  sortOrder       Int               @default(0)
+  upchargePercent Float   @default(0) // Upcharge percentage (e.g., 5 = 5%)
+  isActive        Boolean @default(true)
+  sortOrder       Int     @default(0)
 
-  createdAt       DateTime          @default(now()) @db.DateTime(0)
-  updatedAt       DateTime          @default(now()) @updatedAt @db.DateTime(0)
+  createdAt DateTime @default(now()) @db.DateTime(0)
+  updatedAt DateTime @default(now()) @updatedAt @db.DateTime(0)
 
   @@index([type])
   @@index([isActive])
@@ -1152,24 +1214,24 @@ model ManualPaymentOption {
 
 // Discord Payment Message Configuration
 model PaymentDiscordConfig {
-  id                  String   @id @default("default")
+  id String @id @default("default")
 
   // Embed content
-  title               String   @default("💳 Payment Methods")
-  description         String?  @db.Text
-  color               String   @default("5865F2")  // Hex without #
-  bannerUrl           String?  @db.Text            // Large image at bottom (like TOS)
-  thumbnailUrl        String?  @db.Text            // Small image on right
+  title        String  @default("💳 Payment Methods")
+  description  String? @db.Text
+  color        String  @default("5865F2") // Hex without #
+  bannerUrl    String? @db.Text // Large image at bottom (like TOS)
+  thumbnailUrl String? @db.Text // Small image on right
 
   // Button configurations
-  cryptoButtonLabel   String   @default("🔗 Cryptocurrency")
-  cryptoButtonStyle   String   @default("PRIMARY")  // PRIMARY, SECONDARY, SUCCESS, DANGER
-  paymentButtonLabel  String   @default("💵 Other Payments")
-  paymentButtonStyle  String   @default("SECONDARY")
+  cryptoButtonLabel  String @default("🔗 Cryptocurrency")
+  cryptoButtonStyle  String @default("PRIMARY") // PRIMARY, SECONDARY, SUCCESS, DANGER
+  paymentButtonLabel String @default("💵 Other Payments")
+  paymentButtonStyle String @default("SECONDARY")
 
-  footerText          String?  @db.Text
+  footerText String? @db.Text
 
-  updatedAt           DateTime @default(now()) @updatedAt @db.DateTime(0)
+  updatedAt DateTime @default(now()) @updatedAt @db.DateTime(0)
 }
 
 // Account Data Collection for Orders
@@ -1233,20 +1295,20 @@ model GoldRateConfig {
 
 // Loyalty Tiers Configuration (Admin-managed)
 model LoyaltyTier {
-  id               String   @id @default(uuid())
-  name             String   @unique              // "Client", "Regular", "VIP", etc.
-  emoji            String   @default("👤")       // Display emoji
-  minSpending      Decimal  @db.Decimal(18, 2)  // Minimum spending to qualify ($1, $250, $2000)
-  maxSpending      Decimal? @db.Decimal(18, 2)  // Maximum spending (null = unlimited)
-  discountPercent  Decimal  @db.Decimal(5, 2)   // Discount percentage (2.00 = 2%)
-  discordRoleId    String?                       // Discord role ID (e.g., "1234567890")
-  sortOrder        Int      @default(0)          // Display order (1, 2, 3...)
-  isActive         Boolean  @default(true)       // Enable/disable tier
-  createdAt        DateTime @default(now()) @db.DateTime(0)
-  updatedAt        DateTime @default(now()) @updatedAt @db.DateTime(0)
+  id              String   @id @default(uuid())
+  name            String   @unique // "Client", "Regular", "VIP", etc.
+  emoji           String   @default("👤") // Display emoji
+  minSpending     Decimal  @db.Decimal(18, 2) // Minimum spending to qualify ($1, $250, $2000)
+  maxSpending     Decimal? @db.Decimal(18, 2) // Maximum spending (null = unlimited)
+  discountPercent Decimal  @db.Decimal(5, 2) // Discount percentage (2.00 = 2%)
+  discordRoleId   String? // Discord role ID (e.g., "1234567890")
+  sortOrder       Int      @default(0) // Display order (1, 2, 3...)
+  isActive        Boolean  @default(true) // Enable/disable tier
+  createdAt       DateTime @default(now()) @db.DateTime(0)
+  updatedAt       DateTime @default(now()) @updatedAt @db.DateTime(0)
 
-  users            User[]              @relation("userLoyaltyTier")
-  tierHistory      LoyaltyTierHistory[] @relation("tierHistory")
+  users       User[]               @relation("userLoyaltyTier")
+  tierHistory LoyaltyTierHistory[] @relation("tierHistory")
 
   @@index([minSpending])
   @@index([isActive])
@@ -1255,17 +1317,230 @@ model LoyaltyTier {
 
 // Loyalty Tier History (Audit trail)
 model LoyaltyTierHistory {
-  id           String   @id @default(uuid())
-  userId       Int      @db.UnsignedInt
-  fromTierId   String?
-  toTierId     String
-  totalSpent   Decimal  @db.Decimal(18, 8)      // Total spending at time of change
-  changedAt    DateTime @default(now()) @db.DateTime(0)
-  reason       String?  @db.Text                // "automatic", "manual_admin", etc.
+  id         String   @id @default(uuid())
+  userId     Int      @db.UnsignedInt
+  fromTierId String?
+  toTierId   String
+  totalSpent Decimal  @db.Decimal(18, 8) // Total spending at time of change
+  changedAt  DateTime @default(now()) @db.DateTime(0)
+  reason     String?  @db.Text // "automatic", "manual_admin", etc.
 
-  user         User         @relation("userTierHistory", fields: [userId], references: [id])
-  tier         LoyaltyTier  @relation("tierHistory", fields: [toTierId], references: [id])
+  user User        @relation("userTierHistory", fields: [userId], references: [id])
+  tier LoyaltyTier @relation("tierHistory", fields: [toTierId], references: [id])
 
   @@index([userId])
   @@index([changedAt])
 }
+
+// ============================================
+// MEMBER ACTIVITY TRACKING (KPI)
+// ============================================
+
+// Track member joins/leaves for growth KPI
+model MemberActivity {
+  id          String          @id @default(uuid())
+  discordId   String
+  username    String
+  displayName String?
+  eventType   MemberEventType
+  reason      String?         @db.Text // Kick/ban reason from audit logs
+  timestamp   DateTime        @default(now())
+
+  @@index([discordId])
+  @@index([eventType])
+  @@index([timestamp])
+  @@index([discordId, eventType])
+}
+
+enum MemberEventType {
+  JOIN
+  LEAVE
+  KICK
+  BAN
+}
+
+model Referral {
+  id                 String    @id @default(uuid())
+  referrerId         Int       @db.UnsignedInt
+  referrerDiscordId  String
+  referredUserId     Int?      @db.UnsignedInt
+  referredDiscordId  String
+  inviteCode         String?   // Discord invite code used for referral tracking
+  joinedAt           DateTime  @default(now()) @db.DateTime(0)
+  onboardedAt        DateTime? @db.DateTime(0)
+  rewardGiven        Boolean   @default(false)
+  rewardAmount       Decimal?  @db.Decimal(18, 8)
+  rewardGivenAt      DateTime? @db.DateTime(0)
+
+  // Member Status Tracking
+  hasLeftServer      Boolean   @default(false)
+  leftServerAt       DateTime? @db.DateTime(0)
+  lastSeenAt         DateTime? @db.DateTime(0)
+  daysInServer       Int       @default(0) // Total days member stayed
+
+  createdAt          DateTime  @default(now()) @db.DateTime(0)
+
+  referrer         User             @relation("referrerReferrals", fields: [referrerId], references: [id])
+  referredUser     User?            @relation("referredUserReferrals", fields: [referredUserId], references: [id])
+  rewards          ReferralReward[] @relation("referralRewards")
+
+  @@index([referrerId])
+  @@index([referredUserId])
+  @@index([referredDiscordId])
+  @@index([rewardGiven])
+  @@index([joinedAt])
+  @@index([createdAt])
+  @@index([hasLeftServer])
+}
+
+model ReferralReward {
+  id             String   @id @default(uuid())
+  referralId     String
+  referrerId     Int      @db.UnsignedInt
+  referredUserId Int      @db.UnsignedInt
+  amount         Decimal  @db.Decimal(18, 8)
+  reason         String?
+  createdAt      DateTime @default(now()) @db.DateTime(0)
+
+  referral     Referral @relation("referralRewards", fields: [referralId], references: [id])
+  referrer     User     @relation("referrerRewards", fields: [referrerId], references: [id])
+  referredUser User     @relation("referredRewards", fields: [referredUserId], references: [id])
+
+  @@index([referralId])
+  @@index([referrerId])
+  @@index([referredUserId])
+  @@index([createdAt])
+}
+
+// Track claimed milestones to prevent duplicate rewards
+model ReferralMilestone {
+  id          String   @id @default(uuid())
+  userId      Int      @db.UnsignedInt
+  milestone   Int      // Number of referrals (5, 10, 25, 50, 100)
+  reward      Decimal  @db.Decimal(18, 8)
+  claimedAt   DateTime @default(now()) @db.DateTime(0)
+
+  user User @relation("userMilestones", fields: [userId], references: [id])
+
+  @@unique([userId, milestone])
+  @@index([userId])
+  @@index([claimedAt])
+}
+
+// Discord Invite Tracking - Maps invite codes to users for referral tracking (DEPRECATED - kept for historical data)
+model DiscordInvite {
+  id           String   @id @default(uuid())
+  inviteCode   String   @unique // Discord invite code (e.g., "yn7VFA8E")
+  inviteUrl    String   // Full URL (e.g., "https://discord.gg/yn7VFA8E")
+  userId       Int      @db.UnsignedInt // User who owns this invite
+  discordId    String   // Discord ID of owner
+  channelId    String?  // Discord channel where invite was created
+  uses         Int      @default(0) // Last known usage count from Discord API
+  maxUses      Int      @default(0) // 0 = unlimited
+  maxAge       Int      @default(0) // 0 = never expires (in seconds)
+  temporary    Boolean  @default(false) // Whether members granted by this invite are temporary
+  isActive     Boolean  @default(true) // Whether invite is still valid
+  createdAt    DateTime @default(now()) @db.DateTime(0)
+  updatedAt    DateTime @updatedAt @db.DateTime(0)
+  lastSyncedAt DateTime @default(now()) @db.DateTime(0) // Last time we synced with Discord API
+
+  user User @relation("userDiscordInvites", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([inviteCode])
+  @@index([discordId])
+  @@index([userId])
+  @@index([isActive])
+}
+
+// ============================================
+// OPERATIONAL EXPENSE TRACKING (KPI #14)
+// ============================================
+
+// Track operational expenses for financial KPIs
+model OperationalExpense {
+  id          String              @id @default(uuid())
+  category    ExpenseCategory
+  amount      Decimal             @db.Decimal(18, 2)
+  description String              @db.Text
+  date        DateTime            @db.Date
+  recurring   Boolean             @default(false)
+  frequency   RecurringFrequency?
+  reference   String?             // Invoice number, receipt ID, etc.
+  createdAt   DateTime            @default(now()) @db.DateTime(0)
+  createdBy   Int                 @db.UnsignedInt
+
+  creator User @relation("expenseCreator", fields: [createdBy], references: [id])
+
+  @@index([category])
+  @@index([date])
+  @@index([createdAt])
+  @@index([createdBy])
+}
+
+enum ExpenseCategory {
+  SERVER_HOSTING
+  PAYMENT_FEES
+  MARKETING
+  SOFTWARE_LICENSES
+  DISCORD_BOT
+  MODERATION
+  REFUNDS
+  CHARGEBACKS
+  WITHDRAWAL_FEES
+  OTHER
+}
+
+enum RecurringFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+// ============================================
+// DISCORD ENGAGEMENT TRACKING (KPI #3)
+// ============================================
+
+// Daily aggregated engagement metrics per user
+model DiscordEngagement {
+  id                String   @id @default(uuid())
+  discordId         String
+  username          String
+  displayName       String?
+  date              DateTime @db.Date // Daily aggregation
+  messagesCount     Int      @default(0)
+  reactionsGiven    Int      @default(0) // Reactions this user gave
+  reactionsReceived Int      @default(0) // Reactions this user received
+  mentionsCount     Int      @default(0) // Times user mentioned others
+  helpfulReactions  Int      @default(0) // Received 👍, ✅, ❤️, 🎯
+  voiceMinutes      Int      @default(0) // Time in voice channels (future)
+  channelActivity   Json?    // { channelId: messageCount }
+  engagementScore   Float    @default(0) // Calculated score
+  createdAt         DateTime @default(now()) @db.DateTime(0)
+  updatedAt         DateTime @default(now()) @updatedAt @db.DateTime(0)
+
+  @@unique([discordId, date])
+  @@index([discordId])
+  @@index([date])
+  @@index([messagesCount])
+  @@index([engagementScore])
+  @@index([date, engagementScore])
+}
+
+// Engagement ranks/badges earned by users
+model EngagementRank {
+  id        String   @id @default(uuid())
+  discordId String
+  userId    Int?     @db.UnsignedInt
+  rank      String   // "Community Helper", "Top Contributor", "Rising Star"
+  earnedAt  DateTime @default(now()) @db.DateTime(0)
+  reason    String   @db.Text // Why they earned it
+  active    Boolean  @default(true) // Can be revoked
+
+  user User? @relation("userEngagementRanks", fields: [userId], references: [id])
+
+  @@index([discordId])
+  @@index([earnedAt])
+  @@index([active])
+}
+

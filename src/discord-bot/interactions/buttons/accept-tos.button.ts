@@ -13,42 +13,67 @@ export default {
             const username = interaction.user.username;
             const member = interaction.member as any;
 
+            // ⚡ CRITICAL: Defer IMMEDIATELY to prevent "Unknown interaction" errors
+            // Discord requires acknowledgment within 3 seconds
+            await interaction.deferReply({ ephemeral: true });
+
+            // Record KPI activity (idempotent - won't duplicate if already recorded)
+            try {
+                await axios.post(`${discordConfig.apiBaseUrl}/kpi/member-activity`, {
+                    discordId,
+                    username,
+                    displayName: interaction.user.displayName || username,
+                    eventType: 'JOIN',
+                    timestamp: new Date().toISOString()
+                });
+            } catch (kpiError) {
+                // Non-critical, don't block onboarding
+                logger.debug(`[Onboarding] KPI recording failed (non-critical):`, kpiError);
+            }
+
             const hasCustomerRole = member?.roles?.cache?.has(onboardingConfig.customerRoleId);
 
             if (hasCustomerRole) {
-                return await interaction.reply({
-                    content: "✅ You have already completed registration and have the Customer role!",
-                    ephemeral: true
+                return await interaction.editReply({
+                    content: "✅ You have already completed registration and have the Customer role!"
                 });
             }
 
+            // STEP 1: Ensure session exists (create or fetch)
+            // This is now the ONLY place sessions are created - eliminates race conditions
             let existingSession = null;
             try {
-                const sessionResponse = await axios.get(`${discordConfig.apiBaseUrl}/onboarding/sessions/${discordId}`);
+                // Try to create session (upsert will update if exists)
+                const sessionResponse = await axios.post(`${discordConfig.apiBaseUrl}/onboarding/sessions`, {
+                    discordId,
+                    discordUsername: username
+                });
                 existingSession = sessionResponse.data.data;
+                logger.info(`[Onboarding] Session ready for ${username}`);
+            } catch (sessionError: any) {
+                logger.error(`[Onboarding] Failed to create/fetch session for ${username}:`, sessionError.message);
+                return await interaction.editReply({
+                    content: "❌ Failed to initialize your session. Please try again or contact an administrator."
+                });
+            }
 
-                if (existingSession?.completedAt) {
-                    return await interaction.reply({
-                        content: "✅ You have already accepted the Terms of Service and completed registration!\n\nIf you don't have access to channels, please contact an administrator.",
-                        ephemeral: true
-                    });
-                }
+            // STEP 2: Check if already completed
+            if (existingSession?.completedAt) {
+                return await interaction.editReply({
+                    content: "✅ You have already accepted the Terms of Service and completed registration!\n\nIf you don't have access to channels, please contact an administrator."
+                });
+            }
 
-                if (existingSession?.tosAccepted && !existingSession?.completedAt) {
-                    logger.info(`[Onboarding] ${username} re-attempting registration after previous partial completion`);
-                }
-            } catch (sessionError) {
-                
-                logger.debug(`[Onboarding] No existing session for ${username}`);
+            if (existingSession?.tosAccepted && !existingSession?.completedAt) {
+                logger.info(`[Onboarding] ${username} re-attempting registration after previous partial completion`);
             }
 
             const tosResponse = await axios.get(`${discordConfig.apiBaseUrl}/onboarding/tos/active`);
             const activeTos = tosResponse.data.data;
 
             if (!activeTos) {
-                return await interaction.reply({
-                    content: "❌ No active Terms of Service found. Please contact an administrator.",
-                    ephemeral: true
+                return await interaction.editReply({
+                    content: "❌ No active Terms of Service found. Please contact an administrator."
                 });
             }
 
@@ -58,10 +83,7 @@ export default {
             if (!questions || questions.length === 0) {
                 logger.info(`[Onboarding] No questions configured, completing onboarding directly for ${username}`);
 
-                await interaction.deferReply({ ephemeral: true });
-
                 try {
-                    
                     await axios.post(`${discordConfig.apiBaseUrl}/onboarding/tos/accept`, {
                         discordId,
                         discordUsername: username,
@@ -90,7 +112,7 @@ export default {
                             `Enjoy our services!`
                     });
                 } catch (error: any) {
-                    logger.error(`[Onboarding] Failed to complete direct onboarding:`, error);
+                    logger.error(`[Onboarding] Failed to complete direct onboarding:`, error.message);
                     return await interaction.editReply({
                         content:
                             `❌ **Registration Failed**\n\n` +
@@ -171,11 +193,8 @@ export default {
                 `Please try again or contact an administrator.`;
 
             try {
-                if (interaction.deferred) {
-                    await interaction.editReply({ content: errorContent });
-                } else if (!interaction.replied) {
-                    await interaction.reply({ content: errorContent, ephemeral: true });
-                }
+                // Interaction was already deferred at the start, so we can safely editReply
+                await interaction.editReply({ content: errorContent });
             } catch (replyError) {
                 logger.error("[Onboarding] Could not send error reply:", replyError);
             }

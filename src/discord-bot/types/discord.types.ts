@@ -13,6 +13,7 @@ import { TicketCategoryManager } from "../services/ticketCategoryManager.service
 import { TosManagerService } from "../services/tosManager.service";
 import { AccountChannelManager } from "../services/accountChannelManager.service";
 import { PaymentChannelManagerService } from "../services/paymentChannelManager.service";
+import { InviteCacheService } from "../services/inviteCache.service";
 
 declare module "discord.js" {
     interface Client {
@@ -24,6 +25,7 @@ declare module "discord.js" {
         tosManager: TosManagerService;
         accountChannelManager: AccountChannelManager;
         paymentChannelManager: PaymentChannelManagerService;
+        inviteCache: InviteCacheService;
     }
 }
 

@@ -176,6 +176,58 @@ app.get("/discord/channels/status", async (req, res) => {
     }
 });
 
+// Get ALL Discord channels from the guild
+app.get("/discord/channels/all", async (req, res) => {
+    try {
+        const isConnected = discordClient.isReady();
+
+        if (!isConnected) {
+            return res.json({
+                success: true,
+                data: {
+                    botConnected: false,
+                    channels: []
+                }
+            });
+        }
+
+        const guild = discordClient.guilds.cache.first();
+        if (!guild) {
+            return res.json({
+                success: true,
+                data: {
+                    botConnected: true,
+                    channels: []
+                }
+            });
+        }
+
+        // Fetch all channels from the guild
+        const allChannels = Array.from(guild.channels.cache.values())
+            .filter(channel => channel.type === 0) // Only text channels (type 0 = GUILD_TEXT)
+            .map(channel => ({
+                id: channel.id,
+                name: (channel as any).name,
+                type: channel.type,
+                position: (channel as any).position
+            }))
+            .sort((a, b) => a.position - b.position);
+
+        res.json({
+            success: true,
+            data: {
+                botConnected: true,
+                botUsername: discordClient.user?.username,
+                guildName: guild.name,
+                channels: allChannels
+            }
+        });
+    } catch (error: any) {
+        logger.error("[Bot API] Error getting all channels:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 async function updateChannelStatus(
     channelType: "PRICING" | "TOS" | "TICKETS" | "ACCOUNTS" | "PAYMENTS",
     data: {

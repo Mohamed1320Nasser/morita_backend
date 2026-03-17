@@ -13,11 +13,9 @@ export class OnboardingManagerService {
 
     async handleNewMember(member: GuildMember) {
         try {
-            
-            await axios.post(`${discordConfig.apiBaseUrl}/onboarding/sessions`, {
-                discordId: member.id,
-                discordUsername: member.user.username
-            });
+            // ⚠️ IMPORTANT: We do NOT create the session here anymore
+            // The TOS button will create it when the user actually engages
+            // This eliminates all race conditions
 
             if (onboardingConfig.sendWelcomeDM) {
                 try {
@@ -26,19 +24,19 @@ export class OnboardingManagerService {
                             `Please head to the **#terms-of-service** channel to get started.`
                     });
                 } catch (error) {
-                    logger.warn(`Could not send DM to ${member.user.username}`, error);
+                    logger.warn(`[Onboarding] Could not send DM to ${member.user.username}`, error);
                 }
             }
 
-            logger.info(`New member joined: ${member.user.username} (${member.id})`);
-        } catch (error) {
-            logger.error("Failed to handle new member:", error);
+            logger.info(`[Onboarding] New member ${member.user.username} (${member.id}) welcomed, waiting for TOS acceptance`);
+        } catch (error: any) {
+            logger.error(`[Onboarding] Failed to handle new member ${member.user.username}:`, error.message);
         }
     }
 
     async completeOnboarding(member: GuildMember, userData: any) {
         try {
-            
+
             try {
                 const existingUserResponse = await axios.get(`${discordConfig.apiBaseUrl}/users/discord/${member.id}`);
                 const existingUser = existingUserResponse.data.data;
@@ -62,8 +60,10 @@ export class OnboardingManagerService {
                     return existingUser;
                 }
             } catch (checkError: any) {
-                
-                if (checkError.response?.status !== 404) {
+                // 404 is expected for new users - not an error
+                if (checkError.response?.status === 404) {
+                    logger.info(`[Onboarding] User ${member.user.username} (${member.id}) is new, proceeding with registration`);
+                } else if (checkError.response?.status !== 404) {
                     logger.warn(`[Onboarding] Error checking existing user:`, checkError.message);
                 }
             }
@@ -95,6 +95,21 @@ export class OnboardingManagerService {
             }
 
             await axios.post(`${discordConfig.apiBaseUrl}/onboarding/sessions/${member.id}/complete`);
+
+            try {
+                const rewardResponse = await axios.post(`${discordConfig.apiBaseUrl}/referral/reward`, {
+                    referredDiscordId: member.id
+                });
+
+                if (rewardResponse.data?.data) {
+                    const amount = rewardResponse.data.data.amount || 0;
+                    logger.info(`[Onboarding] Reward sent: $${amount}`);
+                }
+            } catch (refError: any) {
+                if (refError.response?.status !== 404 && !refError.message?.includes('not found')) {
+                    logger.error(`[Onboarding] Reward failed:`, refError.message);
+                }
+            }
 
             if (onboardingConfig.generalChannelId) {
                 const generalChannel = member.guild.channels.cache.get(onboardingConfig.generalChannelId);

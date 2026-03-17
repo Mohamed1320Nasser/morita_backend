@@ -472,4 +472,68 @@ export default class ServiceService {
             paymentMethods,
         };
     }
+
+    async lookupByName(name: string) {
+        if (!name || name.trim() === "") {
+            throw new BadRequestError("Service name is required");
+        }
+
+        const searchTerm = name.trim();
+
+        // Search for services matching the name (case-insensitive, partial match)
+        const services = await prisma.service.findMany({
+            where: {
+                active: true,
+                deletedAt: null,
+                OR: [
+                    { name: { contains: searchTerm } },
+                    { slug: { contains: searchTerm } },
+                ],
+            },
+            include: {
+                category: {
+                    select: {
+                        id: true,
+                        name: true,
+                    },
+                },
+            },
+            take: 10,
+        });
+
+        if (services.length === 0) {
+            // No matches found
+            return {
+                success: false,
+                found: false,
+                count: 0,
+                message: `No service found matching "${searchTerm}"`,
+                suggestions: [],
+            };
+        }
+
+        if (services.length === 1) {
+            // Exactly one match - return it directly
+            return {
+                success: true,
+                found: true,
+                count: 1,
+                service: services[0],
+            };
+        }
+
+        // Multiple matches found - return error with suggestions
+        return {
+            success: false,
+            found: false,
+            count: services.length,
+            message: `Multiple services found matching "${searchTerm}". Please be more specific.`,
+            suggestions: services.map((s) => ({
+                id: s.id,
+                name: s.name,
+                category: s.category?.name || "Unknown",
+                fullName: `${s.category?.name || "Unknown"} - ${s.name}`,
+            })),
+        };
+    }
 }

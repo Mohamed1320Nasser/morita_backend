@@ -126,6 +126,7 @@ export default class DiscordTicketController {
             content: string;
             discordMessageId?: string;
             isSystem?: boolean;
+            isWelcome?: boolean;
         }
     ) {
         const message = await this.ticketService.addMessage(
@@ -135,7 +136,8 @@ export default class DiscordTicketController {
             data.authorName,
             data.content,
             data.discordMessageId,
-            data.isSystem
+            data.isSystem,
+            data.isWelcome
         );
         return {
             success: true,

@@ -41,6 +41,12 @@ export default {
         )
         .addStringOption((option) =>
             option
+                .setName("service_name")
+                .setDescription("Service name (optional, links order to service)")
+                .setRequired(false)
+        )
+        .addStringOption((option) =>
+            option
                 .setName("currency")
                 .setDescription("Currency (default: USD)")
                 .setRequired(false)
@@ -69,6 +75,7 @@ export default {
             const customerUser = interaction.options.get("customer")?.user;
             const orderValue = interaction.options.get("value")?.value as number;
             const deposit = interaction.options.get("deposit")?.value as number;
+            const serviceName = (interaction.options.get("service_name")?.value as string) || null;
             const currency = (interaction.options.get("currency")?.value as string) || "USD";
             const workerUser = interaction.options.get("worker")?.user;
 
@@ -93,7 +100,8 @@ export default {
                 workerDiscordId: workerUser?.id || null,
                 supportDiscordId: supportUser.id,
                 channelId: channel?.id,
-                ticketId: null, 
+                ticketId: null,
+                serviceName: serviceName,
                 orderValue,
                 deposit,
                 currency,
