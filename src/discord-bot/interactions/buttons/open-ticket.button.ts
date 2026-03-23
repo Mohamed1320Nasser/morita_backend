@@ -8,78 +8,189 @@ import {
 import logger from "../../../common/loggers";
 import { getTicketService } from "../../services/ticket.service";
 import { discordConfig } from "../../config/discord.config";
+import { TicketType } from "../../types/discord.types";
+import { discordApiClient } from "../../clients/DiscordApiClient";
+import { getRedisService } from "../../../common/services/redis.service";
+
+const redisService = getRedisService();
+
+async function buildModalForTicketType(ticketType: TicketType): Promise<ModalBuilder> {
+    const modal = new ModalBuilder()
+        .setCustomId(`ticket_modal_${ticketType}`)
+        .setTitle(getModalTitle(ticketType));
+
+    try {
+        const response: any = await discordApiClient.get(
+            `/discord/ticket-type-settings/${ticketType}/custom-fields`
+        );
+
+        const customFieldsData = response?.data;
+
+        if (customFieldsData && Array.isArray(customFieldsData.fields) && customFieldsData.fields.length > 0) {
+            const fields = buildFieldsFromCustomDefinitions(customFieldsData.fields);
+            if (fields.length > 0) {
+                modal.addComponents(...fields.slice(0, 5));
+            } else {
+                const defaultFields = getModalFields(ticketType);
+                modal.addComponents(...defaultFields);
+            }
+        } else {
+            const fields = getModalFields(ticketType);
+            modal.addComponents(...fields);
+        }
+    } catch (error) {
+        logger.warn(`[OpenTicket] Failed to fetch custom fields for ${ticketType}, using defaults:`, error);
+        const fields = getModalFields(ticketType);
+        modal.addComponents(...fields);
+    }
+
+    return modal;
+}
+
+function buildFieldsFromCustomDefinitions(customFields: any[]): ActionRowBuilder<TextInputBuilder>[] {
+    const rows: ActionRowBuilder<TextInputBuilder>[] = [];
+
+    if (!Array.isArray(customFields) || customFields.length === 0) {
+        return rows;
+    }
+
+    const validFields = customFields.filter(field => field && field.id && field.label);
+    const fieldCount = Math.min(validFields.length, 5);
+
+    for (let i = 0; i < fieldCount; i++) {
+        const field = validFields[i];
+
+        try {
+            const input = new TextInputBuilder()
+                .setCustomId(field.id)
+                .setLabel((field.label || "Field").slice(0, 45))
+                .setRequired(field.required ?? false);
+
+            if (field.placeholder) {
+                input.setPlaceholder(field.placeholder.slice(0, 100));
+            }
+
+            if (field.type === "textarea") {
+                input.setStyle(TextInputStyle.Paragraph);
+            } else {
+                input.setStyle(TextInputStyle.Short);
+            }
+
+            if (field.maxLength && field.maxLength > 0) {
+                input.setMaxLength(Math.min(field.maxLength, 4000));
+            }
+
+            rows.push(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
+        } catch (fieldError) {
+            logger.error(`[OpenTicket] Error building field ${field.id}:`, fieldError);
+        }
+    }
+
+    return rows;
+}
+
+function getModalTitle(ticketType: TicketType): string {
+    switch (ticketType) {
+        case TicketType.PURCHASE_SERVICES_OSRS:
+            return "Order OSRS Service";
+        case TicketType.PURCHASE_SERVICES_RS3:
+            return "Order RS3 Service";
+        default:
+            return "Open Support Ticket";
+    }
+}
+
+function getModalFields(ticketType: TicketType): ActionRowBuilder<TextInputBuilder>[] {
+    const rows: ActionRowBuilder<TextInputBuilder>[] = [];
+
+    if (ticketType === TicketType.PURCHASE_SERVICES_OSRS || ticketType === TicketType.PURCHASE_SERVICES_RS3) {
+        rows.push(
+            new ActionRowBuilder<TextInputBuilder>().addComponents(
+                new TextInputBuilder()
+                    .setCustomId("service_description")
+                    .setLabel("What service do you need?")
+                    .setPlaceholder("e.g., 1-99 Sailing, Quest Cape, Raids, etc.")
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setRequired(true)
+                    .setMaxLength(1000)
+            ),
+            new ActionRowBuilder<TextInputBuilder>().addComponents(
+                new TextInputBuilder()
+                    .setCustomId("osrs_username")
+                    .setLabel(`${ticketType.includes("OSRS") ? "OSRS" : "RS3"} Username`)
+                    .setPlaceholder("Your in-game username")
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(false)
+                    .setMaxLength(50)
+            ),
+            new ActionRowBuilder<TextInputBuilder>().addComponents(
+                new TextInputBuilder()
+                    .setCustomId("additional_notes")
+                    .setLabel("Additional Notes (Optional)")
+                    .setPlaceholder("Any special requirements or details...")
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setRequired(false)
+                    .setMaxLength(500)
+            )
+        );
+    }
+
+    return rows;
+}
 
 export async function handleOpenTicket(
     interaction: ButtonInteraction
 ): Promise<void> {
     try {
-
+        // Extract serviceId and categoryId from button customId
         const customIdParts = interaction.customId.split("_");
-        let serviceId: string | undefined;
-        let categoryId: string | undefined;
-        let calculatedPrice: number | undefined;
+        const serviceId = customIdParts[2] || undefined;
+        const categoryId = customIdParts[3] || undefined;
+        const calculatedPrice = customIdParts[4] ? parseFloat(customIdParts[4]) : undefined;
 
-        if (customIdParts.length > 2) {
-            
-            serviceId = customIdParts[2] || undefined;
-            categoryId = customIdParts[3] || undefined;
-            calculatedPrice = customIdParts[4]
-                ? parseFloat(customIdParts[4])
-                : undefined;
+        // Determine ticket type based on service
+        let ticketType: TicketType = TicketType.PURCHASE_SERVICES_OSRS;
+
+        if (serviceId) {
+            try {
+                const serviceResponse: any = await discordApiClient.get(
+                    `/api/public/services/${serviceId}/pricing`
+                );
+                const serviceData = serviceResponse.data || serviceResponse;
+                const game = serviceData?.game || 'OSRS';
+                ticketType = game === 'RS3'
+                    ? TicketType.PURCHASE_SERVICES_RS3
+                    : TicketType.PURCHASE_SERVICES_OSRS;
+
+                logger.info(`[OpenTicket] Determined ticket type ${ticketType} for service ${serviceId} (game: ${game})`);
+            } catch (error) {
+                logger.warn(`[OpenTicket] Failed to fetch service ${serviceId}, defaulting to OSRS`, error);
+            }
         }
 
-        const modal = new ModalBuilder()
-            .setCustomId(
-                `ticket_create_modal_${serviceId || "general"}_${categoryId || "general"}_${calculatedPrice || 0}`
-            )
-            .setTitle("Open Support Ticket");
+        // Build modal using NEW ticket system
+        const modal = await buildModalForTicketType(ticketType);
 
-        const descriptionInput = new TextInputBuilder()
-            .setCustomId("ticket_description")
-            .setLabel("Describe your request")
-            .setPlaceholder(
-                "Please describe what you need help with or any additional details..."
-            )
-            .setStyle(TextInputStyle.Paragraph)
-            .setRequired(true)
-            .setMaxLength(1000);
+        // ALWAYS store metadata in Redis to avoid customId length issues
+        const modalKey = `ticket_modal_${interaction.user.id}_${Date.now()}`;
+        await redisService.set(modalKey, JSON.stringify({
+            serviceId: serviceId || null,
+            categoryId: categoryId || null,
+            ticketType: ticketType
+        }), 300); // 5 min TTL
 
-        const usernameInput = new TextInputBuilder()
-            .setCustomId("ticket_osrs_username")
-            .setLabel("OSRS Username (Optional)")
-            .setPlaceholder("Your in-game username")
-            .setStyle(TextInputStyle.Short)
-            .setRequired(false)
-            .setMaxLength(50);
+        logger.info(`[OpenTicket] Stored ticket metadata in Redis: ${modalKey}, serviceId: ${serviceId}, categoryId: ${categoryId}`);
 
-        const contactInput = new TextInputBuilder()
-            .setCustomId("ticket_contact")
-            .setLabel("Preferred Contact Method (Optional)")
-            .setPlaceholder("Discord DM, in-game, etc.")
-            .setStyle(TextInputStyle.Short)
-            .setRequired(false)
-            .setMaxLength(100);
-
-        const row1 =
-            new ActionRowBuilder<TextInputBuilder>().addComponents(
-                descriptionInput
-            );
-        const row2 =
-            new ActionRowBuilder<TextInputBuilder>().addComponents(
-                usernameInput
-            );
-        const row3 =
-            new ActionRowBuilder<TextInputBuilder>().addComponents(contactInput);
-
-        modal.addComponents(row1, row2, row3);
+        // Use short customId with Redis key
+        modal.setCustomId(`ticket_modal_${ticketType}_${modalKey}`);
 
         await interaction.showModal(modal as any);
 
         logger.info(
-            `Ticket modal opened by ${interaction.user.tag}${serviceId ? ` for service ${serviceId}` : ""}`
+            `[OpenTicket] Opened NEW ticket modal for ${ticketType}, serviceId: ${serviceId}, categoryId: ${categoryId}`
         );
     } catch (error) {
-        logger.error("Error handling open ticket button:", error);
+        logger.error("[OpenTicket] Error handling open ticket button:", error);
 
         if (interaction.replied || interaction.deferred) {
             await interaction.followUp({

@@ -18,6 +18,10 @@ export class UpdateTicketDto {
     serviceId?: string;
 
     @IsOptional()
+    @IsString()
+    categoryId?: string;
+
+    @IsOptional()
     @IsNumber()
     calculatedPrice?: number;
 

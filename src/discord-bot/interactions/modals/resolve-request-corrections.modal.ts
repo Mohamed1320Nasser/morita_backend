@@ -68,8 +68,8 @@ export async function handleResolveRequestCorrectionsModal(interaction: ModalSub
         });
 
         try {
-            if (orderData.discordChannelId) {
-                const orderChannel = await interaction.client.channels.fetch(orderData.discordChannelId) as TextChannel;
+            if (orderData.ticketChannelId) {
+                const orderChannel = await interaction.client.channels.fetch(orderData.ticketChannelId) as TextChannel;
 
                 const workerNotificationEmbed = new EmbedBuilder()
                     .setTitle("🔄 Issue Resolution - Corrections Required")
@@ -88,7 +88,7 @@ export async function handleResolveRequestCorrectionsModal(interaction: ModalSub
                             inline: false
                         },
                     ])
-                    .setColor(0x3498db) 
+                    .setColor(0x3498db)
                     .setTimestamp()
                     .setFooter({ text: "Support has reviewed this case" });
 
@@ -97,15 +97,15 @@ export async function handleResolveRequestCorrectionsModal(interaction: ModalSub
                     embeds: [workerNotificationEmbed.toJSON() as any],
                 });
 
-                logger.info(`[RequestCorrections] Sent correction instructions to worker in channel ${orderData.discordChannelId}`);
+                logger.info(`[RequestCorrections] Sent correction instructions to worker in channel ${orderData.ticketChannelId}`);
             }
         } catch (channelError) {
             logger.error(`[RequestCorrections] Failed to send notification to order channel:`, channelError);
         }
 
         try {
-            if (orderData.discordChannelId) {
-                const orderChannel = await interaction.client.channels.fetch(orderData.discordChannelId) as TextChannel;
+            if (orderData.ticketChannelId) {
+                const orderChannel = await interaction.client.channels.fetch(orderData.ticketChannelId) as TextChannel;
 
                 const customerNotificationEmbed = new EmbedBuilder()
                     .setTitle("ℹ️ Issue Update")
@@ -122,7 +122,7 @@ export async function handleResolveRequestCorrectionsModal(interaction: ModalSub
                             inline: false
                         },
                     ])
-                    .setColor(0x3498db) 
+                    .setColor(0x3498db)
                     .setTimestamp()
                     .setFooter({ text: "Support has reviewed this case" });
 
@@ -130,7 +130,7 @@ export async function handleResolveRequestCorrectionsModal(interaction: ModalSub
                     embeds: [customerNotificationEmbed.toJSON() as any],
                 });
 
-                logger.info(`[RequestCorrections] Sent update to customer in channel ${orderData.discordChannelId}`);
+                logger.info(`[RequestCorrections] Sent update to customer in channel ${orderData.ticketChannelId}`);
             }
         } catch (channelError) {
             logger.error(`[RequestCorrections] Failed to send notification to customer:`, channelError);

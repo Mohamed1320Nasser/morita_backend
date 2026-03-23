@@ -145,6 +145,19 @@ async function createOrder(orderData: any, ticketId: string | null, jobDetails: 
         serviceId = lookupResult.service.id;
         categoryId = lookupResult.service.category?.id || null;
         serviceName = lookupResult.service.name;
+
+        // NEW: Update ticket with serviceId if ticket exists
+        if (ticketId) {
+            try {
+                await discordApiClient.patch(`/api/discord/tickets/${ticketId}`, {
+                    serviceId: serviceId,
+                    categoryId: categoryId,
+                });
+                logger.info(`[CreateOrderJob] Updated ticket ${ticketId} with serviceId: ${serviceId}, categoryId: ${categoryId}`);
+            } catch (err) {
+                logger.warn(`[CreateOrderJob] Failed to update ticket ${ticketId} with serviceId:`, err);
+            }
+        }
     }
 
     // 2. If no service_name but ticket exists, try to use ticket's service

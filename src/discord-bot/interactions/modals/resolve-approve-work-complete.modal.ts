@@ -67,8 +67,8 @@ export async function handleResolveApproveWorkCompleteModal(interaction: ModalSu
         const updatedOrderResponse: any = await discordApiClient.get(`/discord/orders/${orderId}`);
         const updatedOrderData = updatedOrderResponse.data || updatedOrderResponse;
 
-        const orderChannel = orderData.discordChannelId
-            ? await interaction.client.channels.fetch(orderData.discordChannelId).catch(() => null)
+        const orderChannel = orderData.ticketChannelId
+            ? await interaction.client.channels.fetch(orderData.ticketChannelId).catch(() => null)
             : null;
 
         const confirmResult = await confirmOrderCompletion(

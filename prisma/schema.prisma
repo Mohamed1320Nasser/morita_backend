@@ -95,6 +95,8 @@ model User {
   discordInvites            DiscordInvite[]        @relation("userDiscordInvites")
   expensesCreated           OperationalExpense[]   @relation("expenseCreator")
   engagementRanks           EngagementRank[]       @relation("userEngagementRanks")
+  createdPayoutConfigs      PayoutConfig[]         @relation("payoutConfigCreator")
+  updatedPayoutConfigs      PayoutConfig[]         @relation("payoutConfigUpdater")
 
   @@index([email])
   @@index([role])
@@ -1542,5 +1544,24 @@ model EngagementRank {
   @@index([discordId])
   @@index([earnedAt])
   @@index([active])
+}
+
+model PayoutConfig {
+  id                 String   @id @default(uuid())
+  workerPercentage   Decimal  @db.Decimal(5, 2)
+  supportPercentage  Decimal  @db.Decimal(5, 2)
+  systemPercentage   Decimal  @db.Decimal(5, 2)
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now()) @db.DateTime(0)
+  updatedAt          DateTime @updatedAt @db.DateTime(0)
+  createdBy          Int      @db.UnsignedInt
+  updatedBy          Int?     @db.UnsignedInt
+
+  creator   User @relation("payoutConfigCreator", fields: [createdBy], references: [id])
+  updater   User? @relation("payoutConfigUpdater", fields: [updatedBy], references: [id])
+
+  @@index([isActive])
+  @@index([createdAt])
+  @@map("payout_configs")
 }
 

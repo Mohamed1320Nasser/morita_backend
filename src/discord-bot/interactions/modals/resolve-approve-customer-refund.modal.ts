@@ -97,8 +97,8 @@ export async function handleResolveApproveCustomerRefundModal(interaction: Modal
         });
 
         try {
-            if (orderData.discordChannelId) {
-                const orderChannel = await interaction.client.channels.fetch(orderData.discordChannelId) as TextChannel;
+            if (orderData.ticketChannelId) {
+                const orderChannel = await interaction.client.channels.fetch(orderData.ticketChannelId) as TextChannel;
 
                 const customerNotificationEmbed = new EmbedBuilder()
                     .setTitle("❌ Order Cancelled - Refund Approved")
@@ -158,7 +158,7 @@ export async function handleResolveApproveCustomerRefundModal(interaction: Modal
                     });
                 }
 
-                logger.info(`[ApproveCustomerRefund] Sent cancellation notifications to customer and worker in channel ${orderData.discordChannelId}`);
+                logger.info(`[ApproveCustomerRefund] Sent cancellation notifications to customer and worker in channel ${orderData.ticketChannelId}`);
             }
         } catch (channelError) {
             logger.error(`[ApproveCustomerRefund] Failed to send notifications to order channel:`, channelError);

@@ -2124,7 +2124,7 @@ export default class KpiService {
             recentIssues: issues.slice(0, 10).map(issue => ({
                 issueId: issue.id,
                 orderId: issue.orderId,
-                workerName: issue.order.worker?.username || 'Unassigned',
+                workerName: issue.order.worker?.discordDisplayName || issue.order.worker?.fullname || issue.order.worker?.username || 'Unassigned',
                 workerId: issue.order.workerId,
                 serviceName: issue.order.service?.name || 'Unknown',
                 description: issue.issueDescription,
@@ -2187,7 +2187,7 @@ export default class KpiService {
 
             return {
                 workerId: parseInt(workerId),
-                workerName: worker?.username || 'Unknown',
+                workerName: worker?.discordDisplayName || worker?.fullname || worker?.username || 'Unknown',
                 discordUsername: worker?.discordUsername || 'Unknown',
                 totalIssues: workerIssues.length,
                 openIssues: openIssues.length,
@@ -2298,7 +2298,7 @@ export default class KpiService {
             orderId: o.id,
             orderNumber: o.orderNumber,
             serviceName: o.service?.name || 'Unknown',
-            workerName: o.worker?.username || 'Unknown',
+            workerName: o.worker?.fullname || o.worker?.username || 'Unknown',
             actualHours: o.actualCompletionHours ? parseFloat(o.actualCompletionHours.toString()).toFixed(2) : 'N/A',
             estimatedHours: o.estimatedCompletionHours ? parseFloat(o.estimatedCompletionHours.toString()).toFixed(2) : 'N/A',
             efficiency: o.completionEfficiency ? parseFloat(o.completionEfficiency.toString()).toFixed(2) : 'N/A',
@@ -2309,7 +2309,7 @@ export default class KpiService {
             orderId: o.id,
             orderNumber: o.orderNumber,
             serviceName: o.service?.name || 'Unknown',
-            workerName: o.worker?.username || 'Unknown',
+            workerName: o.worker?.fullname || o.worker?.username || 'Unknown',
             actualHours: o.actualCompletionHours ? parseFloat(o.actualCompletionHours.toString()).toFixed(2) : 'N/A',
             estimatedHours: o.estimatedCompletionHours ? parseFloat(o.estimatedCompletionHours.toString()).toFixed(2) : 'N/A',
             efficiency: o.completionEfficiency ? parseFloat(o.completionEfficiency.toString()).toFixed(2) : 'N/A',
@@ -2410,10 +2410,11 @@ export default class KpiService {
                 }).length;
             }
 
+            const worker = workerOrders[0].worker;
             return {
                 workerId,
-                workerName: workerOrders[0].worker?.username || 'Unknown',
-                discordUsername: workerOrders[0].worker?.discordUsername || 'Unknown',
+                workerName: worker?.fullname || worker?.username || `Worker ${workerId}`,
+                discordUsername: worker?.username || 'Unknown',
                 totalOrders: workerOrders.length,
                 avgActualHours: parseFloat(avgActual.toFixed(2)),
                 avgEfficiency: parseFloat(avgEfficiency.toFixed(2)),
@@ -2536,44 +2537,39 @@ export default class KpiService {
             }));
 
         return {
-            msg: 'Financial overview retrieved successfully',
-            status: 200,
-            data: {
-                summary: {
-                    totalRevenue,
-                    totalExpenses,
-                    grossProfit,
-                    netProfit,
-                    grossProfitMargin: parseFloat(grossProfitMargin.toFixed(2)),
-                    netProfitMargin: parseFloat(netProfitMargin.toFixed(2)),
-                    totalOrders: completedOrders.length,
-                    avgOrderValue: totalRevenue / completedOrders.length || 0
-                },
-                revenue: {
-                    total: totalRevenue,
-                    byService: revenueByService,
-                    avgOrderValue: totalRevenue / completedOrders.length || 0
-                },
-                expenses: {
-                    workerPayouts,
-                    supportPayouts,
-                    operational: totalOperationalExpenses,
-                    byCategory: Object.values(expensesByCategory),
-                    total: totalExpenses
-                },
-                systemWallet: {
-                    balance: parseFloat(systemWallet?.balance?.toString() || '0'),
-                    currency: systemWallet?.currency || 'USD'
-                },
-                monthlyTrend,
-                topExpenses,
-                period: {
-                    start: gte,
-                    end: lte,
-                    type: period || 'custom'
-                }
+            summary: {
+                totalRevenue,
+                totalExpenses,
+                grossProfit,
+                netProfit,
+                grossProfitMargin: parseFloat(grossProfitMargin.toFixed(2)),
+                netProfitMargin: parseFloat(netProfitMargin.toFixed(2)),
+                totalOrders: completedOrders.length,
+                avgOrderValue: totalRevenue / completedOrders.length || 0
             },
-            error: false
+            revenue: {
+                total: totalRevenue,
+                byService: revenueByService,
+                avgOrderValue: totalRevenue / completedOrders.length || 0
+            },
+            expenses: {
+                workerPayouts,
+                supportPayouts,
+                operational: totalOperationalExpenses,
+                byCategory: Object.values(expensesByCategory),
+                total: totalExpenses
+            },
+            systemWallet: {
+                balance: parseFloat(systemWallet?.balance?.toString() || '0'),
+                currency: systemWallet?.currency || 'USD'
+            },
+            monthlyTrend,
+            topExpenses,
+            period: {
+                start: gte,
+                end: lte,
+                type: period || 'custom'
+            }
         };
     }
 

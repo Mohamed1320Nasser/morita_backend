@@ -19,6 +19,7 @@ import logger from "../../common/loggers";
 import WalletService from "../wallet/wallet.service";
 import OrderRewardService from "../orderReward/order-reward.service";
 import LoyaltyTierService from "../loyalty-tier/loyalty-tier.service";
+import PayoutConfigService from "../payoutConfig/payoutConfig.service";
 import { withTransactionRetry, checkWalletBalanceWithLock, updateWalletBalance, deductFromWorkerWallet } from "../../common/utils/transaction.util";
 import { PAYOUT_STRUCTURE, FINANCIAL_LIMITS, isValidAmount } from "../../common/constants/security.constants";
 import { InsufficientBalanceError } from "../../common/utils/errorHandler.util";
@@ -29,7 +30,8 @@ export default class OrderService {
     constructor(
         private walletService: WalletService,
         private orderRewardService: OrderRewardService,
-        private loyaltyTierService: LoyaltyTierService
+        private loyaltyTierService: LoyaltyTierService,
+        private payoutConfigService: PayoutConfigService
     ) {}
 
     async createOrder(data: CreateOrderDto) {
@@ -47,10 +49,12 @@ export default class OrderService {
             );
         }
 
+        const payoutPercentages = await this.payoutConfigService.getPayoutPercentagesAsDecimals();
+
         const orderValue = new Decimal(data.orderValue);
-        const workerPayout = orderValue.mul(PAYOUT_STRUCTURE.WORKER_PERCENTAGE);
-        const supportPayout = orderValue.mul(PAYOUT_STRUCTURE.SUPPORT_PERCENTAGE);
-        const systemPayout = orderValue.mul(PAYOUT_STRUCTURE.SYSTEM_PERCENTAGE);
+        const workerPayout = orderValue.mul(payoutPercentages.workerPercentage).div(100);
+        const supportPayout = orderValue.mul(payoutPercentages.supportPercentage).div(100);
+        const systemPayout = orderValue.mul(payoutPercentages.systemPercentage).div(100);
         const requiredDeposit = new Decimal(data.depositAmount);
 
         const customer = await prisma.user.findUnique({
@@ -989,6 +993,39 @@ export default class OrderService {
         });
 
         await this.processOrderPayouts(data.orderId);
+
+        // Resolve any open or in-review issues for this order
+        try {
+            const openIssues = await prisma.orderIssue.findMany({
+                where: {
+                    orderId: data.orderId,
+                    status: {
+                        in: ['OPEN', 'IN_REVIEW']
+                    }
+                }
+            });
+
+            if (openIssues.length > 0) {
+                await prisma.orderIssue.updateMany({
+                    where: {
+                        orderId: data.orderId,
+                        status: {
+                            in: ['OPEN', 'IN_REVIEW']
+                        }
+                    },
+                    data: {
+                        status: 'RESOLVED',
+                        resolvedAt: new Date(),
+                        resolvedById: data.customerId,
+                        resolution: reason
+                    }
+                });
+                logger.info(`[OrderService] Resolved ${openIssues.length} issue(s) for order ${data.orderId} upon completion confirmation`);
+            }
+        } catch (error) {
+            logger.error(`[OrderService] Failed to resolve issues for order ${data.orderId}:`, error);
+            // Don't fail the order completion if issue resolution fails
+        }
 
         // Process order reward for customer
         try {

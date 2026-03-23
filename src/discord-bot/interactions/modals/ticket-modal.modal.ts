@@ -2,12 +2,21 @@ import { ModalSubmitInteraction, TextChannel, Guild, EmbedBuilder as DiscordEmbe
 import logger from "../../../common/loggers";
 import { getTicketService } from "../../services/ticket.service";
 import { TicketType, TicketMetadata } from "../../types/discord.types";
+import { getRedisService } from "../../../common/services/redis.service";
+
+const redisService = getRedisService();
 
 export async function handleTicketModal(
     interaction: ModalSubmitInteraction
 ): Promise<void> {
-    
-    const ticketType = interaction.customId.replace("ticket_modal_", "") as TicketType;
+
+    // Extract ticketType from customId: ticket_modal_{ticketType}_{redisKey}
+    const customIdParts = interaction.customId.split("_");
+    // Format: ticket_modal_PURCHASE_SERVICES_OSRS_ticket_modal_123_456
+    // Parts: [0]ticket [1]modal [2]PURCHASE [3]SERVICES [4]OSRS [5]ticket [6]modal [7]123 [8]456
+    // ticketType is parts[2] + "_" + parts[3] + "_" + parts[4]
+    const ticketType = `${customIdParts[2]}_${customIdParts[3]}_${customIdParts[4]}` as TicketType;
+
     logger.info(`[TicketModal] Processing ${ticketType} for ${interaction.user.tag}`);
 
     try {
@@ -23,7 +32,7 @@ export async function handleTicketModal(
             return;
         }
 
-        const { customerNotes, metadata, serviceId, categoryId } = extractFormData(interaction, ticketType);
+        const { customerNotes, metadata, serviceId, categoryId } = await extractFormData(interaction, ticketType);
 
         const ticketService = getTicketService(interaction.client);
 
@@ -90,24 +99,54 @@ export async function handleTicketModal(
     }
 }
 
-function extractFormData(
+async function extractFormData(
     interaction: ModalSubmitInteraction,
     ticketType: TicketType
-): {
+): Promise<{
     customerNotes: string;
     metadata: TicketMetadata;
     serviceId?: string;
     categoryId?: string;
-} {
+}> {
     const metadata: TicketMetadata = {};
     const customerNotesLines: string[] = [];
     let serviceId: string | undefined;
     let categoryId: string | undefined;
 
+    // NEW: Retrieve serviceId and categoryId from Redis
+    // Format: ticket_modal_PURCHASE_SERVICES_OSRS_ticket_modal_123_456
+    // Parts: [0]ticket [1]modal [2]PURCHASE [3]SERVICES [4]OSRS [5]ticket [6]modal [7]123 [8]456
+    // Redis key starts at index 5: ticket_modal_123_456
+    const customIdParts = interaction.customId.split("_");
+    if (customIdParts.length >= 9) {
+        // Reconstruct redis key: ticket_modal_{userId}_{timestamp}
+        const redisKey = `${customIdParts[5]}_${customIdParts[6]}_${customIdParts[7]}_${customIdParts[8]}`;
+
+        if (redisKey && redisKey !== 'none') {
+            try {
+                const storedData = await redisService.get(redisKey);
+                if (storedData) {
+                    const parsedData = JSON.parse(storedData);
+                    serviceId = parsedData.serviceId || undefined;
+                    categoryId = parsedData.categoryId || undefined;
+
+                    // Clean up Redis after retrieval
+                    await redisService.delete(redisKey);
+
+                    logger.info(`[TicketModal] Retrieved from Redis key ${redisKey}: serviceId: ${serviceId}, categoryId: ${categoryId}`);
+                } else {
+                    logger.warn(`[TicketModal] No data found in Redis for key: ${redisKey}`);
+                }
+            } catch (error) {
+                logger.error(`[TicketModal] Failed to retrieve data from Redis:`, error);
+            }
+        }
+    }
+
     const fieldMap: Record<string, string> = {};
 
     try {
-        
+
         interaction.fields.fields.forEach((field, key) => {
             try {
                 const value = interaction.fields.getTextInputValue(key);
@@ -115,7 +154,7 @@ function extractFormData(
                     fieldMap[key] = value;
                 }
             } catch (e) {
-                
+
             }
         });
     } catch (error) {
@@ -169,13 +208,16 @@ function extractFormData(
         }
     });
 
-    if (ticketType === TicketType.PURCHASE_SERVICES_OSRS || ticketType === TicketType.PURCHASE_SERVICES_RS3) {
-        categoryId = process.env.DEFAULT_SERVICE_CATEGORY_ID;
-    } else if (ticketType === TicketType.BUY_GOLD_OSRS || ticketType === TicketType.BUY_GOLD_RS3 ||
-               ticketType === TicketType.SELL_GOLD_OSRS || ticketType === TicketType.SELL_GOLD_RS3) {
-        categoryId = process.env.GOLD_CATEGORY_ID;
-    } else if (ticketType === TicketType.SWAP_CRYPTO) {
-        categoryId = process.env.CRYPTO_CATEGORY_ID;
+    // ONLY set categoryId from env if NOT already set from customId
+    if (!categoryId) {
+        if (ticketType === TicketType.PURCHASE_SERVICES_OSRS || ticketType === TicketType.PURCHASE_SERVICES_RS3) {
+            categoryId = process.env.DEFAULT_SERVICE_CATEGORY_ID;
+        } else if (ticketType === TicketType.BUY_GOLD_OSRS || ticketType === TicketType.BUY_GOLD_RS3 ||
+                   ticketType === TicketType.SELL_GOLD_OSRS || ticketType === TicketType.SELL_GOLD_RS3) {
+            categoryId = process.env.GOLD_CATEGORY_ID;
+        } else if (ticketType === TicketType.SWAP_CRYPTO) {
+            categoryId = process.env.CRYPTO_CATEGORY_ID;
+        }
     }
 
     const customerNotes = customerNotesLines.length > 0
