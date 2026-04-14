@@ -12,8 +12,8 @@ module.exports = {
 
       // Enhanced restart strategy - prevents PM2 from killing itself
       autorestart: true,
-      max_restarts: 20,               // More restart attempts before giving up
-      min_uptime: '60s',              // Bot needs time to connect to Discord
+      max_restarts: 0,                // Never give up restarting
+      min_uptime: '10s',              // Bot needs time to connect to Discord
       restart_delay: 5000,            // Wait 5 seconds between restarts
       exp_backoff_restart_delay: 100, // Exponential backoff (100ms, 200ms, 400ms, etc.)
 

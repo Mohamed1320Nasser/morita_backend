@@ -6,7 +6,7 @@ module.exports = {
     {
       name: 'morita-backend-dev',
       script: './build/app.js',
-      cwd: '/home/public_html/morita_dev/morita_backend',
+      cwd: '/home/morita/public_html/morita_dev/morita_backend',
       instances: 1,
       exec_mode: 'fork',
       watch: false,
@@ -22,7 +22,7 @@ module.exports = {
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: true,
       autorestart: true,
-      max_restarts: 10,
+      max_restarts: 0,
       min_uptime: '10s'
     },
 
@@ -32,15 +32,15 @@ module.exports = {
     {
       name: 'morita-bot-dev',
       script: './build/discord-bot/start.js',
-      cwd: '/home/public_html/morita_dev/morita_backend',
+      cwd: '/home/morita/public_html/morita_dev/morita_backend',
       instances: 1,
       exec_mode: 'fork',
       watch: false,
       max_memory_restart: '600M',
 
       autorestart: true,
-      max_restarts: 20,
-      min_uptime: '60s',
+      max_restarts: 0,
+      min_uptime: '10s',
       restart_delay: 5000,
       exp_backoff_restart_delay: 100,
       kill_timeout: 10000,
