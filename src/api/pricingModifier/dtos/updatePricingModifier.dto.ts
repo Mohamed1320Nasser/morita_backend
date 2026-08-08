@@ -3,11 +3,12 @@ import {
     IsOptional,
     IsBoolean,
     IsInt,
+    IsNumber,
     Min,
     MaxLength,
-    IsDecimal,
     IsEnum,
 } from "class-validator";
+import { Type } from "class-transformer";
 import { ModifierType } from "@prisma/client";
 
 export class UpdatePricingModifierDto {
@@ -21,7 +22,8 @@ export class UpdatePricingModifierDto {
     modifierType?: ModifierType;
 
     @IsOptional()
-    @IsDecimal({ decimal_digits: "0,2" })
+    @Type(() => Number)
+    @IsNumber({ maxDecimalPlaces: 2 })
     value?: number;
 
     @IsOptional()
