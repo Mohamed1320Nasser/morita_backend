@@ -73,12 +73,6 @@ export default class AccountController {
         return stats;
     }
 
-    @Get("/:id")
-    async getAccount(@Param("id") id: string) {
-        const account = await this.accountService.getSingle(id);
-        return account;
-    }
-
     @Patch("/:id")
     @UseBefore(
         upload([
@@ -140,6 +134,12 @@ export default class AccountController {
         if (!account) {
             throw new BadRequestError("Account not found");
         }
+        return account;
+    }
+
+    @Get("/:id")
+    async getAccount(@Param("id") id: string) {
+        const account = await this.accountService.getSingle(id);
         return account;
     }
 

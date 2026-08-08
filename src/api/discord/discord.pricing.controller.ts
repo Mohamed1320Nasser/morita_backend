@@ -1,10 +1,16 @@
-import { JsonController, Post, Get } from "routing-controllers";
+import { JsonController, Post, Get, UseBefore } from "routing-controllers";
+import {
+    DiscordAuthMiddleware,
+    DiscordRateLimitMiddleware,
+} from "../../common/middlewares/discordAuth.middleware";
 import { Service } from "typedi";
 import DiscordPricingService from "./discord.pricing.service";
 import logger from "../../common/loggers";
 
 @JsonController("/discord/pricing")
 @Service()
+@UseBefore(DiscordAuthMiddleware)
+@UseBefore(DiscordRateLimitMiddleware)
 export default class DiscordPricingController {
     constructor(private discordPricingService: DiscordPricingService) {}
 

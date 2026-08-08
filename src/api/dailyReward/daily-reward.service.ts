@@ -50,14 +50,19 @@ export default class DailyRewardService {
     async updateConfig(data: UpdateConfigDto) {
         const currentConfig = await this.getConfig();
 
-        if (data.minAmount !== undefined && data.maxAmount !== undefined) {
-            if (data.minAmount > data.maxAmount) {
-                throw new BadRequestError("minAmount cannot be greater than maxAmount");
-            }
-        } else if (data.minAmount !== undefined && data.minAmount > currentConfig.maxAmount) {
-            throw new BadRequestError("minAmount cannot be greater than existing maxAmount");
-        } else if (data.maxAmount !== undefined && data.maxAmount < currentConfig.minAmount) {
-            throw new BadRequestError("maxAmount cannot be less than existing minAmount");
+        const effectiveMin =
+            data.minAmount !== undefined
+                ? new Decimal(data.minAmount)
+                : new Decimal(currentConfig.minAmount.toString());
+        const effectiveMax =
+            data.maxAmount !== undefined
+                ? new Decimal(data.maxAmount)
+                : new Decimal(currentConfig.maxAmount.toString());
+
+        if (effectiveMin.greaterThan(effectiveMax)) {
+            throw new BadRequestError(
+                `minAmount ($${effectiveMin.toFixed(2)}) cannot be greater than maxAmount ($${effectiveMax.toFixed(2)})`
+            );
         }
 
         const config = await prisma.dailyRewardConfig.update({
@@ -127,8 +132,11 @@ export default class DailyRewardService {
             canClaim,
             nextClaimAt,
             remainingSeconds,
-            lastClaimAmount: lastClaim?.amount || null,
-            totalClaimed: stats._sum.amount || 0,
+            lastClaimAmount:
+                lastClaim?.amount !== undefined && lastClaim?.amount !== null
+                    ? Number(lastClaim.amount)
+                    : null,
+            totalClaimed: stats._sum.amount ? Number(stats._sum.amount) : 0,
             claimCount: stats._count.id || 0,
         };
     }
@@ -157,7 +165,10 @@ export default class DailyRewardService {
             };
         }
 
-        const amount = this.generateRandomAmount(config.minAmount, config.maxAmount);
+        const amount = this.generateRandomAmount(
+            Number(config.minAmount),
+            Number(config.maxAmount)
+        );
 
         const result = await prisma.$transaction(async (tx) => {
             const claim = await tx.dailyRewardClaim.create({
@@ -306,12 +317,15 @@ export default class DailyRewardService {
         return leaderboard.map((entry, index) => ({
             rank: index + 1,
             user: userMap.get(entry.userId),
-            totalClaimed: entry._sum.amount || 0,
+            totalClaimed: entry._sum.amount ? Number(entry._sum.amount) : 0,
             claimCount: entry._count.id,
         }));
     }
 
     private generateRandomAmount(min: number, max: number): number {
-        return Math.floor(Math.random() * (max - min + 1) + min);
+        const low = Math.min(min, max);
+        const high = Math.max(min, max);
+        const value = low + Math.random() * (high - low);
+        return Math.round(value * 100) / 100;
     }
 }

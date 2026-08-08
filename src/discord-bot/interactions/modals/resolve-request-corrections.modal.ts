@@ -35,7 +35,6 @@ export async function handleResolveRequestCorrectionsModal(interaction: ModalSub
             changedByDiscordId: interaction.user.id,
             reason: `🔄 Issue Resolution by Admin - Corrections Requested`,
             notes: `Corrections Required:\n${fixInstructions}\n\nRequested by: ${interaction.user.tag}`,
-            isAdminOverride: true, 
         });
 
         logger.info(`[RequestCorrections] Order ${orderId} status updated to IN_PROGRESS`);

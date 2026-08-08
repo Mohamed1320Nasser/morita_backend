@@ -21,7 +21,7 @@ export default class ExpenseController {
     constructor(private expenseService: ExpenseService) {}
 
     @Post("/")
-    @Authorized([API.Role.admin, API.Role.system])
+    @Authorized(API.Role.system)
     @HttpCode(201)
     async createExpense(
         @Body() dto: CreateExpenseDto,
@@ -34,14 +34,14 @@ export default class ExpenseController {
     }
 
     @Get("/")
-    @Authorized([API.Role.admin, API.Role.system])
+    @Authorized(API.Role.system)
     @HttpCode(200)
     async getExpenses(@QueryParams() query: any) {
         return this.expenseService.getExpenses(query);
     }
 
     @Delete("/:id")
-    @Authorized([API.Role.admin])
+    @Authorized(API.Role.admin)
     @HttpCode(200)
     async deleteExpense(@Param("id") id: string) {
         return this.expenseService.deleteExpense(id);

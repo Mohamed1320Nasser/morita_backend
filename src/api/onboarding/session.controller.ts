@@ -6,11 +6,13 @@ import {
     Body,
     Param,
     Authorized,
+    UseBefore,
     HttpCode
 } from "routing-controllers";
 import { Service } from "typedi";
 import OnboardingService from "./onboarding.service";
 import { CreateSessionDto, UpdateSessionDto, RegisterUserDto } from "./dtos";
+import { DiscordAuthMiddleware } from "../../common/middlewares/discordAuth.middleware";
 import API from "../../common/config/api.types";
 
 @JsonController("/onboarding/sessions")
@@ -19,18 +21,21 @@ export default class SessionController {
     constructor(private onboardingService: OnboardingService) {}
 
     @Post("/")
+    @UseBefore(DiscordAuthMiddleware)
     @HttpCode(201)
     async createSession(@Body() dto: CreateSessionDto) {
         return await this.onboardingService.createSession(dto);
     }
 
     @Get("/:discordId")
+    @UseBefore(DiscordAuthMiddleware)
     @HttpCode(200)
     async getSession(@Param("discordId") discordId: string) {
         return await this.onboardingService.getSession(discordId);
     }
 
     @Patch("/:discordId")
+    @UseBefore(DiscordAuthMiddleware)
     @HttpCode(200)
     async updateSession(
         @Param("discordId") discordId: string,
@@ -40,6 +45,7 @@ export default class SessionController {
     }
 
     @Post("/:discordId/complete")
+    @UseBefore(DiscordAuthMiddleware)
     @HttpCode(200)
     async completeOnboarding(@Param("discordId") discordId: string) {
         return await this.onboardingService.completeOnboarding(discordId);
@@ -55,6 +61,7 @@ export default class SessionController {
 
 @JsonController("/onboarding/register")
 @Service()
+@UseBefore(DiscordAuthMiddleware)
 export class RegistrationController {
     constructor(private onboardingService: OnboardingService) {}
 

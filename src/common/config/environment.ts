@@ -13,8 +13,8 @@ export namespace Environment {
     }
 
     export namespace Server {
-        export const host: string = "127.0.0.1";
-        export const port: string = "3000";
+        export const host: string = process.env.HOST || "127.0.0.1";
+        export const port: string = process.env.PORT || "3000";
     }
 
     export namespace Email {
@@ -28,7 +28,22 @@ export namespace Environment {
     }
 
     export const env = process.env.NODE_ENV || "development";
-    export const jwtSecret = process.env.JWTSECRET || "secret";
+
+    function resolveJwtSecret(): string {
+        const secret = process.env.JWT_SECRET || process.env.JWTSECRET;
+
+        if (!secret || secret.length < 32) {
+            throw new Error(
+                "JWT_SECRET is not set or is shorter than 32 characters. " +
+                    "Set a strong random JWT_SECRET in the environment before starting. " +
+                    "Generate one with: openssl rand -hex 32"
+            );
+        }
+
+        return secret;
+    }
+
+    export const jwtSecret: string = resolveJwtSecret();
 
     export const authorizationKey =
         process.env.AUTHORIZATION_KEY || "haconamatata_";

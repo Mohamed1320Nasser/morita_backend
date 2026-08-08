@@ -107,13 +107,17 @@ async function handleCommand(interaction: any) {
 
         const errorMessage = "There was an error while executing this command!";
 
-        if (interaction.replied || interaction.deferred) {
-            await interaction.followUp({
-                content: errorMessage,
-                ephemeral: true,
-            });
-        } else {
-            await interaction.reply({ content: errorMessage, ephemeral: true });
+        try {
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp({
+                    content: errorMessage,
+                    ephemeral: true,
+                });
+            } else {
+                await interaction.reply({ content: errorMessage, ephemeral: true });
+            }
+        } catch (replyError) {
+            logger.debug("Could not send command error message:", replyError);
         }
     }
 }
@@ -126,10 +130,26 @@ async function handleButton(interaction: any) {
         await handleButtonInteraction(interaction);
     } catch (error) {
         logger.error(`Error handling button ${customId}:`, error);
-        await interaction.reply({
-            content: "An error occurred while processing this button.",
-            ephemeral: true,
-        });
+
+        if (!interaction.isRepliable()) {
+            return;
+        }
+
+        try {
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp({
+                    content: "An error occurred while processing this button.",
+                    ephemeral: true,
+                });
+            } else {
+                await interaction.reply({
+                    content: "An error occurred while processing this button.",
+                    ephemeral: true,
+                });
+            }
+        } catch (replyError) {
+            logger.debug("Could not send button error message:", replyError);
+        }
     }
 }
 

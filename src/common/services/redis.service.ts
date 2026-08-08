@@ -17,13 +17,48 @@ export class RedisService {
         this.initialize();
     }
 
+    /**
+     * Cap how long any single Redis command may block. A hung connection must
+     * never consume a caller's latency budget (Discord interactions must be
+     * acknowledged within 3 seconds), so we fall through to the in-memory
+     * cache rather than wait.
+     */
+    private async withTimeout<T>(
+        operation: Promise<T>,
+        label: string,
+        timeoutMs: number = 1000
+    ): Promise<T | null> {
+        let timer: NodeJS.Timeout | undefined;
+
+        try {
+            return await Promise.race([
+                operation,
+                new Promise<null>(resolve => {
+                    timer = setTimeout(() => {
+                        logger.warn(
+                            `[Redis] ${label} exceeded ${timeoutMs}ms, using in-memory fallback`
+                        );
+                        resolve(null);
+                    }, timeoutMs);
+                }),
+            ]);
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
+    }
+
     private async initialize(): Promise<void> {
         try {
             const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
 
             this.client = new Redis(redisUrl, {
-                maxRetriesPerRequest: 3,
+                maxRetriesPerRequest: 1,
                 enableReadyCheck: true,
+                // Fail fast instead of queueing commands while the connection is
+                // down. Queued commands can block for connectTimeout, which is
+                // far longer than Discord's 3 second interaction window.
+                enableOfflineQueue: false,
+                connectTimeout: 2000,
                 retryStrategy(times) {
                     const delay = Math.min(times * 50, 2000);
                     return delay;
@@ -31,8 +66,7 @@ export class RedisService {
             });
 
             this.client.on("connect", () => {
-                logger.info("[Redis] Connected successfully");
-                this.isConnected = true;
+                logger.info("[Redis] Socket connected");
             });
 
             this.client.on("error", (error) => {
@@ -45,8 +79,15 @@ export class RedisService {
                 this.isConnected = false;
             });
 
-            // Test connection
-            await this.client.ping();
+            this.client.on("ready", () => {
+                logger.info("[Redis] Ready to accept commands");
+                this.isConnected = true;
+            });
+
+            // Do not ping here: with enableOfflineQueue disabled the command
+            // would reject before the socket is writable. The "ready" event is
+            // the correct signal, and every read already falls back to the
+            // in-memory cache while the connection is unavailable.
         } catch (error) {
             logger.error("[Redis] Failed to initialize, falling back to in-memory cache:", error);
             this.client = null;
@@ -91,7 +132,7 @@ export class RedisService {
             let serialized: string | null = null;
 
             if (this.client && this.isConnected) {
-                serialized = await this.client.get(key);
+                serialized = await this.withTimeout(this.client.get(key), "get");
             } else {
                 // Fallback to in-memory
                 const cached = this.fallbackCache.get(key);

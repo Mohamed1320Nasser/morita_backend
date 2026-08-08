@@ -53,7 +53,6 @@ export async function handleResolveApproveWorkCompleteModal(interaction: ModalSu
                 changedByDiscordId: interaction.user.id,
                 reason: `Admin approved work - Issue resolved in worker's favor`,
                 notes: `Resolution: ${resolutionNotes}\n\nResolved by: ${interaction.user.tag}`,
-                isAdminOverride: true, 
             });
         }
 

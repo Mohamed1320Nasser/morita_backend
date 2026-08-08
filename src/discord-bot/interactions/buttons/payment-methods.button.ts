@@ -83,19 +83,32 @@ export async function handlePaymentMethods(
             .setTimestamp();
 
         // Add each payment option as a code block field
+        let hasUpcharge = false;
+
         for (const option of paymentOptions) {
             const icon = option.icon || "💳";
             const details = option.details as Record<string, string>;
             const formattedBlock = formatPaymentBlock(option.type, details);
+            const upchargeText = option.upchargePercent > 0
+                ? ` (+${option.upchargePercent}% fee)`
+                : "";
+
+            if (option.upchargePercent > 0) {
+                hasUpcharge = true;
+            }
 
             embed.addFields({
-                name: `${icon} ${option.name}`,
+                name: `${icon} ${option.name}${upchargeText}`,
                 value: formattedBlock,
                 inline: false,
             });
         }
 
-        embed.setFooter({ text: "Open a ticket after payment with proof" });
+        embed.setFooter({
+            text: hasUpcharge
+                ? "Fees are added to your total • Open a ticket after payment with proof"
+                : "Open a ticket after payment with proof"
+        });
 
         await interaction.reply({
             embeds: [embed.toJSON() as any],

@@ -10,6 +10,8 @@ import { handleImprovedPricingServiceSelect } from "./improved-pricing-service-s
 import { handleAccountShopSelect } from "./account-shop-select.selectMenu";
 import { handleAccountTypeSelect } from "./account-type-select.menu";
 import { handleCalcPaymentSelect } from "./calc-payment-select.menu";
+import { handleModifierSelect } from "./modifier-select.menu";
+import { MODIFIER_SELECT_PREFIX } from "../../utils/modifierSelector";
 
 // Account select menu handlers
 import {
@@ -65,6 +67,12 @@ export async function handleSelectMenuInteraction(
     // Handle calculate payment select
     if (customId.startsWith("calc_payment_select_")) {
         await handleCalcPaymentSelect(interaction as StringSelectMenuInteraction);
+        return;
+    }
+
+    // Handle modifier option picker on calculator results
+    if (customId.startsWith(MODIFIER_SELECT_PREFIX)) {
+        await handleModifierSelect(interaction as StringSelectMenuInteraction);
         return;
     }
 

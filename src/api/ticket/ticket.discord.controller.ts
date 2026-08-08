@@ -5,7 +5,12 @@ import {
     Patch,
     Param,
     Body,
+    UseBefore,
 } from "routing-controllers";
+import {
+    DiscordAuthMiddleware,
+    DiscordRateLimitMiddleware,
+} from "../../common/middlewares/discordAuth.middleware";
 import { Service } from "typedi";
 import TicketService from "./ticket.service";
 import {
@@ -14,9 +19,11 @@ import {
     UpdateTicketStatusDto,
 } from "./dtos";
 
-// Public API for Discord bot - no authentication required
+// Discord bot API - requires X-API-Key
 @JsonController("/api/discord/tickets")
 @Service()
+@UseBefore(DiscordAuthMiddleware)
+@UseBefore(DiscordRateLimitMiddleware)
 export default class DiscordTicketController {
     constructor(private ticketService: TicketService) {}
 

@@ -4,6 +4,12 @@ import { discordConfig } from "../../config/discord.config";
 import PricingCalculatorService from "../../../api/pricingCalculator/pricingCalculator.service";
 import LoyaltyTierService from "../../../api/loyalty-tier/loyalty-tier.service";
 import { discordApiClient } from "../../clients/DiscordApiClient";
+import {
+    buildLevelScope,
+    buildOptionsTable,
+    buildTotalBlock,
+    collectAdjustments,
+} from "../../utils/priceEmbed";
 
 const CALCULATOR_VERSION = "v3.0-improved-segments-display";
 
@@ -127,114 +133,91 @@ export async function handleCalculatorModal(
             );
             logger.info('[Calculator] 🔍 Total discount percent: ' + totalDiscountPercent);
 
-            let levelRangeValue =
-                `**${data.levels.start}  →  ${data.levels.end}**\n` +
-                `\`\`\`ansi\n\u001b[36m${data.levels.formattedXp} XP Required\u001b[0m\n\`\`\``;
+            const scopeSegments = (data.methodOptions?.find((m: any) => m.isCheapest)?.levelRanges || [])
+                .map((r: any) => ({
+                    startLevel: r.startLevel,
+                    endLevel: r.endLevel,
+                    xpRequired: r.xpRequired,
+                    totalPrice: r.totalPrice,
+                    methodName: r.methodName,
+                }));
 
-            if (totalDiscountPercent > 0) {
-                logger.info('[Calculator] ✅ Adding discount to display: ' + totalDiscountPercent.toFixed(1) + '%');
-                levelRangeValue += `\`\`\`ansi\n\u001b[32mDiscount: ${totalDiscountPercent.toFixed(1)}%\u001b[0m\n\`\`\``;
-            } else {
-                logger.warn('[Calculator] ⚠️ NO discount to display (totalDiscountPercent: ' + totalDiscountPercent + ')');
-            }
-
-            embed.addFields({
-                name: "📊 Level Range",
-                value: levelRangeValue,
-                inline: false,
-            });
+            embed.setDescription(
+                buildLevelScope(
+                    data.service.name,
+                    scopeSegments,
+                    data.levels.totalXp ?? 0,
+                    totalDiscountPercent
+                )
+            );
 
             if (data.methodOptions && data.methodOptions.length > 0) {
                 
-                const priceLines: string[] = [];
+                const isVariant = (m: any) =>
+                    m.methodId === "combined" ||
+                    String(m.methodId).startsWith("group_") ||
+                    String(m.methodId).includes("_segment_");
 
-                for (const method of data.methodOptions) {
-                    const indicator = method.isCheapest ? "✅" : "◻️";
-                    const price = method.finalPrice.toFixed(2);
-                    const rate = method.basePrice.toFixed(8);
+                const combined = data.methodOptions.find((m: any) => m.methodId === "combined");
+                const realMethods = data.methodOptions.filter((m: any) => !isVariant(m));
+                const listed = realMethods.length > 0 ? realMethods : data.methodOptions;
 
-                    logger.info(`[Calculator] 💰 ${method.methodName}: $${price}`);
+                const bestPrice = Math.min(...listed.map((m: any) => m.finalPrice));
+                const combinedIsBetter =
+                    combined && combined.finalPrice < bestPrice - 0.005;
 
-                    priceLines.push(`${indicator} **${method.methodName}**`);
-                    priceLines.push(`   💰 \`$${price}\``);
-                    priceLines.push(''); 
+                const rangeOf = (m: any) => {
+                    if (!m.levelRanges || m.levelRanges.length === 0) return "";
+                    const min = Math.min(...m.levelRanges.map((r: any) => r.startLevel));
+                    const max = Math.max(...m.levelRanges.map((r: any) => r.endLevel));
+                    return `${min}-${max}`;
+                };
+
+                const optionRows = listed.map((m: any) => ({
+                    name: m.methodName,
+                    range: rangeOf(m),
+                    originalPrice: m.loyaltyDiscount?.originalPrice,
+                    finalPrice: m.finalPrice,
+                    discountPercent: m.loyaltyDiscount?.discountPercent,
+                    isBest: !combinedIsBetter && m.finalPrice <= bestPrice + 0.005,
+                }));
+
+                if (combinedIsBetter) {
+                    optionRows.push({
+                        name: combined.methodName,
+                        range: rangeOf(combined),
+                        originalPrice: combined.loyaltyDiscount?.originalPrice,
+                        finalPrice: combined.finalPrice,
+                        discountPercent: combined.loyaltyDiscount?.discountPercent,
+                        isBest: true,
+                    });
                 }
 
-                priceLines.pop();
+                const optionsTable = buildOptionsTable(optionRows);
 
-                embed.addFields({
-                    name: "💵 Pricing Options",
-                    value: priceLines.join('\n'),
-                    inline: false,
-                });
-
-                const cheapest = data.methodOptions.find(m => m.isCheapest);
-                if (cheapest) {
-                    const hasModifiers = cheapest.modifiersTotal !== 0;
-
-                    const discounts = cheapest.modifiers.filter(m => m.applied && Number(m.value) < 0);
-                    const upcharges = cheapest.modifiers.filter(m => m.applied && Number(m.value) > 0);
-
-                    let breakdown = `\`\`\`yml\n`;
-                    breakdown += `Service:        ${data.service.name}\n`;
-                    breakdown += `─────────────────────────────────────────\n`;
-                    breakdown += `Levels:         ${data.levels.start} → ${data.levels.end}\n`;
-                    breakdown += `XP Required:    ${data.levels.formattedXp}\n`;
-                    breakdown += `─────────────────────────────────────────\n`;
-
-                    const sortedRanges = cheapest.levelRanges
-                        ? [...cheapest.levelRanges].sort((a, b) => a.startLevel - b.startLevel)
-                        : [];
-
-                    logger.info('[Calculator] 📊 Displaying ' + sortedRanges.length + ' segment(s)');
-
-                    if (sortedRanges.length > 0) {
-                        for (const segment of sortedRanges) {
-                            breakdown += `\n📊 ${segment.startLevel}-${segment.endLevel}\n`;
-                            breakdown += `Method:         ${segment.methodName || 'N/A'}\n`;
-                            breakdown += `Rate:           ${(segment.ratePerXp || 0).toFixed(8)} $/XP\n`;
-                            breakdown += `XP:             ${segment.xpRequired.toLocaleString()}\n`;
-                            breakdown += `Cost:           $${segment.totalPrice.toFixed(2)}\n`;
-                        }
-                        breakdown += `\n`;
-                    }
-
-                    breakdown += `─────────────────────────────────────────\n`;
-                    breakdown += `Base Cost:      $${cheapest.subtotal.toFixed(2)}\n`;
-
-                    if (discounts.length > 0) {
-                        for (const mod of discounts) {
-                            const modValue = mod.type === 'PERCENTAGE'
-                                ? `${mod.value}%`
-                                : `-$${Math.abs(Number(mod.value)).toFixed(2)}`;
-                            breakdown += `${mod.name}:`.padEnd(16) + `${modValue}\n`;
-                        }
-                    }
-
-                    if (upcharges.length > 0) {
-                        for (const mod of upcharges) {
-                            const modValue = mod.type === 'PERCENTAGE'
-                                ? `+${mod.value}%`
-                                : `+$${mod.value.toFixed(2)}`;
-                            breakdown += `${mod.name}:`.padEnd(16) + `${modValue}\n`;
-                        }
-                    }
-
-                    if (hasModifiers) {
-                        breakdown += `─────────────────────────────────────────\n`;
-                    }
-
-                    breakdown += `\`\`\``;
-
-                    logger.info('[Calculator] 💰 Final price: $' + cheapest.finalPrice.toFixed(2));
-
-                    breakdown += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${cheapest.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
-
-                    logger.info('[Calculator] ✅ Sending embed with all segments');
-
+                if (optionsTable) {
                     embed.addFields({
-                        name: "✅ Recommended Option — Full Breakdown",
-                        value: breakdown,
+                        name: "\u{1F4B5} Pricing Options",
+                        value: optionsTable,
+                        inline: false,
+                    });
+                }
+
+                const cheapest = combinedIsBetter
+                    ? combined
+                    : listed.reduce((min: any, curr: any) =>
+                          curr.finalPrice < min.finalPrice ? curr : min
+                      );
+
+                if (cheapest) {
+                    embed.addFields({
+                        name: "\u{1F4B0} Price Summary",
+                        value: buildTotalBlock(
+                            cheapest.methodName,
+                            cheapest.subtotal,
+                            collectAdjustments(cheapest),
+                            cheapest.finalPrice
+                        ),
                         inline: false,
                     });
                 }

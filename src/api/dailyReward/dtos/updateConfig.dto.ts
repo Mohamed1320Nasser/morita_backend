@@ -1,14 +1,17 @@
-import { IsBoolean, IsInt, IsOptional, IsString, Min, Max } from "class-validator";
+import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, Min, Max } from "class-validator";
+import { Type } from "class-transformer";
 
 export class UpdateConfigDto {
     @IsOptional()
-    @IsInt()
-    @Min(1)
+    @Type(() => Number)
+    @IsNumber({ maxDecimalPlaces: 2 })
+    @Min(0)
     minAmount?: number;
 
     @IsOptional()
-    @IsInt()
-    @Min(1)
+    @Type(() => Number)
+    @IsNumber({ maxDecimalPlaces: 2 })
+    @Min(0)
     maxAmount?: number;
 
     @IsOptional()

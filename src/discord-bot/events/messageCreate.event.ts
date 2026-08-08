@@ -3,6 +3,8 @@ import logger from "../../common/loggers";
 import { ApiService } from "../services/api.service";
 import { discordConfig } from "../config/discord.config";
 import PricingCalculatorService from "../../api/pricingCalculator/pricingCalculator.service";
+import { buildModifierBadges, buildModifierSelectRow } from "../utils/modifierSelector";
+import { createSelectionToken, saveSelectionState } from "../services/modifierSelection.service";
 import LoyaltyTierService from "../../api/loyalty-tier/loyalty-tier.service";
 import {
     sendEphemeralError,
@@ -16,6 +18,13 @@ import { discordApiClient } from "../clients/DiscordApiClient";
 // Wallet embeds moved to slash commands /w and /t
 import { getMentionTrackerService } from "../services/mention-tracker.service";
 import { getEngagementTrackerService } from "../services/engagement-tracker.service";
+import {
+    buildLevelScope,
+    buildCountScope,
+    buildOptionsTable,
+    buildTotalBlock,
+    collectAdjustments,
+} from "../utils/priceEmbed";
 
 /**
  * Check if a channel is allowed for calculator commands
@@ -468,182 +477,86 @@ async function processSingleSkillRequest(message: Message, requestString: string
         // Get loyalty discount info from any method option
         const loyaltyDiscount = data.methodOptions.find((m: any) => m.loyaltyDiscount)?.loyaltyDiscount;
 
-        // Build level range display with ANSI table like !p calculator
-        const discountText = loyaltyDiscount
-            ? `${loyaltyDiscount.discountPercent.toFixed(1)}% ${loyaltyDiscount.tierEmoji}`
-            : '0.0%';
+        const scopeDiscountPercent = loyaltyDiscount
+            ? loyaltyDiscount.discountPercent
+            : totalDiscountPercent;
 
-        let levelRangeValue = `\`\`\`ansi\n`;
-        levelRangeValue += `\u001b[0;37mSkill:        Start  End    Discount\u001b[0m\n`;
-        levelRangeValue += `\u001b[0;37m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m\n`;
+        const coversFullRange = (m: any) => {
+            if (!m.levelRanges || m.levelRanges.length === 0) return false;
+            const min = Math.min(...m.levelRanges.map((r: any) => r.startLevel));
+            const max = Math.max(...m.levelRanges.map((r: any) => r.endLevel));
+            return min <= data.levels.start && max >= data.levels.end;
+        };
 
-        const skillName = data.service.name.substring(0, 12).padEnd(12);
-        const startLevelStr = String(data.levels.start).padEnd(5);
-        const endLevelStr = String(data.levels.end).padEnd(5);
-        const discountDisplay = totalDiscountPercent > 0
-            ? `\u001b[0;32m${discountText}\u001b[0m`
-            : `\u001b[0;37m${discountText}\u001b[0m`;
-
-        levelRangeValue += `\u001b[0;36m${skillName}\u001b[0m  \u001b[0;36m${startLevelStr}\u001b[0m  \u001b[0;36m${endLevelStr}\u001b[0m  ${discountDisplay}\n`;
-        levelRangeValue += `\`\`\`\n`;
-
-        // XP Required on new line with green color
-        levelRangeValue += `\`\`\`ansi\n`;
-        levelRangeValue += `\u001b[0;32m${data.levels.formattedXp} XP Required\u001b[0m\n`;
-        levelRangeValue += `\`\`\``;
-
-        embed.addFields({
-            name: "📊 Level Range",
-            value: levelRangeValue,
-            inline: false,
-        });
+        embed.setDescription(
+            buildLevelScope(
+                data.service.name,
+                [
+                    {
+                        startLevel: data.levels.start,
+                        endLevel: data.levels.end,
+                        xpRequired: data.levels.totalXp ?? 0,
+                    },
+                ],
+                data.levels.totalXp ?? 0,
+                scopeDiscountPercent
+            )
+        );
 
         if (data.methodOptions && data.methodOptions.length > 0) {
-            const priceLines: string[] = [];
+            const isVariant = (m: any) =>
+                m.methodId === "combined" ||
+                String(m.methodId).startsWith("group_") ||
+                String(m.methodId).includes("_segment_");
 
-            const individualSegments = data.methodOptions.filter((m: any) => {
-                return m.methodName.includes('(') && m.methodName.includes('-') && m.methodName.includes(')');
-            });
+            const realMethods = data.methodOptions.filter((m: any) => !isVariant(m));
+            const listed = realMethods.length > 0 ? realMethods : data.methodOptions;
 
-            const groupedMethods: { [key: string]: any[] } = {};
+            const rangeOf = (m: any) => {
+                if (!m.levelRanges || m.levelRanges.length === 0) return "";
+                const min = Math.min(...m.levelRanges.map((r: any) => r.startLevel));
+                const max = Math.max(...m.levelRanges.map((r: any) => r.endLevel));
+                return `${min}-${max}`;
+            };
 
-            for (const method of individualSegments) {
-                const baseNameMatch = method.methodName.match(/^(.+?)\s*\(\d+-\d+\)$/);
-                const baseName = baseNameMatch ? baseNameMatch[1].trim() : method.methodName;
+            const fullCoverage = data.methodOptions.filter(coversFullRange);
+            const cheapest = fullCoverage.length > 0
+                ? fullCoverage.reduce((min: any, curr: any) =>
+                      curr.finalPrice < min.finalPrice ? curr : min
+                  )
+                : data.methodOptions.find((m: any) => m.isCheapest);
 
-                if (!groupedMethods[baseName]) {
-                    groupedMethods[baseName] = [];
-                }
-                groupedMethods[baseName].push(method);
-            }
+            const shown = listed.some((m: any) => m.methodId === cheapest?.methodId)
+                ? listed
+                : [...listed, cheapest].filter(Boolean);
 
-            for (const [groupName, methods] of Object.entries(groupedMethods)) {
-                methods.sort((a, b) => {
-                    const aMatch = a.methodName.match(/\((\d+)-\d+\)/);
-                    const bMatch = b.methodName.match(/\((\d+)-\d+\)/);
-                    return (aMatch ? parseInt(aMatch[1]) : 0) - (bMatch ? parseInt(bMatch[1]) : 0);
-                });
+            const optionRows = shown.map((m: any) => ({
+                name: m.methodName,
+                range: rangeOf(m),
+                originalPrice: m.loyaltyDiscount?.originalPrice,
+                finalPrice: m.finalPrice,
+                discountPercent: m.loyaltyDiscount?.discountPercent,
+                isBest: m.methodId === cheapest?.methodId,
+            }));
 
-                const totalPrice = methods.reduce((sum, m) => sum + m.finalPrice, 0);
-
-                priceLines.push(`**${groupName}**`);
-
-                for (const method of methods) {
-                    const levelMatch = method.methodName.match(/\((\d+-\d+)\)/);
-                    const levelRange = levelMatch ? levelMatch[1] : '';
-                    const price = method.finalPrice.toFixed(2);
-
-                    // Show loyalty discount if present
-                    let priceText = `$${price}`;
-                    if (method.loyaltyDiscount) {
-                        const originalPrice = method.loyaltyDiscount.originalPrice.toFixed(2);
-                        priceText = `$${originalPrice} → $${price} (${method.loyaltyDiscount.tierEmoji} ${method.loyaltyDiscount.discountPercent}%)`;
-                    }
-
-                    priceLines.push(`  ► [ ${levelRange} ] — ${priceText}`);
-                }
-
-                priceLines.push(`  **Total: $${totalPrice.toFixed(2)}**`);
-                priceLines.push('');
-            }
-
-            if (priceLines.length > 0) {
-                priceLines.pop();
-
+            const optionsTable = buildOptionsTable(optionRows);
+            if (optionsTable) {
                 embed.addFields({
-                    name: "💵 Pricing Options",
-                    value: priceLines.join('\n'),
+                    name: "\u{1F4B5} Pricing Options",
+                    value: optionsTable,
                     inline: false,
                 });
             }
 
-            const completeMethods = data.methodOptions.filter((m: any) => {
-                if (!m.levelRanges || m.levelRanges.length === 0) return false;
-
-                const minLevel = Math.min(...m.levelRanges.map((r: any) => r.startLevel));
-                const maxLevel = Math.max(...m.levelRanges.map((r: any) => r.endLevel));
-
-                return minLevel <= data.levels.start && maxLevel >= data.levels.end;
-            });
-
-            const cheapest = completeMethods.length > 0
-                ? completeMethods.reduce((min, curr) => curr.finalPrice < min.finalPrice ? curr : min)
-                : data.methodOptions.find(m => m.isCheapest);
             if (cheapest) {
-                const hasModifiers = cheapest.modifiersTotal !== 0;
-
-                const discounts = cheapest.modifiers.filter(m => m.applied && Number(m.value) < 0);
-                const upcharges = cheapest.modifiers.filter(m => m.applied && Number(m.value) > 0);
-
-                let headerBreakdown = `\`\`\`yml\n`;
-                headerBreakdown += `Service:        ${data.service.name}\n`;
-                headerBreakdown += `─────────────────────────────────────────\n`;
-                headerBreakdown += `Levels:         ${data.levels.start} → ${data.levels.end}\n`;
-                headerBreakdown += `XP Required:    ${data.levels.formattedXp}\n`;
-                headerBreakdown += `\`\`\``;
-
                 embed.addFields({
-                    name: "✅ Recommended Option — Full Breakdown",
-                    value: headerBreakdown,
-                    inline: false,
-                });
-
-                if (cheapest.levelRanges && cheapest.levelRanges.length > 0) {
-                    const sortedRanges = [...cheapest.levelRanges].sort((a, b) => a.startLevel - b.startLevel);
-
-                    for (let i = 0; i < sortedRanges.length; i++) {
-                        const range = sortedRanges[i];
-                        const methodName = range.methodName || cheapest.methodName;
-                        const ratePerXp = range.ratePerXp || cheapest.basePrice;
-                        const segmentPrice = range.totalPrice || 0;
-
-                        let segmentDisplay = `\`\`\`yml\n`;
-                        segmentDisplay += `Method:         ${methodName}\n`;
-                        segmentDisplay += `Rate:           ${ratePerXp.toFixed(8)} $/XP\n`;
-                        segmentDisplay += `XP:             ${range.xpRequired?.toLocaleString() || '0'}\n`;
-                        segmentDisplay += `Cost:           $${segmentPrice.toFixed(2)}\n`;
-                        segmentDisplay += `\`\`\``;
-
-                        embed.addFields({
-                            name: `📊 ${range.startLevel}-${range.endLevel}`,
-                            value: segmentDisplay,
-                            inline: false,
-                            });
-                    }
-                }
-
-                let pricingSummary = `\`\`\`yml\n`;
-                pricingSummary += `Base Cost:      $${cheapest.subtotal.toFixed(2)}\n`;
-
-                if (discounts.length > 0) {
-                    for (const mod of discounts) {
-                        const modValue = mod.type === 'PERCENTAGE'
-                            ? `${mod.value}%`
-                            : `-$${Math.abs(Number(mod.value)).toFixed(2)}`;
-                        pricingSummary += `${mod.name}:`.padEnd(16) + `${modValue}\n`;
-                    }
-                }
-
-                if (upcharges.length > 0) {
-                    for (const mod of upcharges) {
-                        const modValue = mod.type === 'PERCENTAGE'
-                            ? `+${mod.value}%`
-                            : `+$${mod.value.toFixed(2)}`;
-                        pricingSummary += `${mod.name}:`.padEnd(16) + `${modValue}\n`;
-                    }
-                }
-
-                if (cheapest.loyaltyDiscount) {
-                    pricingSummary += `${cheapest.loyaltyDiscount.tierEmoji} ${cheapest.loyaltyDiscount.tierName}:`.padEnd(16) + `-$${cheapest.loyaltyDiscount.discountAmount.toFixed(2)}\n`;
-                }
-
-                pricingSummary += `\`\`\``;
-
-                pricingSummary += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${cheapest.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
-
-                embed.addFields({
-                    name: "💰 Price Summary",
-                    value: pricingSummary,
+                    name: "\u{1F4B0} Price Summary",
+                    value: buildTotalBlock(
+                        cheapest.methodName,
+                        cheapest.subtotal,
+                        collectAdjustments(cheapest),
+                        cheapest.finalPrice
+                    ),
                     inline: false,
                 });
             }
@@ -1563,86 +1476,43 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
             // Get loyalty discount from cheapest method for top table
             const cheapest = methodResults[0];
             const loyaltyDiscountPercent = cheapest.result.loyaltyDiscount?.discountPercent || 0;
-            const loyaltyTierEmoji = cheapest.result.loyaltyDiscount?.tierEmoji || '';
 
-            // Build styled ANSI table like !p and !s
-            let tableValue = `\`\`\`ansi\n`;
-            tableValue += `\u001b[0;37mGame:                      Amount    Discount\u001b[0m\n`;
-            tableValue += `\u001b[0;37m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m\n`;
+            embed.setDescription(
+                buildCountScope(
+                    "Game",
+                    service.name,
+                    quantity,
+                    "Amount",
+                    loyaltyDiscountPercent
+                )
+            );
 
-            const gameName = service.name.substring(0, 25).padEnd(25);
-            const amountStr = quantity.toString().padStart(8);
-            const discountDisplay = loyaltyDiscountPercent > 0
-                ? `\u001b[0;32m${loyaltyDiscountPercent.toFixed(1)}% ${loyaltyTierEmoji}\u001b[0m`
-                : `\u001b[0;37m0.0%\u001b[0m`;
+            const optionsTable = buildOptionsTable(
+                methodResults.map(({ method, result }) => ({
+                    name: method.name,
+                    originalPrice: result.loyaltyDiscount?.originalPrice,
+                    finalPrice: result.finalPrice,
+                    discountPercent: result.loyaltyDiscount?.discountPercent,
+                    isBest: method.id === cheapest.method.id,
+                }))
+            );
 
-            tableValue += `\u001b[0;36m${gameName}\u001b[0m  \u001b[0;36m${amountStr}\u001b[0m  ${discountDisplay}\n`;
-            tableValue += `\`\`\``;
-
-            embed.addFields({
-                name: "🎮 Game Info",
-                value: tableValue,
-                inline: false,
-            });
-
-            const priceLines: string[] = [];
-            for (let i = 0; i < methodResults.length; i++) {
-                const { method, result } = methodResults[i];
-                const indicator = i === 0 ? "✅" : "◻️";
-                priceLines.push(`${indicator} **${method.name}**`);
-
-                // Show loyalty discount if present (original → final with emoji and %)
-                let priceText = `$${result.finalPrice.toFixed(2)}`;
-                if (result.loyaltyDiscount) {
-                    const originalPrice = result.loyaltyDiscount.originalPrice.toFixed(2);
-                    priceText = `$${originalPrice} → $${result.finalPrice.toFixed(2)} (${result.loyaltyDiscount.tierEmoji} ${result.loyaltyDiscount.discountPercent}%)`;
-                }
-
-                priceLines.push(`  ► ${priceText}`);
-                priceLines.push('');
-            }
-            priceLines.pop(); 
-
-            embed.addFields({
-                name: "💵 Pricing Options",
-                value: priceLines.join('\n'),
-                inline: false,
-            });
-
-            const appliedModifiers = cheapest.result.modifiers.filter((m: any) => m.applied);
-            const cheapestBaseCost = cheapest.result.breakdown?.subtotal ?? (cheapest.method.basePrice * quantity);
-
-            let breakdown = `\`\`\`yml\n`;
-            breakdown += `Method:         ${cheapest.method.name}\n`;
-            breakdown += `─────────────────────────────────────────\n`;
-            breakdown += `Quantity:       ${quantity.toLocaleString()} items\n`;
-            breakdown += `Rate:           $${cheapest.method.basePrice.toFixed(6)}/item\n`;
-            breakdown += `─────────────────────────────────────────\n`;
-            breakdown += `Base Cost:      $${cheapestBaseCost.toFixed(2)}\n`;
-
-            if (appliedModifiers.length > 0) {
-                for (const mod of appliedModifiers) {
-                    const icon = Number(mod.value) > 0 ? '⚠️  ' : Number(mod.value) < 0 ? '✅ ' : '';
-                    const displayName = `${icon}${mod.name}`;
-                    const modValue = mod.type === 'PERCENTAGE'
-                        ? `${mod.value}%`
-                        : `$${mod.value.toFixed(2)}`;
-                    breakdown += `${displayName}:`.padEnd(20) + `${modValue}\n`;
-                }
-                breakdown += `─────────────────────────────────────────\n`;
+            if (optionsTable) {
+                embed.addFields({
+                    name: "\u{1F4B5} Pricing Options",
+                    value: optionsTable,
+                    inline: false,
+                });
             }
 
-            if (cheapest.result.loyaltyDiscount) {
-                breakdown += `${cheapest.result.loyaltyDiscount.tierEmoji} ${cheapest.result.loyaltyDiscount.tierName} Loyalty:`.padEnd(20) + `-$${cheapest.result.loyaltyDiscount.discountAmount.toFixed(2)}\n`;
-                breakdown += `─────────────────────────────────────────\n`;
-            }
-
-            breakdown += `\`\`\``;
-            breakdown += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${cheapest.result.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
-
             embed.addFields({
-                name: "✅ Recommended Option — Full Breakdown",
-                value: breakdown,
+                name: "\u{1F4B0} Price Summary",
+                value: buildTotalBlock(
+                    cheapest.method.name,
+                    cheapest.result.breakdown?.subtotal ?? (cheapest.method.basePrice * quantity),
+                    collectAdjustments(cheapest.result),
+                    cheapest.result.finalPrice
+                ),
                 inline: false,
             });
 
@@ -1676,63 +1546,25 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
 
             // Get loyalty discount for top table
             const loyaltyDiscountPercent = result.loyaltyDiscount?.discountPercent || 0;
-            const loyaltyTierEmoji = result.loyaltyDiscount?.tierEmoji || '';
 
-            // Build styled ANSI table like !p and !s
-            let tableValue = `\`\`\`ansi\n`;
-            tableValue += `\u001b[0;37mGame:                      Amount    Discount\u001b[0m\n`;
-            tableValue += `\u001b[0;37m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m\n`;
-
-            const gameName = service.name.substring(0, 25).padEnd(25);
-            const amountStr = quantity.toString().padStart(8);
-            const discountDisplay = loyaltyDiscountPercent > 0
-                ? `\u001b[0;32m${loyaltyDiscountPercent.toFixed(1)}% ${loyaltyTierEmoji}\u001b[0m`
-                : `\u001b[0;37m0.0%\u001b[0m`;
-
-            tableValue += `\u001b[0;36m${gameName}\u001b[0m  \u001b[0;36m${amountStr}\u001b[0m  ${discountDisplay}\n`;
-            tableValue += `\`\`\``;
+            embed.setDescription(
+                buildCountScope(
+                    "Game",
+                    service.name,
+                    quantity,
+                    "Amount",
+                    loyaltyDiscountPercent
+                )
+            );
 
             embed.addFields({
-                name: "🎮 Game Info",
-                value: tableValue,
-                inline: false,
-            });
-
-            const baseCost = result.breakdown?.subtotal ?? (method.basePrice * quantity);
-
-            let priceCalc = `\`\`\`yml\n`;
-            priceCalc += `Method:         ${method.name}\n`;
-            priceCalc += `─────────────────────────────────────────\n`;
-            priceCalc += `Quantity:       ${quantity.toLocaleString()} items\n`;
-            priceCalc += `Rate:           $${method.basePrice.toFixed(6)}/item\n`;
-            priceCalc += `─────────────────────────────────────────\n`;
-            priceCalc += `Base Cost:      $${baseCost.toFixed(2)}\n`;
-
-            const appliedModifiers = result.modifiers.filter((m: any) => m.applied);
-            if (appliedModifiers.length > 0) {
-                for (const mod of appliedModifiers) {
-                    const icon = Number(mod.value) > 0 ? '⚠️  ' : Number(mod.value) < 0 ? '✅ ' : '';
-                    const displayName = `${icon}${mod.name}`;
-                    const modValue = mod.type === 'PERCENTAGE'
-                        ? `${mod.value}%`
-                        : `$${mod.value.toFixed(2)}`;
-                    priceCalc += `${displayName}:`.padEnd(20) + `${modValue}\n`;
-                }
-                priceCalc += `─────────────────────────────────────────\n`;
-            }
-
-            if (result.loyaltyDiscount) {
-                priceCalc += `${result.loyaltyDiscount.tierEmoji} ${result.loyaltyDiscount.tierName} Loyalty:`.padEnd(20) + `-$${result.loyaltyDiscount.discountAmount.toFixed(2)}\n`;
-                priceCalc += `─────────────────────────────────────────\n`;
-            }
-
-            priceCalc += `\`\`\``;
-
-            priceCalc += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${result.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
-
-            embed.addFields({
-                name: "💰 Price Breakdown",
-                value: priceCalc,
+                name: "\u{1F4B0} Price Summary",
+                value: buildTotalBlock(
+                    method.name,
+                    result.breakdown?.subtotal ?? (method.basePrice * quantity),
+                    collectAdjustments(result),
+                    result.finalPrice
+                ),
                 inline: false,
             });
 
@@ -2195,93 +2027,43 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
             // Get loyalty discount from cheapest method for top table
             const cheapest = methodResults[0];
             const loyaltyDiscountPercent = cheapest.result.loyaltyDiscount?.discountPercent || 0;
-            const loyaltyTierEmoji = cheapest.result.loyaltyDiscount?.tierEmoji || '';
 
-            // Build styled ANSI table like !p and !s
-            let tableValue = `\`\`\`ansi\n`;
-            tableValue += `\u001b[0;37mItem:                      Amount    Discount\u001b[0m\n`;
-            tableValue += `\u001b[0;37m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m\n`;
+            embed.setDescription(
+                buildCountScope(
+                    "Item",
+                    service.name,
+                    quantity,
+                    "Amount",
+                    loyaltyDiscountPercent
+                )
+            );
 
-            const itemName = service.name.substring(0, 25).padEnd(25);
-            const amountStr = quantity.toString().padStart(8);
-            const discountDisplay = loyaltyDiscountPercent > 0
-                ? `\u001b[0;32m${loyaltyDiscountPercent.toFixed(1)}% ${loyaltyTierEmoji}\u001b[0m`
-                : `\u001b[0;37m0.0%\u001b[0m`;
+            const optionsTable = buildOptionsTable(
+                methodResults.map(({ method, result }) => ({
+                    name: method.name,
+                    originalPrice: result.loyaltyDiscount?.originalPrice,
+                    finalPrice: result.finalPrice,
+                    discountPercent: result.loyaltyDiscount?.discountPercent,
+                    isBest: method.id === cheapest.method.id,
+                }))
+            );
 
-            tableValue += `\u001b[0;36m${itemName}\u001b[0m  \u001b[0;36m${amountStr}\u001b[0m  ${discountDisplay}\n`;
-            tableValue += `\`\`\``;
-
-            embed.addFields({
-                name: "🔗 Ironman Gathering",
-                value: tableValue,
-                inline: false,
-            });
-
-            const priceLines: string[] = [];
-
-            for (let i = 0; i < methodResults.length; i++) {
-                const { method, result } = methodResults[i];
-                const indicator = i === 0 ? "✅" : "◻️";
-                const rate = method.basePrice.toFixed(6);
-
-                logger.info(`[Ironman] 💰 ${method.name}: $${result.finalPrice.toFixed(2)} (${rate}/item)`);
-
-                priceLines.push(`${indicator} **${method.name}**`);
-
-                // Show loyalty discount if present (original → final with emoji and %)
-                let priceText = `$${result.finalPrice.toFixed(2)}`;
-                if (result.loyaltyDiscount) {
-                    const originalPrice = result.loyaltyDiscount.originalPrice.toFixed(2);
-                    priceText = `$${originalPrice} → $${result.finalPrice.toFixed(2)} (${result.loyaltyDiscount.tierEmoji} ${result.loyaltyDiscount.discountPercent}%)`;
-                }
-
-                priceLines.push(`  ► ${priceText} • Rate: \`$${rate}/item\``);
-                priceLines.push('');
-            }
-
-            if (priceLines.length > 0) {
-                priceLines.pop();
+            if (optionsTable) {
+                embed.addFields({
+                    name: "\u{1F4B5} Pricing Options",
+                    value: optionsTable,
+                    inline: false,
+                });
             }
 
             embed.addFields({
-                name: "💵 Pricing Options",
-                value: priceLines.join('\n'),
-                inline: false,
-            });
-
-            const cheapestBaseCost = cheapest.result.breakdown?.subtotal ?? (cheapest.method.basePrice * quantity);
-
-            let breakdown = `\`\`\`yml\n`;
-            breakdown += `Service:        ${service.name}\n`;
-            breakdown += `─────────────────────────────────────────\n`;
-            breakdown += `Quantity:       ${quantity} items\n`;
-            breakdown += `Method:         ${cheapest.method.name}\n`;
-            breakdown += `Rate:           $${cheapest.method.basePrice.toFixed(6)}/item\n`;
-            breakdown += `─────────────────────────────────────────\n`;
-            breakdown += `Base Cost:      $${cheapestBaseCost.toFixed(2)}\n`;
-
-            const appliedModifiers = cheapest.result.modifiers.filter((m: any) => m.applied);
-            if (appliedModifiers.length > 0) {
-                for (const mod of appliedModifiers) {
-                    const modValue = mod.type === 'PERCENTAGE'
-                        ? `${mod.value}%`
-                        : (mod.value < 0 ? `-$${Math.abs(mod.value).toFixed(2)}` : `+$${mod.value.toFixed(2)}`);
-                    breakdown += `${mod.name}:`.padEnd(16) + `${modValue}\n`;
-                }
-                breakdown += `─────────────────────────────────────────\n`;
-            }
-
-            if (cheapest.result.loyaltyDiscount) {
-                breakdown += `${cheapest.result.loyaltyDiscount.tierEmoji} ${cheapest.result.loyaltyDiscount.tierName}:`.padEnd(16) + `-$${cheapest.result.loyaltyDiscount.discountAmount.toFixed(2)}\n`;
-                breakdown += `─────────────────────────────────────────\n`;
-            }
-
-            breakdown += `\`\`\``;
-            breakdown += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${cheapest.result.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
-
-            embed.addFields({
-                name: "✅ Recommended Option — Full Breakdown",
-                value: breakdown,
+                name: "\u{1F4B0} Price Summary",
+                value: buildTotalBlock(
+                    cheapest.method.name,
+                    cheapest.result.breakdown?.subtotal ?? (cheapest.method.basePrice * quantity),
+                    collectAdjustments(cheapest.result),
+                    cheapest.result.finalPrice
+                ),
                 inline: false,
             });
 
@@ -2315,64 +2097,25 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
 
             // Get loyalty discount for top table
             const loyaltyDiscountPercent = result.loyaltyDiscount?.discountPercent || 0;
-            const loyaltyTierEmoji = result.loyaltyDiscount?.tierEmoji || '';
 
-            // Build styled ANSI table like !p and !s
-            let tableValue = `\`\`\`ansi\n`;
-            tableValue += `\u001b[0;37mItem:                      Amount    Discount\u001b[0m\n`;
-            tableValue += `\u001b[0;37m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m\n`;
-
-            const itemName = service.name.substring(0, 25).padEnd(25);
-            const amountStr = quantity.toString().padStart(8);
-            const discountDisplay = loyaltyDiscountPercent > 0
-                ? `\u001b[0;32m${loyaltyDiscountPercent.toFixed(1)}% ${loyaltyTierEmoji}\u001b[0m`
-                : `\u001b[0;37m0.0%\u001b[0m`;
-
-            tableValue += `\u001b[0;36m${itemName}\u001b[0m  \u001b[0;36m${amountStr}\u001b[0m  ${discountDisplay}\n`;
-            tableValue += `\`\`\``;
+            embed.setDescription(
+                buildCountScope(
+                    "Item",
+                    service.name,
+                    quantity,
+                    "Amount",
+                    loyaltyDiscountPercent
+                )
+            );
 
             embed.addFields({
-                name: "🔗 Ironman Gathering",
-                value: tableValue,
-                inline: false,
-            });
-
-            const baseCost = result.breakdown?.subtotal ?? (method.basePrice * quantity);
-
-            let priceCalc = `\`\`\`yml\n`;
-            priceCalc += `Method:         ${method.name}\n`;
-            priceCalc += `─────────────────────────────────────────\n`;
-            priceCalc += `Quantity:       ${quantity.toLocaleString()} items\n`;
-            priceCalc += `Rate:           $${method.basePrice.toFixed(6)}/item\n`;
-            priceCalc += `─────────────────────────────────────────\n`;
-            priceCalc += `Base Cost:      $${baseCost.toFixed(2)}\n`;
-
-            const appliedModifiers = result.modifiers.filter((m: any) => m.applied);
-            if (appliedModifiers.length > 0) {
-                for (const mod of appliedModifiers) {
-                    const modValue = mod.type === 'PERCENTAGE'
-                        ? `${mod.value}%`
-                        : (mod.value < 0 ? `-$${Math.abs(mod.value).toFixed(2)}` : `+$${mod.value.toFixed(2)}`);
-
-                    const icon = Number(mod.value) > 0 ? '⚠️  ' : Number(mod.value) < 0 ? '✅ ' : '';
-                    const displayName = `${icon}${mod.name}`;
-                    priceCalc += `${displayName}:`.padEnd(16) + `${modValue}\n`;
-                }
-                priceCalc += `─────────────────────────────────────────\n`;
-            }
-
-            if (result.loyaltyDiscount) {
-                priceCalc += `${result.loyaltyDiscount.tierEmoji} ${result.loyaltyDiscount.tierName}:`.padEnd(16) + `-$${result.loyaltyDiscount.discountAmount.toFixed(2)}\n`;
-                priceCalc += `─────────────────────────────────────────\n`;
-            }
-
-            priceCalc += `\`\`\``;
-
-            priceCalc += `\n\`\`\`ansi\n\u001b[1;32m💎 TOTAL PRICE: $${result.finalPrice.toFixed(2)}\u001b[0m\n\`\`\``;
-
-            embed.addFields({
-                name: "💰 Price Calculation",
-                value: priceCalc,
+                name: "\u{1F4B0} Price Summary",
+                value: buildTotalBlock(
+                    method.name,
+                    result.breakdown?.subtotal ?? (method.basePrice * quantity),
+                    collectAdjustments(result),
+                    result.finalPrice
+                ),
                 inline: false,
             });
 
@@ -2436,17 +2179,26 @@ async function handleQuoteCommand(message: Message, apiService: ApiService) {
             const foundMethods: Array<{ name: string; price: number; displayOrder: number; groupName?: string; loyaltyDiscount?: any }> = [];
             const notFound: string[] = [];
 
+            const ambiguousTerms: string[] = [];
+
             for (const itemName of itemNames) {
                 const result = await findQuoteMatch(services, itemName, userId, defaultPaymentMethod.id);
-                if (result && result.methods.length > 0) {
 
+                if (isAmbiguousQuote(result)) {
+                    ambiguousTerms.push(
+                        `${itemName} (matches ${result.candidates.map(c => c.name).join(' / ')})`
+                    );
+                    continue;
+                }
+
+                if (result && result.methods.length > 0) {
                     foundMethods.push(...result.methods);
                 } else {
                     notFound.push(itemName);
                 }
             }
 
-            if (foundMethods.length === 0) {
+            if (foundMethods.length === 0 && ambiguousTerms.length === 0) {
                 await deleteThinkingMessage(thinkingMsg);
                 await sendServiceNotFoundError(
                     message,
@@ -2463,10 +2215,14 @@ async function handleQuoteCommand(message: Message, apiService: ApiService) {
                 emoji: '📋',
                 methods: foundMethods,
                 notFound,
+                ambiguous: ambiguousTerms,
             };
 
             await sendQuoteEmbed(thinkingMsg, batchResult, userId);
-            logger.info(`[Quote] ✅ Batch quote sent: ${foundMethods.length} found, ${notFound.length} not found`);
+            logger.info(
+                `[Quote] ✅ Batch quote sent: ${foundMethods.length} found, ` +
+                `${notFound.length} not found, ${ambiguousTerms.length} ambiguous`
+            );
 
         } else {
 
@@ -2483,7 +2239,16 @@ async function handleQuoteCommand(message: Message, apiService: ApiService) {
                 return;
             }
 
-            await sendQuoteEmbed(thinkingMsg, result, userId);
+            if (isAmbiguousQuote(result)) {
+                await sendAmbiguousQuoteEmbed(thinkingMsg, result);
+                logger.info(`[Quote] ⚠️ Disambiguation sent for "${input}" (${result.candidates.length} candidates)`);
+                return;
+            }
+
+            await sendQuoteEmbed(thinkingMsg, result, userId, {
+                requesterDiscordId: message.author.id,
+                paymentMethodId: defaultPaymentMethod.id,
+            });
             logger.info(`[Quote] ✅ Quote sent for "${result.title}" (${result.methods.length} methods) to ${message.author.tag}`);
         }
 
@@ -2494,12 +2259,22 @@ async function handleQuoteCommand(message: Message, apiService: ApiService) {
     }
 }
 
+interface QuoteAmbiguous {
+    ambiguous: true;
+    searchTerm: string;
+    candidates: Array<{ name: string; methodCount: number; emoji: string }>;
+}
+
+function isAmbiguousQuote(result: any): result is QuoteAmbiguous {
+    return result !== null && result.ambiguous === true;
+}
+
 async function findQuoteMatch(services: any[], searchName: string, userId?: number, paymentMethodId?: string): Promise<{
     title: string;
     description: string;
     emoji: string;
     methods: Array<{ name: string; price: number; displayOrder: number; groupName?: string; originalPrice?: number; loyaltyDiscount?: any }>;
-} | null> {
+} | QuoteAmbiguous | null> {
     const normalized = normalizeQuestName(searchName);
 
     const fixedServices = services.filter((s: any) =>
@@ -2530,20 +2305,24 @@ async function findQuoteMatch(services: any[], searchName: string, userId?: numb
                         userId,
                     });
                     methods.push({
+                        methodId: m.id,
                         name: m.name,
                         price: result.finalPrice,
                         originalPrice: result.basePrice,
                         displayOrder: m.displayOrder ?? 999,
                         groupName: m.groupName || null,
                         loyaltyDiscount: result.loyaltyDiscount,
+                        availableModifiers: (m.modifiers || []).filter((x: any) => x.active),
                     });
                 } catch (error) {
                     logger.warn(`[Quote] Failed to calculate price for ${m.name}, using base price`);
                     methods.push({
+                        methodId: m.id,
                         name: m.name,
                         price: Number(m.basePrice),
                         displayOrder: m.displayOrder ?? 999,
                         groupName: m.groupName || null,
+                        availableModifiers: (m.modifiers || []).filter((x: any) => x.active),
                     });
                 }
             } else {
@@ -2629,10 +2408,27 @@ async function findQuoteMatch(services: any[], searchName: string, userId?: numb
         matchesShortcuts(s.shortcuts, normalized, false)
     );
 
-    if (partialServiceMatches.length > 0) {
-        const bestMatch = partialServiceMatches.reduce((shortest, curr) =>
-            curr.name.length < shortest.name.length ? curr : shortest
+    if (partialServiceMatches.length > 1) {
+        logger.info(
+            `[Quote] ⚠️ Ambiguous service search "${searchName}" matched ${partialServiceMatches.length} services: ` +
+            partialServiceMatches.map((s: any) => s.name).join(', ')
         );
+
+        return {
+            ambiguous: true,
+            searchTerm: searchName,
+            candidates: partialServiceMatches
+                .map((s: any) => ({
+                    name: s.name,
+                    methodCount: s.pricingMethods.filter((m: any) => m.pricingUnit === 'FIXED').length,
+                    emoji: s.emoji || '⭐',
+                }))
+                .sort((a: any, b: any) => b.methodCount - a.methodCount),
+        };
+    }
+
+    if (partialServiceMatches.length === 1) {
+        const bestMatch = partialServiceMatches[0];
 
         const fixedMethodsData = bestMatch.pricingMethods.filter((m: any) => m.pricingUnit === 'FIXED');
         const fixedMethods = await calculateMethodPrices(fixedMethodsData);
@@ -2695,6 +2491,37 @@ async function findQuoteMatch(services: any[], searchName: string, userId?: numb
     return null;
 }
 
+async function sendAmbiguousQuoteEmbed(
+    thinkingMsg: Message,
+    result: QuoteAmbiguous
+) {
+    const totalMethods = result.candidates.reduce((sum, c) => sum + c.methodCount, 0);
+
+    const lines = result.candidates.map(
+        c => `${c.emoji} **${c.name}** — ${c.methodCount} ${c.methodCount === 1 ? 'item' : 'items'}\n  \`!q ${c.name}\``
+    );
+
+    const embed = new EmbedBuilder()
+        .setTitle(`🔍 Multiple matches for "${result.searchTerm}"`)
+        .setDescription(
+            `Your search matches **${result.candidates.length} services** ` +
+            `(${totalMethods} items total).\n\nPick the one you want:`
+        )
+        .setColor(0xfca311)
+        .addFields({
+            name: "📋 Matching Services",
+            value: lines.join('\n\n'),
+            inline: false,
+        })
+        .setFooter({ text: "Tip: use the exact service name, or !q item1, item2 for specific items" })
+        .setTimestamp();
+
+    await thinkingMsg.edit({
+        content: "",
+        embeds: [embed.toJSON() as any],
+    });
+}
+
 async function sendQuoteEmbed(
     thinkingMsg: Message,
     result: {
@@ -2703,8 +2530,13 @@ async function sendQuoteEmbed(
         emoji: string;
         methods: Array<{ name: string; price: number; displayOrder: number; groupName?: string; originalPrice?: number; loyaltyDiscount?: any }>;
         notFound?: string[];
+        ambiguous?: string[];
     },
-    userId?: number
+    userId?: number,
+    selectorContext?: {
+        requesterDiscordId: string;
+        paymentMethodId: string;
+    }
 ) {
     const embed = new EmbedBuilder()
         .setTitle(`${result.emoji} ${result.title}`)
@@ -2750,27 +2582,136 @@ async function sendQuoteEmbed(
         priceLines.pop();
     }
 
-    embed.addFields({
-        name: "💵 Pricing",
-        value: priceLines.join('\n') || 'No pricing available',
-        inline: false,
-    });
+    const MAX_FIELD_VALUE = 1024;
+    const MAX_PRICING_FIELDS = 20;
+    let truncated = false;
+
+    const chunks: string[] = [];
+    let current: string[] = [];
+
+    for (const line of priceLines) {
+        const candidate = [...current, line].join('\n');
+        if (candidate.length > MAX_FIELD_VALUE && current.length > 0) {
+            chunks.push(current.join('\n'));
+            current = [line];
+        } else {
+            current.push(line);
+        }
+    }
+    if (current.length > 0) {
+        chunks.push(current.join('\n'));
+    }
+
+    if (chunks.length === 0) {
+        embed.addFields({
+            name: "💵 Pricing",
+            value: 'No pricing available',
+            inline: false,
+        });
+    } else {
+        const MAX_TOTAL_CHARS = 5000;
+        const shown: string[] = [];
+        let usedChars = 0;
+
+        for (const chunk of chunks) {
+            if (shown.length >= MAX_PRICING_FIELDS || usedChars + chunk.length > MAX_TOTAL_CHARS) {
+                break;
+            }
+            shown.push(chunk);
+            usedChars += chunk.length;
+        }
+
+        shown.forEach((chunk, i) => {
+            embed.addFields({
+                name: i === 0
+                    ? "💵 Pricing"
+                    : `💵 Pricing (cont. ${i + 1}/${shown.length})`,
+                value: chunk,
+                inline: false,
+            });
+        });
+
+        if (shown.length < chunks.length) {
+            truncated = true;
+            embed.addFields({
+                name: "⚠️ Truncated",
+                value: `This service has too many items to show at once. Search a narrower term, or quote specific items with \`!q item1, item2\`.`,
+                inline: false,
+            });
+        }
+    }
 
     if (result.methods.length > 1) {
         embed.addFields({
-            name: "💎 Grand Total",
+            name: truncated
+                ? `💎 Grand Total (all ${result.methods.length} items)`
+                : "💎 Grand Total",
             value: `\`\`\`ansi\n\u001b[1;32m$${totalPrice.toFixed(2)}\u001b[0m\n\`\`\``,
             inline: false,
         });
     }
 
-    const notFoundContent = result.notFound && result.notFound.length > 0
-        ? `⚠️ Not found: ${result.notFound.join(', ')}`
-        : "";
+    const noticeLines: string[] = [];
+
+    if (result.notFound && result.notFound.length > 0) {
+        noticeLines.push(`⚠️ Not found: ${result.notFound.join(', ')}`);
+    }
+
+    if (result.ambiguous && result.ambiguous.length > 0) {
+        noticeLines.push(`🔍 Too broad, skipped: ${result.ambiguous.join('; ')}`);
+    }
+
+    // When the quote resolved to a single method that has optional extras,
+    // let the customer toggle them and see the price update live.
+    const components: any[] = [];
+    const single = result.methods.length === 1 ? (result.methods[0] as any) : null;
+    const extras = single?.availableModifiers || [];
+
+    if (single?.methodId && extras.length > 0 && selectorContext) {
+        try {
+            const token = createSelectionToken();
+
+            {
+                await saveSelectionState(token, {
+                    userId: selectorContext.requesterDiscordId,
+                    serviceId: '',
+                    serviceName: result.title,
+                    serviceEmoji: result.emoji,
+                    quantity: 1,
+                    methodId: single.methodId,
+                    paymentMethodId: selectorContext.paymentMethodId,
+                    dbUserId: userId,
+                    selectedIds: [],
+                });
+
+                const selectable = extras.map((m: any) => ({
+                    id: m.id,
+                    name: m.name,
+                    type: m.modifierType,
+                    displayType: m.displayType,
+                    value: Number(m.value),
+                }));
+
+                const badges = buildModifierBadges(selectable, []);
+                if (badges) {
+                    // Match the interactive layout: options directly under the
+                    // title, so toggling them does not restructure the message.
+                    embed.setDescription(badges);
+                    embed.setFooter({ text: "Select any options that apply to you" });
+                }
+
+                const row = buildModifierSelectRow(token, selectable, []);
+                if (row) components.push(row);
+            }
+        } catch (error) {
+            logger.warn('[Quote] Could not attach modifier selector:', error);
+        }
+    }
 
     await thinkingMsg.edit({
-        content: notFoundContent,
+        content: noticeLines.join('\n'),
         embeds: [embed.toJSON() as any],
+        components,
     });
 }
 

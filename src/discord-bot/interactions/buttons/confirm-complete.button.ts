@@ -106,41 +106,104 @@ export async function handleConfirmCompleteButton(interaction: ButtonInteraction
             const rewardData = rewardResponse?.data || rewardResponse;
 
             if (rewardData && rewardData.rewardAmount > 0) {
-                const customerUser = await interaction.client.users.fetch(updatedOrderData.customer.discordId);
+                const configResponse: any = await discordApiClient
+                    .get(`/order-reward/public-config`)
+                    .catch(() => null);
+                const rewardConfig = configResponse?.data || configResponse;
+                const notifyEnabled = rewardConfig?.notifyDiscord !== false;
 
-                const rewardEmbed = new EmbedBuilder()
-                    .setTitle("🎁 Order Reward Earned!")
-                    .setDescription(
-                        `You've earned a reward for completing Order #${updatedOrderData.orderNumber}!`
-                    )
-                    .addFields([
-                        {
-                            name: "💰 Reward Amount",
-                            value: `\`\`\`${rewardData.currencyName}${rewardData.rewardAmount.toFixed(2)}\`\`\``,
-                            inline: true
-                        },
-                        {
-                            name: "💳 Added To",
-                            value: "Your Wallet Balance",
-                            inline: true
-                        },
-                    ])
-                    .setColor(0xf1c40f)
-                    .setTimestamp()
-                    .setFooter({ text: "Thank you for your order!" });
+                if (!notifyEnabled) {
+                    logger.info(
+                        `[ConfirmComplete] Reward notifications disabled in config, skipping for order ${orderId}`
+                    );
+                } else {
+                    const rewardEmbed = new EmbedBuilder()
+                        .setTitle("🎁 Order Reward Earned!")
+                        .setDescription(
+                            `You've earned a reward for completing Order #${updatedOrderData.orderNumber}!`
+                        )
+                        .addFields([
+                            {
+                                name: "💰 Reward Amount",
+                                value: `\`\`\`${rewardData.currencyName}${rewardData.rewardAmount.toFixed(2)}\`\`\``,
+                                inline: true
+                            },
+                            {
+                                name: "💳 Added To",
+                                value: "Your Wallet Balance",
+                                inline: true
+                            },
+                        ])
+                        .setColor(0xf1c40f)
+                        .setTimestamp()
+                        .setFooter({ text: "Thank you for your order!" });
 
-                if (rewardData.isFirstOrder) {
-                    rewardEmbed.addFields([
-                        {
-                            name: "🌟 First Order Bonus!",
-                            value: "This reward includes a special bonus for your first completed order!",
-                            inline: false
+                    if (rewardData.isFirstOrder) {
+                        rewardEmbed.addFields([
+                            {
+                                name: "🌟 First Order Bonus!",
+                                value: "This reward includes a special bonus for your first completed order!",
+                                inline: false
+                            }
+                        ]);
+                    }
+
+                    let delivered = false;
+
+                    try {
+                        const customerUser = await interaction.client.users.fetch(
+                            updatedOrderData.customer.discordId
+                        );
+                        await customerUser.send({ embeds: [rewardEmbed.toJSON() as any] });
+                        delivered = true;
+                        logger.info(
+                            `[ConfirmComplete] Sent order reward DM to customer for order ${orderId}`
+                        );
+                    } catch (dmError: any) {
+                        logger.warn(
+                            `[ConfirmComplete] Could not DM reward to customer for order ${orderId} (DMs likely disabled):`,
+                            dmError.message
+                        );
+                    }
+
+                    // Fall back to the ticket/order channel so the customer still
+                    // finds out about the reward when DMs are blocked.
+                    if (!delivered) {
+                        const fallbackChannelId =
+                            updatedOrderData.ticketChannelId || updatedOrderData.orderChannelId;
+
+                        if (fallbackChannelId) {
+                            try {
+                                const channel = await interaction.client.channels.fetch(
+                                    fallbackChannelId
+                                );
+
+                                if (channel?.isTextBased()) {
+                                    await (channel as TextChannel).send({
+                                        content: `<@${updatedOrderData.customer.discordId}>`,
+                                        embeds: [rewardEmbed.toJSON() as any]
+                                    });
+                                    delivered = true;
+                                    logger.info(
+                                        `[ConfirmComplete] Posted reward notice to channel ${fallbackChannelId} for order ${orderId}`
+                                    );
+                                }
+                            } catch (channelError: any) {
+                                logger.warn(
+                                    `[ConfirmComplete] Could not post reward notice to channel for order ${orderId}:`,
+                                    channelError.message
+                                );
+                            }
                         }
-                    ]);
-                }
+                    }
 
-                await customerUser.send({ embeds: [rewardEmbed.toJSON() as any] });
-                logger.info(`[ConfirmComplete] Sent order reward notification to customer for order ${orderId}`);
+                    if (!delivered) {
+                        logger.error(
+                            `[ConfirmComplete] Reward of ${rewardData.currencyName}${rewardData.rewardAmount} ` +
+                            `was credited for order ${orderId} but the customer could not be notified`
+                        );
+                    }
+                }
             }
         } catch (rewardError) {
             logger.warn(`[ConfirmComplete] Could not send reward notification:`, rewardError);

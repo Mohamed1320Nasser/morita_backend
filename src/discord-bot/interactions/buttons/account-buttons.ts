@@ -12,7 +12,7 @@ import {
     AccountComponentBuilder,
     ACCOUNT_BUTTON_IDS,
 } from "../../utils/accountComponentBuilder";
-import { getTicketService } from "../../services/ticket.service";
+import { getTicketService, AccountUnavailableError } from "../../services/ticket.service";
 
 // Initialize API service
 const apiService = new ApiService(discordConfig.apiBaseUrl);
@@ -485,7 +485,7 @@ export async function handleAccountConfirm(
         }
 
         // Create the account purchase ticket
-        const { channel, ticket, reservationSuccess } = await ticketService.createAccountPurchaseTicket(
+        const { channel, ticket } = await ticketService.createAccountPurchaseTicket(
             interaction.guild,
             interaction.user,
             accountId,
@@ -503,9 +503,7 @@ export async function handleAccountConfirm(
                 `Your account purchase ticket has been created.\n\n` +
                 `**Account:** ${account.name}\n` +
                 `**Price:** $${account.price.toFixed(2)}\n\n` +
-                (reservationSuccess
-                    ? "✅ The account has been reserved for you for 30 minutes.\n\n"
-                    : "⚠️ Note: Could not reserve the account. Please complete your purchase quickly.\n\n") +
+                "✅ The account has been reserved for you for 30 minutes.\n\n" +
                 `Please head over to your ticket channel to complete the purchase:\n<#${channel.id}>`
             )
             .setColor(0x2ecc71 as ColorResolvable)
@@ -523,6 +521,22 @@ export async function handleAccountConfirm(
             `[AccountButtons] User ${interaction.user.tag} confirmed purchase for ${account.name} - Ticket #${ticket.ticketNumber}`
         );
     } catch (error) {
+        if (error instanceof AccountUnavailableError) {
+            logger.warn(
+                `[AccountButtons] Account unavailable for ${interaction.user.tag}: ${error.message}`
+            );
+            await interaction.editReply({
+                embeds: [
+                    AccountEmbedBuilder.createErrorEmbed(
+                        "Account No Longer Available",
+                        "Someone else reserved this account moments ago. Nothing has been charged.\n\nPlease browse our other available accounts."
+                    ) as any,
+                ],
+                components: [],
+            });
+            return;
+        }
+
         logger.error("[AccountButtons] Error handling account_confirm:", error);
         await interaction.editReply({
             embeds: [

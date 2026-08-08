@@ -6,12 +6,18 @@ import {
     Body,
     Param,
     QueryParam,
-} from "routing-controllers";
+ UseBefore,} from "routing-controllers";
+import {
+    DiscordAuthMiddleware,
+    DiscordRateLimitMiddleware,
+} from "../../common/middlewares/discordAuth.middleware";
 import { Service } from "typedi";
 import { accountDataService } from "./account-data.service";
 
 @JsonController("/account-data")
 @Service()
+@UseBefore(DiscordAuthMiddleware)
+@UseBefore(DiscordRateLimitMiddleware)
 export default class AccountDataDiscordController {
     @Get("/types")
     async getAccountTypes() {

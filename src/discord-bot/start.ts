@@ -26,6 +26,16 @@ if (result.error) {
     logger.info("Successfully loaded .env from explicit path");
 }
 
+const botApiKey = process.env.DISCORD_BOT_API_KEY;
+if (!botApiKey || botApiKey.length < 32) {
+    logger.error(
+        "DISCORD_BOT_API_KEY is not set or is shorter than 32 characters. " +
+            "The backend rejects unauthenticated Discord endpoints. " +
+            "Generate one with: openssl rand -hex 32"
+    );
+    process.exit(1);
+}
+
 logger.info("Validating Discord configuration...");
 if (!discordConfig.validate()) {
     logger.error("Discord bot configuration is INVALID!");

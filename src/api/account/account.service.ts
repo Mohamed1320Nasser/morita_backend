@@ -375,14 +375,6 @@ export default class AccountService {
         discordUserId?: string,
         expiryMinutes: number = 30
     ) {
-        const account = await prisma.account.findFirst({
-            where: { id: accountId, status: 'IN_STOCK' },
-        });
-
-        if (!account) {
-            return { success: false, error: 'Account not available' };
-        }
-
         // Lookup userId from discordId if not provided
         let resolvedUserId = userId;
         if (!resolvedUserId && discordUserId) {
@@ -395,14 +387,22 @@ export default class AccountService {
         const expiryDate = new Date();
         expiryDate.setMinutes(expiryDate.getMinutes() + expiryMinutes);
 
-        const updated = await prisma.account.update({
-            where: { id: accountId },
+        const claimed = await prisma.account.updateMany({
+            where: { id: accountId, status: 'IN_STOCK' },
             data: {
                 status: 'RESERVED',
                 reservedById: resolvedUserId || null,
                 reservedAt: new Date(),
                 reservationExpiry: expiryDate,
             },
+        });
+
+        if (claimed.count === 0) {
+            return { success: false, error: 'Account not available' };
+        }
+
+        const updated = await prisma.account.findUniqueOrThrow({
+            where: { id: accountId },
             include: {
                 images: {
                     include: { file: true },

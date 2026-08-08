@@ -1,11 +1,13 @@
 import { JsonController, Post, Get, Authorized, CurrentUser, Body } from "routing-controllers";
 import { Service } from "typedi";
 import DiscordChannelsService from "./discord.channels.service";
+import API from "../../common/config/api.types";
 import logger from "../../common/loggers";
 
 
 @JsonController("/discord/channels")
 @Service()
+@Authorized(API.Role.admin)
 export default class DiscordChannelsController {
     constructor(private discordChannelsService: DiscordChannelsService) {}
 

@@ -1,9 +1,9 @@
 import { ButtonInteraction, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from "discord.js";
 import { onboardingConfig } from "../../config/onboarding.config";
 import { discordConfig } from "../../config/discord.config";
-import axios from "axios";
 import logger from "../../../common/loggers";
 import { getRedisService } from "../../../common/services/redis.service";
+import { botHttp } from "../../clients/botHttp";
 
 const redis = getRedisService();
 const ONBOARDING_ANSWERS_PREFIX = "onboarding:answers:";
@@ -19,7 +19,7 @@ export default {
 
             logger.info(`[Onboarding] ${interaction.user.username} continuing onboarding (batch ${batchNumber})`);
 
-            const questionsResponse = await axios.get(`${discordConfig.apiBaseUrl}/onboarding/questions/active`);
+            const questionsResponse = await botHttp.get(`${discordConfig.apiBaseUrl}/onboarding/questions/active`);
             const allQuestions = questionsResponse.data.data;
 
             const cacheKey = `${ONBOARDING_ANSWERS_PREFIX}${discordId}`;

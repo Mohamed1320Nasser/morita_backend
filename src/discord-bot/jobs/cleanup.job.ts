@@ -124,6 +124,9 @@ async function releaseExpiredAccountReservations(): Promise<void> {
 
 async function performCleanup(client: Client): Promise<void> {
     try {
+        if (!client.channelManager) {
+            return;
+        }
         await client.channelManager.cleanupExpiredMessages();
     } catch (error) {
         logger.error("Error performing cleanup:", error);

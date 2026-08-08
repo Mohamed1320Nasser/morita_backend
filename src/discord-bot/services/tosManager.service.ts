@@ -1,9 +1,9 @@
 import { Client, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, TextChannel, Message } from "discord.js";
 import { onboardingConfig } from "../config/onboarding.config";
 import { discordConfig } from "../config/discord.config";
-import axios from "axios";
 import logger from "../../common/loggers";
 import { getMessagePersistence } from "./messagePersistence.service";
+import { botHttp } from "../clients/botHttp";
 
 export class TosManagerService {
     private client: Client;
@@ -116,7 +116,7 @@ export class TosManagerService {
                 await new Promise(resolve => setTimeout(resolve, 2000));
             }
 
-            const response = await axios.get(`${discordConfig.apiBaseUrl}/onboarding/tos/active`);
+            const response = await botHttp.get(`${discordConfig.apiBaseUrl}/onboarding/tos/active`);
             const activeTos = response.data.data;
 
             if (!activeTos) {

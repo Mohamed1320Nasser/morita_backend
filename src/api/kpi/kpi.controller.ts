@@ -150,7 +150,7 @@ export default class KpiController {
     }
 
     @Post("/engagement-rank")
-    @Authorized([API.Role.admin])
+    @Authorized(API.Role.admin)
     @HttpCode(201)
     async awardEngagementRank(@Body() dto: any) {
         return this.kpiService.awardEngagementRank(dto);

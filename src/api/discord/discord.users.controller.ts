@@ -1,10 +1,16 @@
-import { Get, JsonController, Param } from 'routing-controllers';
+import { Get, JsonController, Param, UseBefore } from 'routing-controllers';
+import {
+    DiscordAuthMiddleware,
+    DiscordRateLimitMiddleware,
+} from "../../common/middlewares/discordAuth.middleware";
 import { Service } from 'typedi';
 import prisma from '../../common/prisma/client';
 import { NotFoundError } from 'routing-controllers';
 
 @Service()
 @JsonController('/discord/users')
+@UseBefore(DiscordAuthMiddleware)
+@UseBefore(DiscordRateLimitMiddleware)
 export default class DiscordUsersController {
   @Get('/discord/:discordId')
   async getUserByDiscordId(@Param('discordId') discordId: string) {

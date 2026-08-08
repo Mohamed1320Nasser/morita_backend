@@ -27,7 +27,7 @@ export default class TicketTypeSettingsController {
     ) {}
 
     @Post("/")
-    @Authorized([API.Role.admin])
+    @Authorized(API.Role.admin)
     async upsertSettings(@Body() data: CreateTicketTypeSettingsDto) {
         return await this.ticketTypeSettingsService.upsert(data);
     }
@@ -55,7 +55,7 @@ export default class TicketTypeSettingsController {
     }
 
     @Patch("/:ticketType")
-    @Authorized([API.Role.admin])
+    @Authorized(API.Role.admin)
     async updateSettings(
         @Param("ticketType") ticketType: string,
         @Body() data: UpdateTicketTypeSettingsDto

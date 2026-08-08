@@ -1,6 +1,5 @@
 import { Events, Client } from "discord.js";
 import { ChannelManagerService } from "../services/channelManager.service";
-import { startPricingSyncJob } from "../jobs/pricingSync.job";
 import { startCleanupJob } from "../jobs/cleanup.job";
 import { getMentionTrackerService } from "../services/mention-tracker.service";
 
@@ -37,5 +36,13 @@ export default {
             logger.error("❌ Failed to start mention tracker service:", error);
         }
 
+        try {
+            startCleanupJob(client);
+            logger.info(
+                "✅ Cleanup jobs started (account reservations, ticket archiving)"
+            );
+        } catch (error) {
+            logger.error("❌ Failed to start cleanup jobs:", error);
+        }
     },
 };

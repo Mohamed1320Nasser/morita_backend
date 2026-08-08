@@ -467,7 +467,7 @@ export default class AdminTransactionController {
      * Export transactions to CSV (returns data for CSV generation on frontend)
      */
     @Get("/export/csv")
-    @Authorized(["admin"])
+    @Authorized(API.Role.admin)
     async exportTransactions(
         @QueryParams()
         query: GetTransactionHistoryDto & {

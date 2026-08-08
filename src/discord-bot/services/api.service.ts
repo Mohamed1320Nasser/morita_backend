@@ -8,6 +8,7 @@ import {
     PriceCalculationResult,
 } from "../types/discord.types";
 import logger from "../../common/loggers";
+import { botApiHeaders } from "../config/apiAuth";
 import { getRedisService } from "../../common/services/redis.service";
 
 export class ApiService {
@@ -23,9 +24,7 @@ export class ApiService {
         this.client = axios.create({
             baseURL,
             timeout: 10000,
-            headers: {
-                "Content-Type": "application/json",
-            },
+            headers: botApiHeaders(),
         });
 
         logger.info('[ApiService] Initialized with Redis caching');

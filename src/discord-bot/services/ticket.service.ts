@@ -15,12 +15,20 @@ import {
 } from "discord.js";
 import { discordConfig } from "../config/discord.config";
 import { onboardingConfig } from "../config/onboarding.config";
+import { botApiHeaders } from "../config/apiAuth";
 import { ApiService } from "./api.service";
 import logger from "../../common/loggers";
 import axios, { AxiosInstance } from "axios";
 import { getTicketChannelMover } from "./ticket-channel-mover.service";
 
 import { TicketType, TicketMetadata } from "../types/discord.types";
+
+export class AccountUnavailableError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "AccountUnavailableError";
+    }
+}
 
 export interface TicketData {
     id?: string;
@@ -56,9 +64,7 @@ export class TicketService {
         this.apiClient = axios.create({
             baseURL: discordConfig.apiBaseUrl,
             timeout: 5000,
-            headers: {
-                "Content-Type": "application/json",
-            },
+            headers: botApiHeaders(),
         });
         this.apiService = new ApiService(discordConfig.apiBaseUrl);
     }
@@ -302,10 +308,15 @@ export class TicketService {
                 }
             );
 
-            const reservationSuccess = reserveResponse.data?.success || false;
+            const reservePayload =
+                reserveResponse.data?.data ?? reserveResponse.data;
+            const reservationSuccess = reservePayload?.success === true;
 
             if (!reservationSuccess) {
-                logger.warn(`[TicketService] Failed to reserve account ${accountId} - may already be reserved`);
+                logger.warn(`[TicketService] Failed to reserve account ${accountId} - already reserved or sold`);
+                throw new AccountUnavailableError(
+                    reservePayload?.error || "Account is no longer available"
+                );
             }
 
             // Create the ticket channel with PURCHASE_ACCOUNT type

@@ -118,19 +118,19 @@ export default class OrderService {
                 orderValue.toNumber()
             );
 
-            await tx.walletTransaction.create({
-                data: {
-                    walletId: customerWallet.id,
-                    type: "PAYMENT",
-                    amount: orderValue.neg(),
-                    balanceBefore: customerBalanceCheck.wallet.balance,
-                    balanceAfter: new Decimal(customerBalanceCheck.wallet.balance).sub(orderValue).toNumber(),
-                    currency: customerWallet.currency,
-                    status: "PENDING",
-                    notes: `Order payment locked (escrow)`,
-                    createdById: data.customerId,
-                },
-            });
+            const customerEscrowTx = {
+                walletId: customerWallet.id,
+                type: "PAYMENT" as const,
+                amount: orderValue.neg(),
+                balanceBefore: customerBalanceCheck.wallet.balance,
+                balanceAfter: new Decimal(customerBalanceCheck.wallet.balance).sub(orderValue).toNumber(),
+                currency: customerWallet.currency,
+                status: "PENDING" as const,
+                notes: `Order payment locked (escrow)`,
+                createdById: data.customerId,
+            };
+
+            let workerEscrowTx: any = null;
 
             if (data.workerId) {
                 const workerWallet = await tx.wallet.findUnique({
@@ -177,29 +177,26 @@ export default class OrderService {
                     const balanceBefore = workerBalanceCheck.wallet.balance;
                     const balanceAfter = balanceBefore - deduction.fromBalance;
 
-                    await tx.walletTransaction.create({
-                        data: {
-                            walletId: workerWallet.id,
-                            type: "PAYMENT",
-                            amount: requiredDeposit.neg(),
-                            balanceBefore,
-                            balanceAfter,
-                            currency: workerWallet.currency,
-                            status: "PENDING",
-                            notes: deduction.fromDeposit > 0
-                                ? `Worker security deposit (${deduction.fromBalance.toFixed(2)} from balance, ${deduction.fromDeposit.toFixed(2)} from deposit)`
-                                : `Worker security deposit`,
-                            createdById: data.workerId!,
-                        },
-                    });
+                    workerEscrowTx = {
+                        walletId: workerWallet.id,
+                        type: "PAYMENT" as const,
+                        amount: requiredDeposit.neg(),
+                        balanceBefore,
+                        balanceAfter,
+                        currency: workerWallet.currency,
+                        status: "PENDING" as const,
+                        notes: deduction.fromDeposit > 0
+                            ? `Worker security deposit (${deduction.fromBalance.toFixed(2)} from balance, ${deduction.fromDeposit.toFixed(2)} from deposit)`
+                            : `Worker security deposit`,
+                        createdById: data.workerId!,
+                    };
                 }
             }
 
-            const lastOrder = await tx.order.findFirst({
-                orderBy: { orderNumber: "desc" },
-                select: { orderNumber: true },
-            });
-            const nextOrderNumber = (lastOrder?.orderNumber || 0) + 1;
+            const lockedMax = await tx.$queryRaw<{ maxNumber: number | null }[]>`
+                SELECT MAX(\`orderNumber\`) AS maxNumber FROM \`Order\` FOR UPDATE
+            `;
+            const nextOrderNumber = Number(lockedMax?.[0]?.maxNumber ?? 0) + 1;
 
             const createdOrder = await tx.order.create({
                 data: {
@@ -256,37 +253,22 @@ export default class OrderService {
                 },
             });
 
-            await tx.walletTransaction.updateMany({
-                where: {
-                    walletId: customerWallet.id,
-                    orderId: null,
-                    status: "PENDING",
-                    createdAt: { gte: new Date(Date.now() - 5000) },
-                },
+            await tx.walletTransaction.create({
                 data: {
+                    ...customerEscrowTx,
                     orderId: createdOrder.id,
                     reference: `Order #${createdOrder.orderNumber} - Payment locked`,
                 },
             });
 
-            if (data.workerId) {
-                const workerWallet = await tx.wallet.findUnique({
-                    where: { userId: data.workerId },
+            if (workerEscrowTx) {
+                await tx.walletTransaction.create({
+                    data: {
+                        ...workerEscrowTx,
+                        orderId: createdOrder.id,
+                        reference: `Order #${createdOrder.orderNumber} - Deposit locked`,
+                    },
                 });
-                if (workerWallet) {
-                    await tx.walletTransaction.updateMany({
-                        where: {
-                            walletId: workerWallet.id,
-                            orderId: null,
-                            status: "PENDING",
-                            createdAt: { gte: new Date(Date.now() - 5000) },
-                        },
-                        data: {
-                            orderId: createdOrder.id,
-                            reference: `Order #${createdOrder.orderNumber} - Deposit locked`,
-                        },
-                    });
-                }
             }
 
             await tx.orderStatusHistory.create({
@@ -741,6 +723,25 @@ export default class OrderService {
         const requiredDeposit = new Decimal(order.depositAmount.toString());
 
         const updatedOrder = await withTransactionRetry(async (tx) => {
+            const claimed = await tx.order.updateMany({
+                where: {
+                    id: orderId,
+                    status: PrismaOrderStatus.PENDING,
+                    workerId: null,
+                },
+                data: {
+                    workerId: worker.id,
+                    status: OrderStatus.ASSIGNED,
+                    assignedAt: new Date(),
+                },
+            });
+
+            if (claimed.count === 0) {
+                throw new BadRequestError(
+                    "This job has already been claimed by another worker"
+                );
+            }
+
             const balanceCheck = await checkWalletBalanceWithLock(
                 tx,
                 workerWallet.id,
@@ -798,13 +799,8 @@ export default class OrderService {
                 },
             });
 
-            const updated = await tx.order.update({
+            const updated = await tx.order.findUniqueOrThrow({
                 where: { id: orderId },
-                data: {
-                    workerId: worker.id,
-                    status: OrderStatus.ASSIGNED,
-                    assignedAt: new Date(),
-                },
                 include: {
                     customer: true,
                     worker: true,
@@ -820,16 +816,6 @@ export default class OrderService {
                     toStatus: OrderStatus.ASSIGNED,
                     changedById: worker.id,
                     reason: "Job claimed by worker",
-                },
-            });
-
-            await tx.orderStatusHistory.create({
-                data: {
-                    orderId,
-                    fromStatus: OrderStatus.ASSIGNED,
-                    toStatus: OrderStatus.IN_PROGRESS,
-                    changedById: worker.id,
-                    reason: "Work started automatically after claiming",
                 },
             });
 
@@ -1214,67 +1200,162 @@ export default class OrderService {
             throw new BadRequestError(`Order cannot be cancelled in ${order.status} status`);
         }
 
-        let refundAmount = 0;
-        if (data.refundType === "full") {
-            refundAmount = order.depositAmount.toNumber();
-        } else if (data.refundType === "partial" && data.refundAmount) {
-            refundAmount = data.refundAmount;
+        if (order.payoutProcessed) {
+            throw new BadRequestError(
+                "Order funds have already been distributed and cannot be cancelled"
+            );
         }
 
-        await prisma.order.update({
-            where: { id: data.orderId },
-            data: {
-                status: OrderStatus.CANCELLED,
-                cancelledAt: new Date(),
-                cancellationReason: data.cancellationReason,
-            },
-        });
+        const escrowedValue = new Decimal(order.orderValue.toString());
+        const workerDeposit = new Decimal(order.depositAmount.toString());
 
-        await prisma.orderStatusHistory.create({
-            data: {
-                orderId: data.orderId,
-                fromStatus: order.status,
-                toStatus: OrderStatus.CANCELLED,
-                changedById: data.cancelledById,
-                reason: data.cancellationReason,
-            },
-        });
+        let refundAmount = escrowedValue;
+        if (data.refundType === "none") {
+            refundAmount = new Decimal(0);
+        } else if (data.refundType === "partial") {
+            if (data.refundAmount === undefined || data.refundAmount === null) {
+                throw new BadRequestError("refundAmount is required for a partial refund");
+            }
+            refundAmount = new Decimal(data.refundAmount);
 
-        if (refundAmount > 0) {
-            const customerWallet = await this.walletService.getWalletByUserId(order.customerId);
+            if (refundAmount.lessThan(0) || refundAmount.greaterThan(escrowedValue)) {
+                throw new BadRequestError(
+                    `Partial refund must be between 0 and the escrowed order value ($${escrowedValue.toFixed(2)})`
+                );
+            }
+        }
+
+        const forfeitedAmount = escrowedValue.minus(refundAmount);
+
+        const customerWallet = await this.walletService.getWalletByUserId(order.customerId);
+        const workerWallet = order.workerId
+            ? await this.walletService.getWalletByUserId(order.workerId)
+            : null;
+
+        await withTransactionRetry(async (tx) => {
+            const current = await tx.order.findUnique({
+                where: { id: data.orderId },
+                select: { status: true, payoutProcessed: true },
+            });
+
+            if (!current) {
+                throw new NotFoundError("Order not found");
+            }
+
+            if (
+                current.status === PrismaOrderStatus.CANCELLED ||
+                current.status === PrismaOrderStatus.COMPLETED ||
+                current.payoutProcessed
+            ) {
+                throw new BadRequestError(
+                    `Order cannot be cancelled in ${current.status} status`
+                );
+            }
+
             if (customerWallet) {
-                const newPendingBalance = new Decimal(customerWallet.pendingBalance.toString()).minus(
-                    order.depositAmount.toString()
+                const walletBefore = await tx.wallet.findUnique({
+                    where: { id: customerWallet.id },
+                    select: { balance: true },
+                });
+                const balanceBefore = new Decimal(walletBefore!.balance.toString());
+
+                await updateWalletBalance(
+                    tx,
+                    customerWallet.id,
+                    refundAmount.toNumber(),
+                    -escrowedValue.toNumber()
                 );
 
-                const newBalance = new Decimal(customerWallet.balance.toString()).plus(refundAmount);
-
-                await prisma.wallet.update({
-                    where: { id: customerWallet.id },
-                    data: {
-                        balance: newBalance.toNumber(),
-                        pendingBalance: newPendingBalance.toNumber(),
-                    },
-                });
-
-                await prisma.walletTransaction.create({
+                await tx.walletTransaction.create({
                     data: {
                         walletId: customerWallet.id,
+                        orderId: order.id,
                         type: "REFUND",
                         amount: refundAmount,
-                        balanceBefore: customerWallet.balance.toNumber(),
-                        balanceAfter: newBalance.toNumber(),
+                        balanceBefore,
+                        balanceAfter: balanceBefore.plus(refundAmount),
+                        currency: customerWallet.currency,
                         status: "COMPLETED",
+                        reference: `Order #${order.orderNumber} cancelled - ${data.refundType || "full"} refund`,
+                        notes: forfeitedAmount.greaterThan(0)
+                            ? `${data.cancellationReason} (forfeited: $${forfeitedAmount.toFixed(2)})`
+                            : data.cancellationReason,
+                        createdById: data.cancelledById,
+                    },
+                });
+            }
+
+            if (workerWallet && workerDeposit.greaterThan(0)) {
+                const walletBefore = await tx.wallet.findUnique({
+                    where: { id: workerWallet.id },
+                    select: { balance: true },
+                });
+                const balanceBefore = new Decimal(walletBefore!.balance.toString());
+
+                await updateWalletBalance(
+                    tx,
+                    workerWallet.id,
+                    workerDeposit.toNumber(),
+                    -workerDeposit.toNumber()
+                );
+
+                await tx.walletTransaction.create({
+                    data: {
+                        walletId: workerWallet.id,
                         orderId: order.id,
-                        reference: `Order #${order.orderNumber} cancelled - Refund`,
+                        type: "RELEASE",
+                        amount: workerDeposit,
+                        balanceBefore,
+                        balanceAfter: balanceBefore.plus(workerDeposit),
+                        currency: workerWallet.currency,
+                        status: "COMPLETED",
+                        reference: `Order #${order.orderNumber} cancelled - Security deposit returned`,
                         notes: data.cancellationReason,
                         createdById: data.cancelledById,
                     },
                 });
             }
-        }
 
-        logger.info(`[OrderService] Order ${data.orderId} cancelled with ${data.refundType} refund`);
+            if (forfeitedAmount.greaterThan(0)) {
+                await tx.systemWallet.upsert({
+                    where: { id: "system-wallet" },
+                    create: {
+                        id: "system-wallet",
+                        balance: forfeitedAmount.toNumber(),
+                    },
+                    update: {
+                        balance: { increment: forfeitedAmount.toNumber() },
+                    },
+                });
+            }
+
+            await tx.order.update({
+                where: { id: data.orderId },
+                data: {
+                    status: OrderStatus.CANCELLED,
+                    cancelledAt: new Date(),
+                    cancellationReason: data.cancellationReason,
+                    payoutProcessed: true,
+                },
+            });
+
+            await tx.orderStatusHistory.create({
+                data: {
+                    orderId: data.orderId,
+                    fromStatus: order.status,
+                    toStatus: OrderStatus.CANCELLED,
+                    changedById: data.cancelledById,
+                    reason: data.cancellationReason,
+                },
+            });
+        });
+
+        logger.info(
+            `[OrderService] Order ${data.orderId} cancelled (${data.refundType || "full"}): ` +
+                `customer refunded $${refundAmount.toFixed(2)} of $${escrowedValue.toFixed(2)} escrow, ` +
+                `worker deposit returned $${workerDeposit.toFixed(2)}, ` +
+                `forfeited to system $${forfeitedAmount.toFixed(2)}`
+        );
 
         return this.getOrderById(data.orderId);
     }
@@ -1931,7 +2012,6 @@ export default class OrderService {
         workerDiscordId?: string;
         reason?: string;
         notes?: string;
-        isAdminOverride?: boolean;
     }) {
         const discordId = data.changedByDiscordId || data.workerDiscordId;
 
@@ -1941,11 +2021,15 @@ export default class OrderService {
 
         const changedBy = await prisma.user.findUnique({
             where: { discordId },
-            select: { id: true, role: true, fullname: true }
+            select: { id: true, role: true, discordRole: true, fullname: true }
         });
         if (!changedBy) throw new NotFoundError("User not found");
 
-        const isAdmin = changedBy.role === 'admin' || changedBy.role === 'system' || data.isAdminOverride === true;
+        const isAdmin =
+            changedBy.role === 'admin' ||
+            changedBy.role === 'system' ||
+            changedBy.discordRole === 'admin' ||
+            changedBy.discordRole === 'support';
 
         const order = await this.getOrderById(orderId);
 

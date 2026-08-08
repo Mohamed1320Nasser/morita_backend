@@ -208,6 +208,42 @@ client.on(Events.Error, error => {
 process.on("unhandledRejection", error => {
     logger.error("Unhandled promise rejection:", error);
 });
+
+// discord.js reconnects on its own, but a websocket handshake timeout surfaces
+// as a thrown exception outside any promise chain and would otherwise kill the
+// process. Log it and let the client keep retrying instead of exiting.
+process.on("uncaughtException", (error: any) => {
+    const message = String(error?.message || error);
+
+    const isRecoverableGatewayError =
+        message.includes("Opening handshake has timed out") ||
+        message.includes("WebSocket") ||
+        message.includes("ECONNRESET") ||
+        message.includes("ETIMEDOUT") ||
+        message.includes("EAI_AGAIN");
+
+    if (isRecoverableGatewayError) {
+        logger.error(
+            `Recoverable gateway error, staying alive so discord.js can reconnect: ${message}`
+        );
+        return;
+    }
+
+    logger.error("Uncaught exception, shutting down:", error);
+    process.exit(1);
+});
+
+client.on(Events.ShardDisconnect, (event, shardId) => {
+    logger.warn(`Shard ${shardId} disconnected (code ${event.code}), reconnecting...`);
+});
+
+client.on(Events.ShardReconnecting, shardId => {
+    logger.info(`Shard ${shardId} reconnecting...`);
+});
+
+client.on(Events.ShardResume, (shardId, replayed) => {
+    logger.info(`Shard ${shardId} resumed (${replayed} events replayed)`);
+});
 const startBot = async (retries = 3, delay = 5000) => {
     try {
         await loadCommands();

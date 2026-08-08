@@ -1,10 +1,16 @@
-import { JsonController, Get, Post, Param, Body } from "routing-controllers";
+import { JsonController, Get, Post, Param, Body, UseBefore } from "routing-controllers";
+import {
+    DiscordAuthMiddleware,
+    DiscordRateLimitMiddleware,
+} from "../../common/middlewares/discordAuth.middleware";
 import { Service } from "typedi";
 import TicketTypeSettingsService from "./ticketTypeSettings.service";
 import { TicketType } from "@prisma/client";
 
 @JsonController("/discord/ticket-type-settings")
 @Service()
+@UseBefore(DiscordAuthMiddleware)
+@UseBefore(DiscordRateLimitMiddleware)
 export default class DiscordTicketTypeSettingsController {
     constructor(
         private ticketTypeSettingsService: TicketTypeSettingsService

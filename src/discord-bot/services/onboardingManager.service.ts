@@ -1,8 +1,8 @@
 import { Client, GuildMember } from "discord.js";
 import { onboardingConfig } from "../config/onboarding.config";
 import { discordConfig } from "../config/discord.config";
-import axios from "axios";
 import logger from "../../common/loggers";
+import { botHttp } from "../clients/botHttp";
 
 export class OnboardingManagerService {
     private client: Client;
@@ -38,7 +38,7 @@ export class OnboardingManagerService {
         try {
 
             try {
-                const existingUserResponse = await axios.get(`${discordConfig.apiBaseUrl}/users/discord/${member.id}`);
+                const existingUserResponse = await botHttp.get(`${discordConfig.apiBaseUrl}/discord/users/discord/${member.id}`);
                 const existingUser = existingUserResponse.data.data;
 
                 if (existingUser) {
@@ -55,7 +55,7 @@ export class OnboardingManagerService {
                         }
                     }
 
-                    await axios.post(`${discordConfig.apiBaseUrl}/onboarding/sessions/${member.id}/complete`).catch(() => {});
+                    await botHttp.post(`${discordConfig.apiBaseUrl}/onboarding/sessions/${member.id}/complete`).catch(() => {});
 
                     return existingUser;
                 }
@@ -68,7 +68,7 @@ export class OnboardingManagerService {
                 }
             }
 
-            const response = await axios.post(`${discordConfig.apiBaseUrl}/onboarding/register`, {
+            const response = await botHttp.post(`${discordConfig.apiBaseUrl}/onboarding/register`, {
                 discordId: member.id,
                 discordUsername: member.user.username,
                 discordDisplayName: member.user.displayName || member.user.username,
@@ -94,10 +94,10 @@ export class OnboardingManagerService {
                 throw new Error(`Missing Permissions: Bot role must be above Customer role in Server Settings → Roles`);
             }
 
-            await axios.post(`${discordConfig.apiBaseUrl}/onboarding/sessions/${member.id}/complete`);
+            await botHttp.post(`${discordConfig.apiBaseUrl}/onboarding/sessions/${member.id}/complete`);
 
             try {
-                const rewardResponse = await axios.post(`${discordConfig.apiBaseUrl}/referral/reward`, {
+                const rewardResponse = await botHttp.post(`${discordConfig.apiBaseUrl}/referral/reward`, {
                     referredDiscordId: member.id
                 });
 

@@ -77,6 +77,8 @@ import {
     handleAccountKeepOrder,
 } from "./account-buttons";
 import { ACCOUNT_BUTTON_IDS } from "../../utils/accountComponentBuilder";
+import { MODIFIER_RESET_PREFIX } from "../../utils/modifierSelector";
+import { handleModifierReset } from "../selectMenus/modifier-select.menu";
 
 const buttonHandlers: {
     [key: string]: (interaction: ButtonInteraction) => Promise<void>;
@@ -126,19 +128,17 @@ const processingInteractions = new Set<string>();
 export async function handleButtonInteraction(
     interaction: ButtonInteraction
 ): Promise<void> {
+    const customId = interaction.customId;
+    const interactionKey = `${interaction.user.id}:${customId}`;
+
+    if (processingInteractions.has(interactionKey)) {
+        logger.warn(`[ButtonHandler] Duplicate execution prevented for ${customId}`);
+        return;
+    }
+
+    processingInteractions.add(interactionKey);
+
     try {
-        const customId = interaction.customId;
-        const interactionKey = `${interaction.id}`;
-
-        if (processingInteractions.has(interactionKey)) {
-            logger.warn(`[ButtonHandler] Duplicate execution prevented for ${customId}`);
-            return;
-        }
-
-        processingInteractions.add(interactionKey);
-
-        setTimeout(() => processingInteractions.delete(interactionKey), 10000);
-
         if (buttonHandlers[customId]) {
             await buttonHandlers[customId](interaction);
             return;
@@ -179,6 +179,11 @@ export async function handleButtonInteraction(
 
         if (customId.startsWith("calculate_price_")) {
             await handleCalculatePrice(interaction);
+            return;
+        }
+
+        if (customId.startsWith(MODIFIER_RESET_PREFIX)) {
+            await handleModifierReset(interaction);
             return;
         }
 
@@ -411,15 +416,36 @@ export async function handleButtonInteraction(
         }
 
         logger.warn(`No button handler found for: ${customId}`);
-        await interaction.reply({
-            content: "This button is not implemented yet.",
-            ephemeral: true,
-        });
+        await safeButtonReply(interaction, "This button is not implemented yet.");
     } catch (error) {
         logger.error("Error handling button interaction:", error);
-        await interaction.reply({
-            content: "An error occurred while processing this button.",
-            ephemeral: true,
-        });
+        await safeButtonReply(
+            interaction,
+            "An error occurred while processing this button."
+        );
+    } finally {
+        processingInteractions.delete(interactionKey);
+    }
+}
+
+async function safeButtonReply(
+    interaction: ButtonInteraction,
+    content: string
+): Promise<void> {
+    if (!interaction.isRepliable()) {
+        return;
+    }
+
+    try {
+        if (interaction.replied || interaction.deferred) {
+            await interaction.followUp({ content, ephemeral: true });
+        } else {
+            await interaction.reply({ content, ephemeral: true });
+        }
+    } catch (replyError) {
+        logger.debug(
+            `[ButtonHandler] Could not deliver message for ${interaction.customId}:`,
+            replyError
+        );
     }
 }

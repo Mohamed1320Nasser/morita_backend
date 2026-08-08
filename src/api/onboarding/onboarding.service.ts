@@ -9,6 +9,7 @@ import {
     RegisterUserDto
 } from "./dtos";
 import logger from "../../common/loggers";
+import { BadRequestError } from "routing-controllers";
 import discordClient from "../../discord-bot/index";
 import ReferralService from "../referral/referral.service";
 
@@ -276,46 +277,86 @@ export default class OnboardingService {
     // ============================================
 
     async registerUser(data: RegisterUserDto) {
-        let user = await prisma.user.findUnique({
-            where: { discordId: data.discordId }
+        const emailOwner = await prisma.user.findUnique({
+            where: { email: data.email },
+            select: { id: true, discordId: true }
         });
 
-        if (user) {
-            user = await prisma.user.update({
-                where: { id: user.id },
-                data: {
-                    fullname: data.fullname,
-                    email: data.email,
-                    phone: data.phone,
-                    discordUsername: data.discordUsername,
-                    discordDisplayName: data.discordDisplayName,
-                    discordRole: "customer",
-                    role: "user"
-                }
-            });
-        } else {
-            user = await prisma.user.create({
-                data: {
-                    fullname: data.fullname,
-                    email: data.email,
-                    phone: data.phone,
-                    discordId: data.discordId,
-                    discordUsername: data.discordUsername,
-                    discordDisplayName: data.discordDisplayName,
-                    discordRole: "customer",
-                    role: "user",
-                    emailIsVerified: false
-                }
-            });
+        if (emailOwner && emailOwner.discordId !== data.discordId) {
+            throw new BadRequestError(
+                `The email address "${data.email}" is already registered to another account. ` +
+                `Please use a different email address.`
+            );
+        }
 
-            await prisma.wallet.create({
-                data: {
-                    userId: user.id,
-                    walletType: "CUSTOMER",
-                    balance: 0,
-                    currency: "USD"
+        let user;
+
+        try {
+            user = await prisma.$transaction(async (tx) => {
+                const existing = await tx.user.findUnique({
+                    where: { discordId: data.discordId }
+                });
+
+                if (existing) {
+                    return await tx.user.update({
+                        where: { id: existing.id },
+                        data: {
+                            fullname: data.fullname,
+                            email: data.email,
+                            phone: data.phone,
+                            discordUsername: data.discordUsername,
+                            discordDisplayName: data.discordDisplayName,
+                            discordRole: "customer",
+                            role: "user"
+                        }
+                    });
                 }
+
+                const created = await tx.user.create({
+                    data: {
+                        fullname: data.fullname,
+                        email: data.email,
+                        phone: data.phone,
+                        discordId: data.discordId,
+                        discordUsername: data.discordUsername,
+                        discordDisplayName: data.discordDisplayName,
+                        discordRole: "customer",
+                        role: "user",
+                        emailIsVerified: false
+                    }
+                });
+
+                await tx.wallet.create({
+                    data: {
+                        userId: created.id,
+                        walletType: "CUSTOMER",
+                        balance: 0,
+                        currency: "USD"
+                    }
+                });
+
+                return created;
             });
+        } catch (error: any) {
+            if (error?.code === "P2002") {
+                const target = Array.isArray(error?.meta?.target)
+                    ? error.meta.target.join(", ")
+                    : String(error?.meta?.target || "");
+
+                if (target.includes("email")) {
+                    throw new BadRequestError(
+                        `The email address "${data.email}" is already registered to another account. ` +
+                        `Please use a different email address.`
+                    );
+                }
+
+                throw new BadRequestError(
+                    "This account is already registered. Please contact an administrator if you need help."
+                );
+            }
+
+            logger.error(`[Onboarding] Registration failed for ${data.discordUsername}:`, error?.message);
+            throw error;
         }
 
         this.referralService.linkReferralToUser(data.discordId, user.id)

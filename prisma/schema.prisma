@@ -902,6 +902,7 @@ model OnboardingQuestion {
   id           String            @id @default(uuid())
   question     String            @db.Text
   fieldType    QuestionFieldType @default(TEXT)
+  fieldKey     QuestionFieldKey  @default(NONE)
   placeholder  String?           @db.VarChar(255)
   required     Boolean           @default(true)
   minLength    Int? // For text validation
@@ -915,11 +916,20 @@ model OnboardingQuestion {
 
   @@index([displayOrder])
   @@index([isActive])
+  @@index([fieldKey])
 }
 
 enum QuestionFieldType {
   TEXT // Short text input (Discord TextInputStyle.Short)
   TEXTAREA // Long text input (Discord TextInputStyle.Paragraph)
+}
+
+// Maps an answer to a User profile field. NONE = informational only.
+enum QuestionFieldKey {
+  NONE
+  FULLNAME
+  EMAIL
+  PHONE
 }
 
 // User Answers to Onboarding Questions
@@ -1015,8 +1025,8 @@ model MentionTracker {
 // Daily Reward Configuration (Admin-managed)
 model DailyRewardConfig {
   id            String   @id @default("default-config")
-  minAmount     Int      @default(100) // Minimum reward amount
-  maxAmount     Int      @default(10000) // Maximum reward amount
+  minAmount     Decimal  @default(1) @db.Decimal(18, 2) // Minimum reward amount
+  maxAmount     Decimal  @default(5) @db.Decimal(18, 2) // Maximum reward amount
   cooldownHours Int      @default(24) // Hours between claims
   isEnabled     Boolean  @default(true) // Enable/disable feature
   currencyName  String   @default("coins") // e.g., "coins", "gold", "points"
@@ -1031,7 +1041,7 @@ model DailyRewardConfig {
 model DailyRewardClaim {
   id        String   @id @default(uuid())
   userId    Int      @db.UnsignedInt
-  amount    Int // Amount received
+  amount    Decimal  @db.Decimal(18, 2) // Amount received
   claimedAt DateTime @default(now()) @db.DateTime(0)
 
   user User @relation("userDailyRewardClaims", fields: [userId], references: [id])

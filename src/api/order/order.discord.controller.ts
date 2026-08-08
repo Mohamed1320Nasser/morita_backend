@@ -6,9 +6,14 @@ import {
     Param,
     Body,
     QueryParams,
+    UseBefore,
 } from "routing-controllers";
 import { Service } from "typedi";
 import OrderService from "./order.service";
+import {
+    DiscordAuthMiddleware,
+    DiscordRateLimitMiddleware,
+} from "../../common/middlewares/discordAuth.middleware";
 import {
     DiscordCreateOrderDto,
     GetOrderListDto,
@@ -17,6 +22,8 @@ import {
 
 @JsonController("/discord/orders")
 @Service()
+@UseBefore(DiscordAuthMiddleware)
+@UseBefore(DiscordRateLimitMiddleware)
 export default class DiscordOrderController {
     constructor(private orderService: OrderService) {}
 
@@ -172,7 +179,6 @@ export default class DiscordOrderController {
             workerDiscordId?: string;
             reason?: string;
             notes?: string;
-            isAdminOverride?: boolean;
         }
     ) {
         return await this.orderService.updateOrderStatusByDiscordId(orderId, data);

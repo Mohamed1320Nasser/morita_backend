@@ -48,19 +48,33 @@ export async function handlePaymentCrypto(
         }
 
         // Add fields for each currency
+        let hasUpcharge = false;
+
         for (const [currency, currencyWallets] of Object.entries(walletsByCurrency)) {
             const icon = CURRENCY_ICONS[currency] || "💰";
+            const wallet = currencyWallets[0];
 
             const walletsText = currencyWallets.map(w => w.address).join("\n");
+            const upchargeText = wallet.upchargePercent > 0
+                ? ` (+${wallet.upchargePercent}% fee)`
+                : "";
+
+            if (wallet.upchargePercent > 0) {
+                hasUpcharge = true;
+            }
 
             embed.addFields({
-                name: `${icon} ${currency}`,
+                name: `${icon} ${currency}${upchargeText}`,
                 value: `\`\`\`fix\n${walletsText}\n\`\`\``,
                 inline: false,
             });
         }
 
-        embed.setFooter({ text: "Tap address to copy • Open a ticket after payment" });
+        embed.setFooter({
+            text: hasUpcharge
+                ? "Tap address to copy • Fees are added to your total • Open a ticket after payment"
+                : "Tap address to copy • Open a ticket after payment"
+        });
 
         await interaction.reply({
             embeds: [embed.toJSON() as any],

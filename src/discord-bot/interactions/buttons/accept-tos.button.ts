@@ -1,8 +1,8 @@
 import { ButtonInteraction, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from "discord.js";
 import { onboardingConfig } from "../../config/onboarding.config";
 import { discordConfig } from "../../config/discord.config";
-import axios from "axios";
 import logger from "../../../common/loggers";
+import { botHttp } from "../../clients/botHttp";
 
 export default {
     customId: "accept_tos",
@@ -13,29 +13,30 @@ export default {
             const username = interaction.user.username;
             const member = interaction.member as any;
 
-            // ⚡ CRITICAL: Defer IMMEDIATELY to prevent "Unknown interaction" errors
-            // Discord requires acknowledgment within 3 seconds
-            await interaction.deferReply({ ephemeral: true });
+            // NOTE: Do NOT defer here. This handler may end with showModal(),
+            // and Discord rejects showModal() on an already-acknowledged
+            // interaction. Paths that do not open a modal reply explicitly.
 
             // Record KPI activity (idempotent - won't duplicate if already recorded)
-            try {
-                await axios.post(`${discordConfig.apiBaseUrl}/kpi/member-activity`, {
+            botHttp
+                .post(`${discordConfig.apiBaseUrl}/kpi/member-activity`, {
                     discordId,
                     username,
                     displayName: interaction.user.displayName || username,
                     eventType: 'JOIN',
                     timestamp: new Date().toISOString()
+                })
+                .catch(kpiError => {
+                    // Non-critical, don't block onboarding
+                    logger.debug(`[Onboarding] KPI recording failed (non-critical):`, kpiError.message);
                 });
-            } catch (kpiError) {
-                // Non-critical, don't block onboarding
-                logger.debug(`[Onboarding] KPI recording failed (non-critical):`, kpiError);
-            }
 
             const hasCustomerRole = member?.roles?.cache?.has(onboardingConfig.customerRoleId);
 
             if (hasCustomerRole) {
-                return await interaction.editReply({
-                    content: "✅ You have already completed registration and have the Customer role!"
+                return await interaction.reply({
+                    content: "✅ You have already completed registration and have the Customer role!",
+                    ephemeral: true
                 });
             }
 
@@ -44,7 +45,7 @@ export default {
             let existingSession = null;
             try {
                 // Try to create session (upsert will update if exists)
-                const sessionResponse = await axios.post(`${discordConfig.apiBaseUrl}/onboarding/sessions`, {
+                const sessionResponse = await botHttp.post(`${discordConfig.apiBaseUrl}/onboarding/sessions`, {
                     discordId,
                     discordUsername: username
                 });
@@ -52,39 +53,108 @@ export default {
                 logger.info(`[Onboarding] Session ready for ${username}`);
             } catch (sessionError: any) {
                 logger.error(`[Onboarding] Failed to create/fetch session for ${username}:`, sessionError.message);
-                return await interaction.editReply({
+                return await interaction.reply({
+                    ephemeral: true,
                     content: "❌ Failed to initialize your session. Please try again or contact an administrator."
                 });
             }
 
-            // STEP 2: Check if already completed
+            // STEP 2: Already completed onboarding previously.
+            // They reach here without the Customer role, which means they left the
+            // server and rejoined (Discord strips roles on leave). Their answers and
+            // User record still exist, so restore access instead of re-asking.
             if (existingSession?.completedAt) {
-                return await interaction.editReply({
-                    content: "✅ You have already accepted the Terms of Service and completed registration!\n\nIf you don't have access to channels, please contact an administrator."
-                });
+                let registeredUser = null;
+                try {
+                    const userResponse = await botHttp.get(
+                        `${discordConfig.apiBaseUrl}/discord/users/discord/${discordId}`
+                    );
+                    registeredUser = userResponse.data?.data || null;
+                } catch (lookupError: any) {
+                    if (lookupError.response?.status !== 404) {
+                        logger.warn(
+                            `[Onboarding] Could not verify existing user ${username}:`,
+                            lookupError.message
+                        );
+                    }
+                }
+
+                if (!registeredUser) {
+                    // Session says complete but no user record exists - the previous
+                    // run failed partway. Let them go through registration again.
+                    logger.warn(
+                        `[Onboarding] ${username} has a completed session but no user record, re-running registration`
+                    );
+                } else {
+                    const customerRole = interaction.guild?.roles.cache.get(
+                        onboardingConfig.customerRoleId
+                    );
+
+                    if (!customerRole) {
+                        logger.error(
+                            `[Onboarding] Customer role ${onboardingConfig.customerRoleId} not found while restoring ${username}`
+                        );
+                        return await interaction.reply({
+                            ephemeral: true,
+                            content:
+                                "❌ **Could not restore your access**\n\n" +
+                                "The Customer role is not configured correctly. Please contact an administrator."
+                        });
+                    }
+
+                    try {
+                        await member.roles.add(customerRole);
+                        logger.info(
+                            `[Onboarding] Restored Customer role for returning member ${username} (${discordId})`
+                        );
+
+                        return await interaction.reply({
+                            ephemeral: true,
+                            content:
+                                `👋 **Welcome back, ${interaction.user.displayName || username}!**\n\n` +
+                                `We still have your registration on file, so there's no need to fill in the form again.\n\n` +
+                                `✅ Customer role restored\n` +
+                                `✅ Access granted to all channels\n\n` +
+                                `Enjoy our services!`
+                        });
+                    } catch (roleError: any) {
+                        logger.error(
+                            `[Onboarding] Failed to restore role for ${username}:`,
+                            roleError.message
+                        );
+                        return await interaction.reply({
+                            ephemeral: true,
+                            content:
+                                "❌ **Could not restore your access**\n\n" +
+                                "You are registered, but we could not re-assign your Customer role. " +
+                                "Please contact an administrator."
+                        });
+                    }
+                }
             }
 
             if (existingSession?.tosAccepted && !existingSession?.completedAt) {
                 logger.info(`[Onboarding] ${username} re-attempting registration after previous partial completion`);
             }
 
-            const tosResponse = await axios.get(`${discordConfig.apiBaseUrl}/onboarding/tos/active`);
+            const tosResponse = await botHttp.get(`${discordConfig.apiBaseUrl}/onboarding/tos/active`);
             const activeTos = tosResponse.data.data;
 
             if (!activeTos) {
-                return await interaction.editReply({
+                return await interaction.reply({
+                    ephemeral: true,
                     content: "❌ No active Terms of Service found. Please contact an administrator."
                 });
             }
 
-            const questionsResponse = await axios.get(`${discordConfig.apiBaseUrl}/onboarding/questions/active`);
+            const questionsResponse = await botHttp.get(`${discordConfig.apiBaseUrl}/onboarding/questions/active`);
             const questions = questionsResponse.data.data;
 
             if (!questions || questions.length === 0) {
                 logger.info(`[Onboarding] No questions configured, completing onboarding directly for ${username}`);
 
                 try {
-                    await axios.post(`${discordConfig.apiBaseUrl}/onboarding/tos/accept`, {
+                    await botHttp.post(`${discordConfig.apiBaseUrl}/onboarding/tos/accept`, {
                         discordId,
                         discordUsername: username,
                         tosId: activeTos.id,
@@ -103,7 +173,8 @@ export default {
 
                     await onboardingManager.completeOnboarding(member, defaultUserData);
 
-                    return await interaction.editReply({
+                    return await interaction.reply({
+                        ephemeral: true,
                         content:
                             `✅ **Welcome!**\n\n` +
                             `Your account has been created successfully.\n\n` +
@@ -113,7 +184,8 @@ export default {
                     });
                 } catch (error: any) {
                     logger.error(`[Onboarding] Failed to complete direct onboarding:`, error.message);
-                    return await interaction.editReply({
+                    return await interaction.reply({
+                        ephemeral: true,
                         content:
                             `❌ **Registration Failed**\n\n` +
                             `An error occurred: ${error.message}\n\n` +
@@ -124,7 +196,7 @@ export default {
 
             if (!existingSession?.tosAccepted) {
                 try {
-                    await axios.post(`${discordConfig.apiBaseUrl}/onboarding/tos/accept`, {
+                    await botHttp.post(`${discordConfig.apiBaseUrl}/onboarding/tos/accept`, {
                         discordId,
                         discordUsername: username,
                         tosId: activeTos.id,
@@ -193,8 +265,15 @@ export default {
                 `Please try again or contact an administrator.`;
 
             try {
-                // Interaction was already deferred at the start, so we can safely editReply
-                await interaction.editReply({ content: errorContent });
+                if (!interaction.isRepliable()) {
+                    return;
+                }
+
+                if (interaction.replied || interaction.deferred) {
+                    await interaction.followUp({ content: errorContent, ephemeral: true });
+                } else {
+                    await interaction.reply({ content: errorContent, ephemeral: true });
+                }
             } catch (replyError) {
                 logger.error("[Onboarding] Could not send error reply:", replyError);
             }

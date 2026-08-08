@@ -5,11 +5,13 @@ import {
     QueryParams,
     Body,
     Authorized,
+    UseBefore,
     Param,
 } from "routing-controllers";
 import { Service } from "typedi";
 import OrderRewardService from "./order-reward.service";
 import { UpdateOrderRewardConfigDto, GetAllOrderRewardClaimsDto } from "./dtos";
+import { DiscordAuthMiddleware } from "../../common/middlewares/discordAuth.middleware";
 import API from "../../common/config/api.types";
 
 @Service()
@@ -41,7 +43,14 @@ export default class OrderRewardController {
         return this.orderRewardService.getStats();
     }
 
+    @Get("/public-config")
+    @UseBefore(DiscordAuthMiddleware)
+    async getPublicConfig() {
+        return this.orderRewardService.getPublicConfig();
+    }
+
     @Get("/order/:orderId")
+    @UseBefore(DiscordAuthMiddleware)
     async getRewardByOrderId(@Param("orderId") orderId: string) {
         return this.orderRewardService.getRewardByOrderId(orderId);
     }

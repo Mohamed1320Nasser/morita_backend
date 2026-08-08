@@ -1,9 +1,9 @@
 import { ButtonInteraction, GuildMember, EmbedBuilder } from "discord.js";
 import { discordConfig } from "../../config/discord.config";
 import { OnboardingManagerService } from "../../services/onboardingManager.service";
-import axios from "axios";
 import logger from "../../../common/loggers";
 import { getRedisService } from "../../../common/services/redis.service";
+import { botHttp } from "../../clients/botHttp";
 
 const redis = getRedisService();
 const ONBOARDING_ANSWERS_PREFIX = "onboarding:answers:";
@@ -33,7 +33,7 @@ export default {
                 return;
             }
 
-            const questionsResponse = await axios.get(`${discordConfig.apiBaseUrl}/onboarding/questions/active`);
+            const questionsResponse = await botHttp.get(`${discordConfig.apiBaseUrl}/onboarding/questions/active`);
             const allQuestions = questionsResponse.data.data;
 
             const userData = {
@@ -54,7 +54,7 @@ export default {
             };
 
             try {
-                await axios.post(`${discordConfig.apiBaseUrl}/onboarding/answers`, {
+                await botHttp.post(`${discordConfig.apiBaseUrl}/onboarding/answers`, {
                     discordId,
                     answers: userAnswers
                 });

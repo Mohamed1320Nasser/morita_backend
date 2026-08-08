@@ -6,8 +6,10 @@ import {
     Body,
     Param,
     Authorized,
-    HttpCode
+    HttpCode,
+    UseBefore,
 } from "routing-controllers";
+import { DiscordAuthMiddleware } from "../../common/middlewares/discordAuth.middleware";
 import { Service } from "typedi";
 import OnboardingService from "./onboarding.service";
 import { CreateTosDto, UpdateTosDto, AcceptTosDto } from "./dtos";
@@ -60,6 +62,7 @@ export default class TosController {
     }
 
     @Post("/accept")
+    @UseBefore(DiscordAuthMiddleware)
     @HttpCode(201)
     async acceptTos(@Body() dto: AcceptTosDto) {
         return await this.onboardingService.recordAcceptance(dto);

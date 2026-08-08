@@ -36,8 +36,8 @@ export class NotFoundMiddleware implements ExpressMiddlewareInterface {
     private isExpected404(req: Request): boolean {
         // These endpoints return 404 as part of normal business logic
         const expected404Patterns = [
-            /^\/users\/discord\/\d+$/,          // GET /users/discord/{id} - user doesn't exist yet
-            /^\/users\/\d+$/,                   // GET /users/{id}
+            /^\/discord\/users\/discord\/\d+$/, // GET /discord/users/discord/{id} - user doesn't exist yet
+            /^\/discord\/users\/\d+$/,          // GET /discord/users/{id}
             /^\/onboarding\/sessions\/\d+$/,   // GET /onboarding/sessions/{id}
         ];
 

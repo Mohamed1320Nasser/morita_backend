@@ -1,6 +1,6 @@
 import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsInt, IsEnum, Min, Max } from "class-validator";
 import { Expose, Type } from "class-transformer";
-import { QuestionFieldType } from "@prisma/client";
+import { QuestionFieldType, QuestionFieldKey } from "@prisma/client";
 
 export class CreateQuestionDto {
     @IsString()
@@ -11,6 +11,11 @@ export class CreateQuestionDto {
     @IsEnum(QuestionFieldType)
     @Expose()
     fieldType: QuestionFieldType;
+
+    @IsEnum(QuestionFieldKey)
+    @IsOptional()
+    @Expose()
+    fieldKey?: QuestionFieldKey;
 
     @IsString()
     @IsOptional()
@@ -53,6 +58,11 @@ export class UpdateQuestionDto {
     @IsOptional()
     @Expose()
     fieldType?: QuestionFieldType;
+
+    @IsEnum(QuestionFieldKey)
+    @IsOptional()
+    @Expose()
+    fieldKey?: QuestionFieldKey;
 
     @IsString()
     @IsOptional()

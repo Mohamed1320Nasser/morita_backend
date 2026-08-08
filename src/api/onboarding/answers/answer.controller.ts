@@ -7,8 +7,10 @@ import {
     QueryParam,
     Authorized,
     HttpCode,
-    Res
+    Res,
+    UseBefore,
 } from "routing-controllers";
+import { DiscordAuthMiddleware } from "../../../common/middlewares/discordAuth.middleware";
 import { Service } from "typedi";
 import { Response } from "express";
 import AnswerService from "./answer.service";
@@ -22,6 +24,7 @@ export default class AnswerController {
     constructor(private answerService: AnswerService) {}
 
     @Post("/")
+    @UseBefore(DiscordAuthMiddleware)
     @HttpCode(201)
     async submitAnswers(@Body() dto: SubmitAnswersDto) {
         return await this.answerService.submitAnswers(dto);

@@ -260,6 +260,16 @@ export default class OrderRewardService {
         };
     }
 
+    async getPublicConfig() {
+        const config = await this.getConfig();
+
+        return {
+            isEnabled: config.isEnabled,
+            notifyDiscord: config.notifyDiscord,
+            currencyName: config.currencyName,
+        };
+    }
+
     async getRewardByOrderId(orderId: string) {
         const claim = await prisma.orderRewardClaim.findUnique({
             where: { orderId },
