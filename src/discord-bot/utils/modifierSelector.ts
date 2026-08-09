@@ -56,18 +56,15 @@ export function formatModifierValue(mod: SelectableModifier): string {
 }
 
 /**
- * Render the option badges shown under the price, e.g.
- *   `No Pouches +30%`  `No Cannon +20%`
- * Selected options are marked so the customer can see what is priced in.
+ * Summarise the optional extras above the price.
+ *
+ * Listing every option as a chip made the message as wide as the longest few
+ * names combined, and the picker below already shows the full list with the
+ * same values. So we name only what the customer actually selected, one per
+ * line, and otherwise just say how many are available.
  */
-const MAX_BADGES = 3;
-const MAX_BADGE_CHARS = 900;
+const MAX_LISTED = 6;
 
-/**
- * Selected options always show, so the customer can see what they are paying
- * for. The rest are capped: a long list wraps into a wall of chips that pushes
- * the price off screen, and the picker below already lists everything.
- */
 export function buildModifierBadges(
     modifiers: SelectableModifier[],
     selectedIds: string[] = []
@@ -76,50 +73,28 @@ export function buildModifierBadges(
         return "";
     }
 
-    const isSelected = (mod: SelectableModifier) =>
-        Boolean(mod.id && selectedIds.includes(mod.id));
+    const selected = modifiers.filter(
+        mod => mod.id && selectedIds.includes(mod.id)
+    );
 
-    const label = (mod: SelectableModifier) =>
-        `\`${isSelected(mod) ? "✅ " : ""}${mod.name.trim()} ${formatModifierValue(mod)}\``;
-
-    const selected = modifiers.filter(isSelected);
-    const rest = modifiers.filter(mod => !isSelected(mod));
-
-    const shown: string[] = [];
-    let used = 0;
-    let hidden = 0;
-
-    // Selected options take priority, but still respect the character budget:
-    // Discord rejects the whole message if the description exceeds its limit.
-    for (const mod of selected) {
-        const badge = label(mod);
-
-        if (used + badge.length + 2 > MAX_BADGE_CHARS) {
-            hidden += 1;
-            continue;
-        }
-
-        shown.push(badge);
-        used += badge.length + 2;
+    if (selected.length === 0) {
+        const count = modifiers.length;
+        return `-# ${count} optional ${count === 1 ? "extra" : "extras"} available below`;
     }
 
-    for (const mod of rest) {
-        const badge = label(mod);
+    const listed = selected.slice(0, MAX_LISTED);
+    const hidden = selected.length - listed.length;
 
-        if (shown.length >= MAX_BADGES || used + badge.length + 2 > MAX_BADGE_CHARS) {
-            hidden += 1;
-            continue;
-        }
-
-        shown.push(badge);
-        used += badge.length + 2;
-    }
+    const lines = listed.map(
+        mod =>
+            `${modifierIcon(mod.displayType, Number(mod.value))} ${mod.name.trim()} \`${formatModifierValue(mod)}\``
+    );
 
     if (hidden > 0) {
-        shown.push(`\`+${hidden} more\``);
+        lines.push(`-# and ${hidden} more selected`);
     }
 
-    return shown.join("  ");
+    return lines.join("\n");
 }
 
 /**
