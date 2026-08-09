@@ -60,6 +60,14 @@ export function formatModifierValue(mod: SelectableModifier): string {
  *   `No Pouches +30%`  `No Cannon +20%`
  * Selected options are marked so the customer can see what is priced in.
  */
+const MAX_BADGES = 3;
+const MAX_BADGE_CHARS = 900;
+
+/**
+ * Selected options always show, so the customer can see what they are paying
+ * for. The rest are capped: a long list wraps into a wall of chips that pushes
+ * the price off screen, and the picker below already lists everything.
+ */
 export function buildModifierBadges(
     modifiers: SelectableModifier[],
     selectedIds: string[] = []
@@ -68,13 +76,50 @@ export function buildModifierBadges(
         return "";
     }
 
-    return modifiers
-        .map(mod => {
-            const isSelected = mod.id ? selectedIds.includes(mod.id) : false;
-            const mark = isSelected ? "✅ " : "";
-            return `\`${mark}${mod.name.trim()} ${formatModifierValue(mod)}\``;
-        })
-        .join("  ");
+    const isSelected = (mod: SelectableModifier) =>
+        Boolean(mod.id && selectedIds.includes(mod.id));
+
+    const label = (mod: SelectableModifier) =>
+        `\`${isSelected(mod) ? "✅ " : ""}${mod.name.trim()} ${formatModifierValue(mod)}\``;
+
+    const selected = modifiers.filter(isSelected);
+    const rest = modifiers.filter(mod => !isSelected(mod));
+
+    const shown: string[] = [];
+    let used = 0;
+    let hidden = 0;
+
+    // Selected options take priority, but still respect the character budget:
+    // Discord rejects the whole message if the description exceeds its limit.
+    for (const mod of selected) {
+        const badge = label(mod);
+
+        if (used + badge.length + 2 > MAX_BADGE_CHARS) {
+            hidden += 1;
+            continue;
+        }
+
+        shown.push(badge);
+        used += badge.length + 2;
+    }
+
+    for (const mod of rest) {
+        const badge = label(mod);
+
+        if (shown.length >= MAX_BADGES || used + badge.length + 2 > MAX_BADGE_CHARS) {
+            hidden += 1;
+            continue;
+        }
+
+        shown.push(badge);
+        used += badge.length + 2;
+    }
+
+    if (hidden > 0) {
+        shown.push(`\`+${hidden} more\``);
+    }
+
+    return shown.join("  ");
 }
 
 /**

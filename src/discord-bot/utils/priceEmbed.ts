@@ -283,6 +283,12 @@ export function buildTotalBlock(
     return block(lines);
 }
 
+export function buildGrandTotal(amount: number): string {
+    return block([
+        `${BOLD_GREEN}${"TOTAL".padEnd(LABEL_W)}${money(amount).padStart(MONEY_W)}${RESET}`,
+    ]);
+}
+
 export function buildCalculatorEmbed(
     title: string,
     scope: string,

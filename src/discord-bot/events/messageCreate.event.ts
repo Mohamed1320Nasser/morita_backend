@@ -23,6 +23,7 @@ import {
     buildCountScope,
     buildOptionsTable,
     buildTotalBlock,
+    buildGrandTotal,
     collectAdjustments,
 } from "../utils/priceEmbed";
 
@@ -2560,81 +2561,60 @@ async function sendQuoteEmbed(
         });
     }
 
-    const priceLines: string[] = [];
-    let totalPrice = 0;
-
     const sortedMethods = [...result.methods].sort((a, b) => a.displayOrder - b.displayOrder);
 
-    for (const method of sortedMethods) {
-        priceLines.push(`**${method.name}**`);
-
-        // Show loyalty discount if present
-        if (method.loyaltyDiscount && method.originalPrice) {
-            priceLines.push(`  ► $${method.originalPrice.toFixed(2)} → $${method.price.toFixed(2)} (${method.loyaltyDiscount.tierEmoji} ${method.loyaltyDiscount.discountPercent}%)`);
-        } else {
-            priceLines.push(`  ► $${method.price.toFixed(2)}`);
-        }
-        priceLines.push('');
-        totalPrice += method.price;
-    }
-
-    if (priceLines.length > 0 && priceLines[priceLines.length - 1] === '') {
-        priceLines.pop();
-    }
+    const totalPrice = sortedMethods.reduce(
+        (sum: number, m: any) => sum + m.price,
+        0
+    );
 
     const MAX_FIELD_VALUE = 1024;
     const MAX_PRICING_FIELDS = 20;
     let truncated = false;
 
-    const chunks: string[] = [];
-    let current: string[] = [];
+    const optionRows = sortedMethods.map((method: any) => ({
+        name: method.name,
+        originalPrice: method.loyaltyDiscount ? method.originalPrice : undefined,
+        finalPrice: method.price,
+        discountPercent: method.loyaltyDiscount?.discountPercent,
+    }));
 
-    for (const line of priceLines) {
-        const candidate = [...current, line].join('\n');
-        if (candidate.length > MAX_FIELD_VALUE && current.length > 0) {
-            chunks.push(current.join('\n'));
-            current = [line];
-        } else {
-            current.push(line);
-        }
-    }
-    if (current.length > 0) {
-        chunks.push(current.join('\n'));
+    const pageSize = 15;
+    const pages: any[][] = [];
+    for (let i = 0; i < optionRows.length; i += pageSize) {
+        pages.push(optionRows.slice(i, i + pageSize));
     }
 
-    if (chunks.length === 0) {
+    if (pages.length === 0) {
         embed.addFields({
-            name: "💵 Pricing",
-            value: 'No pricing available',
+            name: "\u{1F4B5} Pricing",
+            value: "No pricing available",
             inline: false,
         });
     } else {
-        const MAX_TOTAL_CHARS = 5000;
         const shown: string[] = [];
-        let usedChars = 0;
 
-        for (const chunk of chunks) {
-            if (shown.length >= MAX_PRICING_FIELDS || usedChars + chunk.length > MAX_TOTAL_CHARS) {
-                break;
-            }
-            shown.push(chunk);
-            usedChars += chunk.length;
+        for (const page of pages) {
+            if (shown.length >= MAX_PRICING_FIELDS) break;
+            const table = buildOptionsTable(page);
+            if (table.length > MAX_FIELD_VALUE) break;
+            shown.push(table);
         }
 
-        shown.forEach((chunk, i) => {
+        shown.forEach((table, i) => {
             embed.addFields({
                 name: i === 0
-                    ? "💵 Pricing"
-                    : `💵 Pricing (cont. ${i + 1}/${shown.length})`,
-                value: chunk,
+                    ? "\u{1F4B5} Pricing"
+                    : `\u{1F4B5} Pricing (cont. ${i + 1}/${shown.length})`,
+                value: table,
                 inline: false,
             });
         });
 
-        if (shown.length < chunks.length) {
+        if (shown.length < pages.length) {
             truncated = true;
             embed.addFields({
-                name: "⚠️ Truncated",
+                name: "\u26A0\uFE0F Truncated",
                 value: `This service has too many items to show at once. Search a narrower term, or quote specific items with \`!q item1, item2\`.`,
                 inline: false,
             });
@@ -2644,9 +2624,9 @@ async function sendQuoteEmbed(
     if (result.methods.length > 1) {
         embed.addFields({
             name: truncated
-                ? `💎 Grand Total (all ${result.methods.length} items)`
-                : "💎 Grand Total",
-            value: `\`\`\`ansi\n\u001b[1;32m$${totalPrice.toFixed(2)}\u001b[0m\n\`\`\``,
+                ? `\u{1F4B0} Grand Total (all ${result.methods.length} items)`
+                : "\u{1F4B0} Grand Total",
+            value: buildGrandTotal(totalPrice),
             inline: false,
         });
     }

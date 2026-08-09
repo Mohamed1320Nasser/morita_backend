@@ -11,7 +11,6 @@ import {
     MODIFIER_SELECT_PREFIX,
     MODIFIER_RESET_PREFIX,
     buildModifierBadges,
-    buildAppliedSummary,
     buildModifierSelectRow,
     buildModifierResetRow,
     formatModifierValue,
@@ -21,13 +20,15 @@ import {
     getSelectionState,
     updateSelectedIds,
 } from "../../services/modifierSelection.service";
+import {
+    CALC_COLOR,
+    buildOptionsTable,
+    buildTotalBlock,
+    buildGrandTotal,
+    collectAdjustments,
+} from "../../utils/priceEmbed";
 
 const pricingService = new PricingCalculatorService(new LoyaltyTierService());
-
-// Fixed column widths keep the price block the same size in every state and
-// stop the embed rendering narrower than the select menu beneath it.
-const PRICE_LABEL_WIDTH = 22;
-const PRICE_AMOUNT_WIDTH = 12;
 
 const EXPIRED_MESSAGE =
     "⏱️ This calculation has expired. Please run the calculator again.";
@@ -192,66 +193,38 @@ export function buildResultEmbed(
     available: SelectableModifier[],
     selectedIds: string[]
 ): EmbedBuilder {
-    const loyalty = result.loyaltyDiscount;
     const subtotal = result.breakdown?.subtotal ?? result.finalPrice;
-    const modifiersTotal = result.breakdown?.methodModifiersTotal ?? 0;
-    const hasAdjustments = modifiersTotal !== 0 || Boolean(loyalty);
 
     const embed = new EmbedBuilder()
         .setTitle(`${serviceEmoji} ${methodName}`)
-        .setColor(0xfca311)
+        .setColor(CALC_COLOR)
         .setTimestamp();
 
-    // Options sit directly under the title, matching the reference layout:
-    //   `✅ Level 5 of BA roles +$38.00`
     const badges = buildModifierBadges(available, selectedIds);
     if (badges) {
         embed.setDescription(badges);
     }
 
-    // Only show a breakdown when something actually changed the price;
-    // otherwise a single bold figure keeps the base quote clean.
-    if (!hasAdjustments) {
-        const amount = `$${result.finalPrice.toFixed(2)}`;
+    embed.addFields({
+        name: "\u{1F4B5} Pricing",
+        value: buildOptionsTable([
+            { name: methodName, finalPrice: subtotal },
+        ]),
+        inline: false,
+    });
+
+    const adjustments = collectAdjustments(result);
+
+    if (adjustments.length > 0) {
         embed.addFields({
-            name: "\u{1F4B5} Price",
-            value:
-                "```\n" +
-                `${"Total".padEnd(PRICE_LABEL_WIDTH)}  ${amount.padStart(PRICE_AMOUNT_WIDTH)}\n` +
-                "```",
+            name: "\u{1F4B0} Price Summary",
+            value: buildTotalBlock("", subtotal, adjustments, result.finalPrice),
             inline: false,
         });
     } else {
-        const rows: Array<[string, string]> = [["Base price", `$${subtotal.toFixed(2)}`]];
-
-        if (modifiersTotal !== 0) {
-            const sign = modifiersTotal > 0 ? "+" : "-";
-            rows.push(["Selected options", `${sign}$${Math.abs(modifiersTotal).toFixed(2)}`]);
-        }
-
-        if (loyalty) {
-            rows.push([
-                `Loyalty ${loyalty.discountPercent}%`,
-                `-$${loyalty.discountAmount.toFixed(2)}`,
-            ]);
-        }
-
-        const labelWidth = PRICE_LABEL_WIDTH;
-        const lines = rows.map(
-            ([label, amount]) =>
-                `${label.padEnd(labelWidth)}  ${amount.padStart(PRICE_AMOUNT_WIDTH)}`
-        );
-
         embed.addFields({
-            name: "\u{1F4B5} Price",
-            value:
-                "```\n" +
-                lines.join("\n") +
-                "\n" +
-                "-".repeat(labelWidth + PRICE_AMOUNT_WIDTH + 2) +
-                "\n" +
-                `${"Total".padEnd(labelWidth)}  ${`$${result.finalPrice.toFixed(2)}`.padStart(PRICE_AMOUNT_WIDTH)}\n` +
-                "```",
+            name: "\u{1F4B0} Price Summary",
+            value: buildGrandTotal(result.finalPrice),
             inline: false,
         });
     }
