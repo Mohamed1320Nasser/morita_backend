@@ -190,7 +190,11 @@ export function buildOptionsTable(options: OptionRow[]): string {
     );
 
     const anyRange = options.some(o => Boolean(o.range));
-    const nameW = anyDiscount && anyRange ? 16 : NAME_W;
+
+    // Method names are the long values here, so give the column the space the
+    // price and level columns do not need. Discounts add two more columns, so
+    // the name has to give some of it back.
+    const nameW = anyDiscount ? (anyRange ? 18 : NAME_W + 4) : NAME_W + 8;
     const moneyW = anyDiscount ? 9 : MONEY_W;
     const rangeCol = anyRange ? "Levels".padEnd(LEVELS_W) : "";
 
@@ -205,7 +209,13 @@ export function buildOptionsTable(options: OptionRow[]): string {
     const lines = [header(headerText), rule(headerText.length)];
 
     for (const option of options) {
-        const name = clip(option.name, nameW - 1).padEnd(nameW);
+        // Segment options arrive named "Falador Rooftop (50-60)"; the range has
+        // its own column, so drop the suffix rather than print it twice.
+        const bareName = option.range
+            ? option.name.replace(/\s*\(\d+\s*-\s*\d+\)\s*$/, "").trim()
+            : option.name;
+
+        const name = clip(bareName, nameW - 1).padEnd(nameW);
         let row = option.isBest ? `${CYAN}${name}${RESET}` : name;
 
         if (anyRange) {
@@ -279,6 +289,31 @@ export function buildTotalBlock(
     lines.push(
         `${BOLD_GREEN}${"TOTAL".padEnd(LABEL_W)}${money(finalPrice).padStart(MONEY_W)}${RESET}`
     );
+
+    return block(lines);
+}
+
+/**
+ * Extras a customer may qualify for, listed but not charged. Rendered as a
+ * table so long names cannot wrap into the ragged chips a chip list produces.
+ */
+export function buildExtrasTable(
+    extras: Array<{ name: string; amount: string }>
+): string {
+    if (!extras || extras.length === 0) {
+        return "";
+    }
+
+    const headerText = "Optional extra".padEnd(NAME_W + 4) + "Adds".padStart(8);
+    const lines = [header(headerText), rule(headerText.length)];
+
+    for (const extra of extras) {
+        const isDiscount = extra.amount.trim().startsWith("-");
+        lines.push(
+            clip(extra.name, NAME_W + 3).padEnd(NAME_W + 4) +
+                `${isDiscount ? GREEN : YELLOW}${extra.amount.padStart(8)}${RESET}`
+        );
+    }
 
     return block(lines);
 }

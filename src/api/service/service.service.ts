@@ -522,6 +522,25 @@ export default class ServiceService {
             };
         }
 
+        // A name that matches a service outright wins over the ones that merely
+        // contain it, so "agility" resolves to Agility instead of reporting an
+        // ambiguity with Brimhaven Agility Arena and Agility Pyramid Tickets.
+        const normalized = searchTerm.toLowerCase();
+        const exactMatches = services.filter(
+            s =>
+                s.name.trim().toLowerCase() === normalized ||
+                s.slug?.trim().toLowerCase() === normalized
+        );
+
+        if (exactMatches.length === 1) {
+            return {
+                success: true,
+                found: true,
+                count: 1,
+                service: exactMatches[0],
+            };
+        }
+
         // Multiple matches found - return error with suggestions
         return {
             success: false,
@@ -532,7 +551,9 @@ export default class ServiceService {
                 id: s.id,
                 name: s.name,
                 category: s.category?.name || "Unknown",
-                fullName: `${s.category?.name || "Unknown"} - ${s.name}`,
+                // The exact text to retype, not "Category - Name": that format
+                // is not something lookup accepts.
+                fullName: s.name,
             })),
         };
     }

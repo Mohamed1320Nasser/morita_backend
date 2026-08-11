@@ -4,6 +4,7 @@ import { discordConfig } from "../../config/discord.config";
 import logger from "../../../common/loggers";
 import { getRedisService } from "../../../common/services/redis.service";
 import { botHttp } from "../../clients/botHttp";
+import { buildQuestionLabel, buildQuestionPlaceholder } from "../../utils/questionInput";
 
 const redis = getRedisService();
 const ONBOARDING_ANSWERS_PREFIX = "onboarding:answers:";
@@ -45,12 +46,13 @@ export default {
             nextBatch.forEach((q: any) => {
                 const input = new TextInputBuilder()
                     .setCustomId(`question_${q.id}`)
-                    .setLabel(q.question.substring(0, 45)) 
+                    .setLabel(buildQuestionLabel(q.question))
                     .setStyle(q.fieldType === "TEXTAREA" ? TextInputStyle.Paragraph : TextInputStyle.Short)
                     .setRequired(q.required);
 
-                if (q.placeholder) {
-                    input.setPlaceholder(q.placeholder.substring(0, 100));
+                const placeholder = buildQuestionPlaceholder(q.question, q.placeholder);
+                if (placeholder) {
+                    input.setPlaceholder(placeholder);
                 }
 
                 if (q.minLength) {

@@ -24,6 +24,7 @@ import {
     buildOptionsTable,
     buildTotalBlock,
     buildGrandTotal,
+    buildExtrasTable,
     collectAdjustments,
 } from "../utils/priceEmbed";
 
@@ -350,6 +351,36 @@ async function handleSkillsCommand(message: Message, apiService: ApiService) {
     }
 }
 
+/**
+ * List the optional extras offered by any of the quoted methods, de-duplicated
+ * by name. Returns labels like "No Cannon +20%" ready for display.
+ */
+function collectAvailableExtras(
+    methodOptions: any[]
+): Array<{ name: string; amount: string }> {
+    const seen = new Map<string, { name: string; amount: string }>();
+
+    for (const option of methodOptions || []) {
+        for (const modifier of option?.modifiers || []) {
+            const name = String(modifier?.name || "").trim();
+            if (!name || seen.has(name.toLowerCase())) continue;
+
+            const value = Number(modifier?.value);
+            if (!Number.isFinite(value) || value === 0) continue;
+
+            const sign = value > 0 ? "+" : "-";
+            const amount =
+                modifier?.type === "PERCENTAGE"
+                    ? `${sign}${Math.abs(value)}%`
+                    : `${sign}$${Math.abs(value).toFixed(2)}`;
+
+            seen.set(name.toLowerCase(), { name, amount });
+        }
+    }
+
+    return [...seen.values()];
+}
+
 async function processSingleSkillRequest(message: Message, requestString: string, apiService: ApiService) {
     const args = requestString.split(/\s+/);
 
@@ -558,6 +589,26 @@ async function processSingleSkillRequest(message: Message, requestString: string
                         collectAdjustments(cheapest),
                         cheapest.finalPrice
                     ),
+                    inline: false,
+                });
+            }
+
+            // The quote deliberately prices the base service: modifiers describe
+            // the customer's own account, and this command lists several methods
+            // at once, so there is nobody to ask which ones apply. Name them so
+            // the customer knows their final price may differ.
+            const extras = collectAvailableExtras(data.methodOptions);
+
+            if (extras.length > 0) {
+                const listed = extras.slice(0, 8);
+                const hidden = extras.length - listed.length;
+
+                embed.addFields({
+                    name: "\u2699\uFE0F Optional Extras",
+                    value:
+                        buildExtrasTable(listed) +
+                        (hidden > 0 ? `\n-# and ${hidden} more available` : "") +
+                        "\n-# Not included above \u2014 ask in your ticket for an exact quote",
                     inline: false,
                 });
             }
