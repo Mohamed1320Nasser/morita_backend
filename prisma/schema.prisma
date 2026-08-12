@@ -83,6 +83,7 @@ model User {
   soldAccounts              Account[]            @relation("accountSoldBy")
   dailyRewardClaims         DailyRewardClaim[]   @relation("userDailyRewardClaims")
   orderRewardClaims         OrderRewardClaim[]   @relation("userOrderRewardClaims")
+  grantedOrderRewards       OrderRewardClaim[]   @relation("grantedOrderRewards")
   loyaltyTier               LoyaltyTier?         @relation("userLoyaltyTier", fields: [loyaltyTierId], references: [id])
   tierHistory               LoyaltyTierHistory[] @relation("userTierHistory")
   referredBy                User?                @relation("referredByUser", fields: [referredByUserId], references: [id])
@@ -614,6 +615,11 @@ enum WalletTransactionType {
   ORDER_REWARD
 }
 
+enum RewardGrantType {
+  AUTOMATIC
+  MANUAL
+}
+
 enum OrderRewardType {
   FIXED
   PERCENTAGE
@@ -1105,20 +1111,25 @@ model ReferralRewardConfig {
 
 // Order Reward Claims (Track each order reward)
 model OrderRewardClaim {
-  id           String   @id @default(uuid())
-  orderId      String   @unique
-  userId       Int      @db.UnsignedInt
-  orderAmount  Decimal  @db.Decimal(18, 2) // Original order value
-  rewardAmount Decimal  @db.Decimal(18, 2) // Reward given
-  isFirstOrder Boolean  @default(false) // Was this their first order
-  claimedAt    DateTime @default(now()) @db.DateTime(0)
+  id           String          @id @default(uuid())
+  orderId      String?         @unique // null for manual grants
+  userId       Int             @db.UnsignedInt
+  orderAmount  Decimal         @db.Decimal(18, 2) // Original order value
+  rewardAmount Decimal         @db.Decimal(18, 2) // Reward given
+  isFirstOrder Boolean         @default(false) // Was this their first order
+  grantType    RewardGrantType @default(AUTOMATIC)
+  grantedById  Int?            @db.UnsignedInt // Admin who granted a manual reward
+  reason       String?         @db.Text // Why a manual reward was granted
+  claimedAt    DateTime        @default(now()) @db.DateTime(0)
 
-  user  User  @relation("userOrderRewardClaims", fields: [userId], references: [id])
-  order Order @relation("orderRewardClaim", fields: [orderId], references: [id])
+  user      User   @relation("userOrderRewardClaims", fields: [userId], references: [id])
+  order     Order? @relation("orderRewardClaim", fields: [orderId], references: [id])
+  grantedBy User?  @relation("grantedOrderRewards", fields: [grantedById], references: [id])
 
   @@index([userId])
   @@index([orderId])
   @@index([claimedAt])
+  @@index([grantType])
 }
 
 // Crypto Wallet addresses for receiving payments

@@ -1,6 +1,7 @@
 import {
     JsonController,
     Get,
+    Post,
     Put,
     QueryParams,
     Body,
@@ -10,7 +11,11 @@ import {
 } from "routing-controllers";
 import { Service } from "typedi";
 import OrderRewardService from "./order-reward.service";
-import { UpdateOrderRewardConfigDto, GetAllOrderRewardClaimsDto } from "./dtos";
+import {
+    UpdateOrderRewardConfigDto,
+    GetAllOrderRewardClaimsDto,
+    GrantManualRewardDto,
+} from "./dtos";
 import { DiscordAuthMiddleware } from "../../common/middlewares/discordAuth.middleware";
 import API from "../../common/config/api.types";
 
@@ -41,6 +46,12 @@ export default class OrderRewardController {
     @Authorized(API.Role.system)
     async getStats() {
         return this.orderRewardService.getStats();
+    }
+
+    @Post("/grant")
+    @UseBefore(DiscordAuthMiddleware)
+    async grantManualReward(@Body() data: GrantManualRewardDto) {
+        return this.orderRewardService.grantManualRewardByDiscordId(data);
     }
 
     @Get("/public-config")

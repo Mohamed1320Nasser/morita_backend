@@ -5,6 +5,11 @@ import { BadRequestError } from "routing-controllers";
 import logger from "../../common/loggers";
 import { Decimal } from "@prisma/client/runtime/library";
 
+// Guards on granting by hand: a single grant is capped to catch a mistyped
+// amount, and a rolling 24 hour total limits the damage from a stolen account.
+const MANUAL_REWARD_MAX = 500;
+const MANUAL_REWARD_DAILY_CAP = 2000;
+
 const DEFAULT_CONFIG_ID = "default-config";
 
 @Service()
@@ -191,6 +196,169 @@ export default class OrderRewardService {
         };
     }
 
+    /**
+     * Resolve Discord identities before granting, so the bot can pass the ids
+     * it already has. The granting user must hold an admin or support role.
+     */
+    async grantManualRewardByDiscordId(params: {
+        discordId: string;
+        amount: number;
+        reason?: string;
+        grantedByDiscordId: string;
+    }) {
+        const [customer, granter] = await Promise.all([
+            prisma.user.findFirst({ where: { discordId: params.discordId } }),
+            prisma.user.findFirst({ where: { discordId: params.grantedByDiscordId } }),
+        ]);
+
+        if (!customer) {
+            throw new BadRequestError(
+                "That customer has no account yet. They need to complete onboarding first."
+            );
+        }
+
+        if (!granter) {
+            throw new BadRequestError("Granting user not found");
+        }
+
+        if (granter.discordRole !== "admin" && granter.discordRole !== "support") {
+            throw new BadRequestError("Only admins and support staff can grant rewards");
+        }
+
+        return this.grantManualReward({
+            customerId: customer.id,
+            amount: params.amount,
+            reason: params.reason,
+            grantedById: granter.id,
+        });
+    }
+
+    /**
+     * Grant a reward by hand, outside the automatic order cycle.
+     *
+     * Staff use this to reward a specific customer - a goodwill gesture, or
+     * compensation - so it deliberately ignores the automatic cycle's enabled
+     * flag and its qualifying rules. It is recorded in the same table so the
+     * admin panel lists manual and automatic rewards together.
+     */
+    async grantManualReward(params: {
+        customerId: number;
+        amount: number;
+        reason?: string;
+        grantedById: number;
+    }) {
+        const { customerId, amount, reason, grantedById } = params;
+
+        if (!Number.isFinite(amount) || amount <= 0) {
+            throw new BadRequestError("Reward amount must be greater than zero");
+        }
+
+        if (Number(amount.toFixed(2)) !== amount) {
+            throw new BadRequestError("Reward amount cannot have more than two decimal places");
+        }
+
+        if (amount > MANUAL_REWARD_MAX) {
+            throw new BadRequestError(
+                `Reward amount cannot exceed ${MANUAL_REWARD_MAX}. Split it across smaller grants if this is intentional.`
+            );
+        }
+
+        const customer = await prisma.user.findUnique({ where: { id: customerId } });
+
+        if (!customer) {
+            throw new BadRequestError("Customer not found");
+        }
+
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const granted = await prisma.orderRewardClaim.aggregate({
+            where: {
+                grantType: "MANUAL",
+                grantedById,
+                claimedAt: { gte: since },
+            },
+            _sum: { rewardAmount: true },
+        });
+
+        const grantedToday = Number(granted._sum.rewardAmount || 0);
+
+        if (grantedToday + amount > MANUAL_REWARD_DAILY_CAP) {
+            throw new BadRequestError(
+                `This would exceed your ${MANUAL_REWARD_DAILY_CAP} daily granting limit ` +
+                `(${grantedToday.toFixed(2)} already granted in the last 24 hours).`
+            );
+        }
+
+        const result = await prisma.$transaction(async tx => {
+            let wallet = await tx.wallet.findUnique({ where: { userId: customerId } });
+
+            if (!wallet) {
+                wallet = await tx.wallet.create({
+                    data: {
+                        userId: customerId,
+                        walletType: "CUSTOMER",
+                        balance: 0,
+                        pendingBalance: 0,
+                        currency: "USD",
+                    },
+                });
+            }
+
+            const newBalance = new Decimal(wallet.balance).plus(amount);
+
+            await tx.wallet.update({
+                where: { id: wallet.id },
+                data: { balance: newBalance },
+            });
+
+            const claim = await tx.orderRewardClaim.create({
+                data: {
+                    orderId: null,
+                    userId: customerId,
+                    orderAmount: 0,
+                    rewardAmount: amount,
+                    isFirstOrder: false,
+                    grantType: "MANUAL",
+                    grantedById,
+                    reason: reason || null,
+                },
+            });
+
+            await tx.walletTransaction.create({
+                data: {
+                    walletId: wallet.id,
+                    type: "ORDER_REWARD",
+                    amount: new Decimal(amount),
+                    balanceBefore: wallet.balance,
+                    balanceAfter: newBalance,
+                    status: "COMPLETED",
+                    reference: `manual-reward-${claim.id}`,
+                    notes: reason ? `Manual reward: ${reason}` : "Manual reward",
+                    createdById: grantedById,
+                },
+            });
+
+            return { claim, newBalance };
+        });
+
+        logger.info(
+            `[OrderReward] Admin ${grantedById} granted ${amount} to customer ${customerId}` +
+            `${reason ? ` (${reason})` : ""}`
+        );
+
+        return {
+            success: true,
+            rewardAmount: amount,
+            newBalance: Number(result.newBalance),
+            claimId: result.claim.id,
+            customer: {
+                id: customer.id,
+                discordId: customer.discordId,
+                username: customer.discordUsername,
+            },
+        };
+    }
+
+
     async getAllClaims(page: number = 1, limit: number = 10, search?: string) {
         const skip = (page - 1) * limit;
 
@@ -224,6 +392,14 @@ export default class OrderRewardService {
                         select: {
                             orderNumber: true,
                             orderValue: true,
+                        },
+                    },
+                    grantedBy: {
+                        select: {
+                            id: true,
+                            discordId: true,
+                            discordUsername: true,
+                            discordDisplayName: true,
                         },
                     },
                 },
