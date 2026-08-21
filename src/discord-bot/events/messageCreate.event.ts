@@ -484,7 +484,6 @@ async function processSingleSkillRequest(message: Message, requestString: string
             startLevel,
             endLevel,
             groupName: groupNameToUse,
-            skipModifiers: true, // Disable modifiers for calculator commands
             userId,
         });
 
@@ -559,24 +558,32 @@ async function processSingleSkillRequest(message: Message, requestString: string
                 (m: any) => String(m.methodId).startsWith("group_")
             );
 
+            // Method names carry stray whitespace in the data, so comparisons
+            // have to normalise rather than match the raw string.
+            const bareName = (name: any) =>
+                String(name || "")
+                    .replace(/\s*\(\d+\s*-\s*\d+\)\s*$/, "")
+                    .replace(/\s+/g, " ")
+                    .trim()
+                    .toLowerCase();
+
             // A group already prices every one of its segments, so the loose
             // segment rows would otherwise repeat the same work twice.
             const groupedSegmentNames = new Set<string>();
             for (const g of groups) {
                 for (const seg of g.levelRanges || []) {
-                    if (seg.methodName) groupedSegmentNames.add(seg.methodName);
+                    if (seg.methodName) groupedSegmentNames.add(bareName(seg.methodName));
                 }
             }
 
             const standalone = data.methodOptions.filter((m: any) => {
                 if (isVariant(m)) return false;
-                return !groupedSegmentNames.has(m.methodName);
+                return !groupedSegmentNames.has(bareName(m.methodName));
             });
 
             const looseSegments = data.methodOptions.filter((m: any) => {
                 if (!String(m.methodId).includes("_segment_")) return false;
-                const bare = String(m.methodName).replace(/\s*\(\d+\s*-\s*\d+\)\s*$/, "").trim();
-                return !groupedSegmentNames.has(bare);
+                return !groupedSegmentNames.has(bareName(m.methodName));
             });
 
             const listed = [...standalone, ...looseSegments];

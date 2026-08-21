@@ -73,7 +73,6 @@ export interface LevelRangeCalculationRequest {
     startLevel: number;
     endLevel: number;
     groupName?: string; // Optional: filter methods by group name (e.g., "zulrah", "vorkath")
-    skipModifiers?: boolean; // Optional: skip applying modifiers (for calculator commands)
     userId?: number; // For loyalty discount
 }
 
@@ -602,7 +601,7 @@ export default class PricingCalculatorService {
     async calculateLevelRangePrice(
         request: LevelRangeCalculationRequest
     ): Promise<LevelRangeCalculationResult> {
-        const { serviceId, startLevel, endLevel, groupName, skipModifiers, userId } = request;
+        const { serviceId, startLevel, endLevel, groupName, userId } = request;
 
         // Validate input
         if (startLevel < 1 || startLevel > 99) {
@@ -723,15 +722,16 @@ export default class PricingCalculatorService {
 
         logger.info(`[PricingCalculator] 🎯 Requested level range: ${startLevel}-${endLevel} (${formatXp(totalXp)} XP)`);
 
-        // Pass empty array if skipModifiers is true
-        const modifiersToApply = skipModifiers ? [] : (service.serviceModifiers || []);
+        // Service modifiers are offered, never applied, so the quote can list
+        // them without inflating the price.
+        const serviceModifiers = service.serviceModifiers || [];
 
         // NEW APPROACH: Generate ALL method options (optimal + alternatives)
         const methodOptions = this.generateAllMethodOptions(
             pricingMethods,
             startLevel,
             endLevel,
-            modifiersToApply
+            serviceModifiers
         );
 
         if (!methodOptions || methodOptions.length === 0) {
@@ -881,14 +881,10 @@ export default class PricingCalculatorService {
         const methodGroups = this.groupMethodsByName(pricingMethods);
 
         for (const [groupName, methods] of Object.entries(methodGroups)) {
-            // Skip if this is a single method already added
+            // A group of one method prices exactly what that method already
+            // offers on its own, so it would only duplicate an existing row.
             if (methods.length === 1) {
-                const method = methods[0];
-                const methodStart = method.startLevel || 1;
-                const methodEnd = method.endLevel || 99;
-                if (methodStart <= startLevel && methodEnd >= endLevel) {
-                    continue; // Already added as single method
-                }
+                continue;
             }
 
             // Try to build a combination using only this method group
