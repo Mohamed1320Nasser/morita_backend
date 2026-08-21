@@ -983,6 +983,24 @@ export default class PricingCalculatorService {
     }
 
     /**
+     * Service-level modifiers as available options, without applying them.
+     *
+     * These describe customer circumstances ("no graceful", "no stamina") that
+     * only apply once the customer says they apply, exactly like the
+     * method-level ones. Charging them by default silently inflated every
+     * level-range quote while the embed still said they were not included.
+     */
+    private listServiceModifiers(serviceModifiers: any[]): MethodOption["modifiers"] {
+        return (serviceModifiers || []).map(modifier => ({
+            name: modifier.name,
+            type: modifier.modifierType,
+            displayType: modifier.displayType,
+            value: Number(modifier.value),
+            applied: false,
+        }));
+    }
+
+    /**
      * Method-level modifiers across every segment of a group, de-duplicated by
      * name so a modifier defined on each segment is offered once.
      */
@@ -1124,32 +1142,7 @@ export default class PricingCalculatorService {
         let totalModifiers = 0;
         const allModifiers: MethodOption["modifiers"] = [];
 
-        for (const modifier of serviceModifiers) {
-            const modifierValue = Number(modifier.value);
-
-            if (modifier.modifierType === "PERCENTAGE") {
-                const addedValue = totalBasePrice * (modifierValue / 100);
-                totalModifiers += addedValue;
-
-                allModifiers.push({
-                    name: modifier.name,
-                    type: modifier.modifierType,
-                    displayType: modifier.displayType,
-                    value: modifierValue,
-                    applied: true,
-                });
-            } else if (modifier.modifierType === "FIXED") {
-                totalModifiers += modifierValue;
-
-                allModifiers.push({
-                    name: modifier.name,
-                    type: modifier.modifierType,
-                    displayType: modifier.displayType,
-                    value: modifierValue,
-                    applied: true,
-                });
-            }
-        }
+        allModifiers.push(...this.listServiceModifiers(serviceModifiers));
 
         const finalPrice = totalBasePrice + totalModifiers;
 
@@ -1193,32 +1186,7 @@ export default class PricingCalculatorService {
         let totalModifiers = 0;
         const modifiersList: MethodOption["modifiers"] = [];
 
-        for (const modifier of serviceModifiers) {
-            const modifierValue = Number(modifier.value);
-
-            if (modifier.modifierType === "PERCENTAGE") {
-                const addedValue = basePrice * (modifierValue / 100);
-                totalModifiers += addedValue;
-
-                modifiersList.push({
-                    name: modifier.name,
-                    type: modifier.modifierType,
-                    displayType: modifier.displayType,
-                    value: modifierValue,
-                    applied: true,
-                });
-            } else if (modifier.modifierType === "FIXED") {
-                totalModifiers += modifierValue;
-
-                modifiersList.push({
-                    name: modifier.name,
-                    type: modifier.modifierType,
-                    displayType: modifier.displayType,
-                    value: modifierValue,
-                    applied: true,
-                });
-            }
-        }
+        modifiersList.push(...this.listServiceModifiers(serviceModifiers));
 
         // List method-level modifiers as available options without applying them.
         // They describe customer circumstances ("No Cannon", "No Pouches") and are
@@ -1271,32 +1239,7 @@ export default class PricingCalculatorService {
         const modifiersList: MethodOption["modifiers"] = [];
 
         // Apply service-level modifiers
-        for (const modifier of serviceModifiers) {
-            const modifierValue = Number(modifier.value);
-
-            if (modifier.modifierType === "PERCENTAGE") {
-                const addedValue = basePrice * (modifierValue / 100);
-                totalModifiers += addedValue;
-
-                modifiersList.push({
-                    name: modifier.name,
-                    type: modifier.modifierType,
-                    displayType: modifier.displayType,
-                    value: modifierValue,
-                    applied: true,
-                });
-            } else if (modifier.modifierType === "FIXED") {
-                totalModifiers += modifierValue;
-
-                modifiersList.push({
-                    name: modifier.name,
-                    type: modifier.modifierType,
-                    displayType: modifier.displayType,
-                    value: modifierValue,
-                    applied: true,
-                });
-            }
-        }
+        modifiersList.push(...this.listServiceModifiers(serviceModifiers));
 
         // List method-level modifiers as available options without applying them.
         // They describe customer circumstances ("No Cannon", "No Pouches") and are
@@ -1410,32 +1353,7 @@ export default class PricingCalculatorService {
         const allModifiers: MethodOption["modifiers"] = [];
 
         // Apply service-level modifiers to the total
-        for (const modifier of serviceModifiers) {
-            const modifierValue = Number(modifier.value);
-
-            if (modifier.modifierType === "PERCENTAGE") {
-                const addedValue = totalBasePrice * (modifierValue / 100);
-                totalModifiers += addedValue;
-
-                allModifiers.push({
-                    name: modifier.name,
-                    type: modifier.modifierType,
-                    displayType: modifier.displayType,
-                    value: modifierValue,
-                    applied: true,
-                });
-            } else if (modifier.modifierType === "FIXED") {
-                totalModifiers += modifierValue;
-
-                allModifiers.push({
-                    name: modifier.name,
-                    type: modifier.modifierType,
-                    displayType: modifier.displayType,
-                    value: modifierValue,
-                    applied: true,
-                });
-            }
-        }
+        allModifiers.push(...this.listServiceModifiers(serviceModifiers));
 
         const finalPrice = totalBasePrice + totalModifiers;
 
