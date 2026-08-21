@@ -5,6 +5,36 @@ import logger from "../../common/loggers";
 import API from "../../common/config/api.types";
 import { Decimal } from "@prisma/client/runtime/library";
 
+type LinkedService = { id: string; name: string; share: number };
+
+export function linkedServices(order: any): LinkedService[] {
+    const linked = Array.isArray(order.services)
+        ? order.services
+              .filter((row: any) => row?.service?.id)
+              .map((row: any) => ({ id: row.service.id, name: row.service.name }))
+        : [];
+
+    const unique = new Map<string, { id: string; name: string }>();
+    for (const entry of linked) {
+        if (!unique.has(entry.id)) unique.set(entry.id, entry);
+    }
+
+    if (unique.size === 0) {
+        if (!order.serviceId || !order.service) return [];
+        unique.set(order.serviceId, { id: order.serviceId, name: order.service.name });
+    }
+
+    const share = 1 / unique.size;
+    return Array.from(unique.values()).map(entry => ({ ...entry, share }));
+}
+
+export const ORDER_SERVICES_INCLUDE = {
+    services: {
+        include: { service: { select: { id: true, name: true } } },
+        orderBy: { position: "asc" as const },
+    },
+};
+
 @JsonController("/admin/services/stats")
 @Service()
 export default class ServiceAnalyticsController {
@@ -48,6 +78,7 @@ export default class ServiceAnalyticsController {
                             name: true,
                         },
                     },
+                    ...ORDER_SERVICES_INCLUDE,
                 },
             });
 
@@ -62,20 +93,20 @@ export default class ServiceAnalyticsController {
             const serviceStats = new Map<string, { name: string; orderCount: number; revenue: number }>();
 
             orders.forEach((order) => {
-                if (!order.serviceId || !order.service) return;
+                for (const linked of linkedServices(order)) {
+                    const existing = serviceStats.get(linked.id) || {
+                        name: linked.name,
+                        orderCount: 0,
+                        revenue: 0,
+                    };
 
-                const existing = serviceStats.get(order.serviceId) || {
-                    name: order.service.name,
-                    orderCount: 0,
-                    revenue: 0,
-                };
+                    existing.orderCount++;
+                    if (order.status === "COMPLETED") {
+                        existing.revenue += parseFloat(order.orderValue.toString()) * linked.share;
+                    }
 
-                existing.orderCount++;
-                if (order.status === "COMPLETED") {
-                    existing.revenue += parseFloat(order.orderValue.toString());
+                    serviceStats.set(linked.id, existing);
                 }
-
-                serviceStats.set(order.serviceId, existing);
             });
 
             // Find top service by revenue
@@ -171,6 +202,18 @@ export default class ServiceAnalyticsController {
                             },
                         },
                     },
+                    services: {
+                        include: {
+                            service: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    category: { select: { name: true } },
+                                },
+                            },
+                        },
+                        orderBy: { position: "asc" as const },
+                    },
                 },
             });
 
@@ -189,33 +232,40 @@ export default class ServiceAnalyticsController {
             >();
 
             orders.forEach((order) => {
-                if (!order.serviceId || !order.service) return;
+                for (const linked of linkedServices(order)) {
+                    const categoryName =
+                        (order.services || []).find((row: any) => row.service?.id === linked.id)
+                            ?.service?.category?.name ||
+                        (order.serviceId === linked.id ? order.service?.category?.name : null) ||
+                        "Unknown";
 
-                const existing = serviceStatsMap.get(order.serviceId) || {
-                    serviceId: order.serviceId,
-                    serviceName: order.service.name,
-                    categoryName: order.service.category?.name || "Unknown",
-                    orderCount: 0,
-                    completedCount: 0,
-                    totalRevenue: 0,
-                    completionTimes: [],
-                };
+                    const existing = serviceStatsMap.get(linked.id) || {
+                        serviceId: linked.id,
+                        serviceName: linked.name,
+                        categoryName,
+                        orderCount: 0,
+                        completedCount: 0,
+                        totalRevenue: 0,
+                        completionTimes: [],
+                    };
 
-                existing.orderCount++;
+                    existing.orderCount++;
 
-                if (order.status === "COMPLETED") {
-                    existing.completedCount++;
-                    existing.totalRevenue += parseFloat(order.orderValue.toString());
+                    if (order.status === "COMPLETED") {
+                        existing.completedCount++;
+                        existing.totalRevenue +=
+                            parseFloat(order.orderValue.toString()) * linked.share;
 
-                    // Calculate completion time in hours
-                    if (order.assignedAt && order.completedAt) {
-                        const timeInMs = order.completedAt.getTime() - order.assignedAt.getTime();
-                        const timeInHours = timeInMs / (1000 * 60 * 60);
-                        existing.completionTimes.push(timeInHours);
+                        // Calculate completion time in hours
+                        if (order.assignedAt && order.completedAt) {
+                            const timeInMs = order.completedAt.getTime() - order.assignedAt.getTime();
+                            const timeInHours = timeInMs / (1000 * 60 * 60);
+                            existing.completionTimes.push(timeInHours);
+                        }
                     }
-                }
 
-                serviceStatsMap.set(order.serviceId, existing);
+                    serviceStatsMap.set(linked.id, existing);
+                }
             });
 
             // Convert to array and calculate final metrics
@@ -484,7 +534,11 @@ export default class ServiceAnalyticsController {
             const serviceIdFilter: any = { serviceId: { not: null } };
             if (query.serviceIds) {
                 const serviceIds = query.serviceIds.split(",").map((id) => id.trim());
-                serviceIdFilter.serviceId = { in: serviceIds };
+                delete serviceIdFilter.serviceId;
+                serviceIdFilter.OR = [
+                    { serviceId: { in: serviceIds } },
+                    { services: { some: { serviceId: { in: serviceIds } } } },
+                ];
             }
 
             // Get orders in date range
@@ -503,9 +557,11 @@ export default class ServiceAnalyticsController {
                     serviceId: true,
                     service: {
                         select: {
+                            id: true,
                             name: true,
                         },
                     },
+                    ...ORDER_SERVICES_INCLUDE,
                 },
             });
 
@@ -517,30 +573,37 @@ export default class ServiceAnalyticsController {
                     Map<string, { orderCount: number; revenue: number }>
                 >();
 
-                orders.forEach((order) => {
-                    if (!order.serviceId) return;
+                const serviceNames = new Map<string, string>();
 
+                orders.forEach((order) => {
                     const dateKey = order.createdAt.toISOString().split("T")[0];
 
-                    if (!serviceTimelines.has(order.serviceId)) {
-                        serviceTimelines.set(order.serviceId, new Map());
+                    for (const linked of linkedServices(order)) {
+                        if (!serviceIds.includes(linked.id)) continue;
+
+                        serviceNames.set(linked.id, linked.name);
+
+                        if (!serviceTimelines.has(linked.id)) {
+                            serviceTimelines.set(linked.id, new Map());
+                        }
+
+                        const serviceMap = serviceTimelines.get(linked.id)!;
+                        const existing = serviceMap.get(dateKey) || { orderCount: 0, revenue: 0 };
+
+                        existing.orderCount++;
+                        if (order.status === "COMPLETED") {
+                            existing.revenue +=
+                                parseFloat(order.orderValue.toString()) * linked.share;
+                        }
+
+                        serviceMap.set(dateKey, existing);
                     }
-
-                    const serviceMap = serviceTimelines.get(order.serviceId)!;
-                    const existing = serviceMap.get(dateKey) || { orderCount: 0, revenue: 0 };
-
-                    existing.orderCount++;
-                    if (order.status === "COMPLETED") {
-                        existing.revenue += parseFloat(order.orderValue.toString());
-                    }
-
-                    serviceMap.set(dateKey, existing);
                 });
 
                 // Convert to array format
                 const result: any = {};
                 serviceTimelines.forEach((timeline, serviceId) => {
-                    const serviceName = orders.find((o) => o.serviceId === serviceId)?.service?.name || serviceId;
+                    const serviceName = serviceNames.get(serviceId) || serviceId;
                     const dataPoints = [];
 
                     for (let i = 0; i < days; i++) {
@@ -634,8 +697,11 @@ export default class ServiceAnalyticsController {
                 select: {
                     orderValue: true,
                     status: true,
+                    serviceId: true,
                     service: {
                         select: {
+                            id: true,
+                            name: true,
                             categoryId: true,
                             category: {
                                 select: {
@@ -644,6 +710,19 @@ export default class ServiceAnalyticsController {
                                 },
                             },
                         },
+                    },
+                    services: {
+                        include: {
+                            service: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    categoryId: true,
+                                    category: { select: { id: true, name: true } },
+                                },
+                            },
+                        },
+                        orderBy: { position: "asc" as const },
                     },
                 },
             });
@@ -661,24 +740,42 @@ export default class ServiceAnalyticsController {
             >();
 
             orders.forEach((order) => {
-                if (!order.service?.category) return;
+                const byCategory = new Map<string, { name: string; share: number }>();
 
-                const categoryId = order.service.categoryId;
-                const existing = categoryStatsMap.get(categoryId) || {
-                    categoryId,
-                    categoryName: order.service.category.name,
-                    orderCount: 0,
-                    revenue: 0,
-                    completedCount: 0,
-                };
+                for (const linked of linkedServices(order)) {
+                    const source =
+                        (order.services || []).find((row: any) => row.service?.id === linked.id)
+                            ?.service ||
+                        (order.serviceId === linked.id ? order.service : null);
 
-                existing.orderCount++;
-                if (order.status === "COMPLETED") {
-                    existing.completedCount++;
-                    existing.revenue += parseFloat(order.orderValue.toString());
+                    const category = source?.category;
+                    if (!category) continue;
+
+                    const existing = byCategory.get(category.id);
+                    if (existing) {
+                        existing.share += linked.share;
+                    } else {
+                        byCategory.set(category.id, { name: category.name, share: linked.share });
+                    }
                 }
 
-                categoryStatsMap.set(categoryId, existing);
+                for (const [categoryId, entry] of byCategory) {
+                    const existing = categoryStatsMap.get(categoryId) || {
+                        categoryId,
+                        categoryName: entry.name,
+                        orderCount: 0,
+                        revenue: 0,
+                        completedCount: 0,
+                    };
+
+                    existing.orderCount++;
+                    if (order.status === "COMPLETED") {
+                        existing.completedCount++;
+                        existing.revenue += parseFloat(order.orderValue.toString()) * entry.share;
+                    }
+
+                    categoryStatsMap.set(categoryId, existing);
+                }
             });
 
             // Convert to array and calculate percentages

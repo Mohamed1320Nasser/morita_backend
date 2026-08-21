@@ -2111,6 +2111,27 @@ export default class KpiService {
             orderBy: { createdAt: 'desc' }
         });
 
+        const workerIds = Array.from(
+            new Set(issues.map(i => i.order.workerId).filter((id): id is number => id !== null))
+        );
+
+        const orderCounts = workerIds.length
+            ? await prisma.order.groupBy({
+                  by: ["workerId"],
+                  where: {
+                      workerId: { in: workerIds },
+                      createdAt: gte && lte ? { gte, lte } : undefined,
+                  },
+                  _count: { _all: true },
+              })
+            : [];
+
+        const ordersByWorker = new Map<number, number>(
+            orderCounts
+                .filter(row => row.workerId !== null)
+                .map(row => [row.workerId as number, row._count._all])
+        );
+
         // Calculate summary
         const summary = {
             totalIssues: issues.length,
@@ -2139,11 +2160,12 @@ export default class KpiService {
         }
 
         // Group issues by worker
-        const workerIssueStats = this.calculateWorkerIssueStats(issues);
+        const workerIssueStats = this.calculateWorkerIssueStats(issues, ordersByWorker);
 
         if (workerIssueStats.length > 0) {
+            const assignedIssues = issues.filter(i => i.order.workerId !== null).length;
             summary.avgIssuesPerWorker = parseFloat(
-                (summary.totalIssues / workerIssueStats.length).toFixed(2)
+                (assignedIssues / workerIssueStats.length).toFixed(2)
             );
         }
 
@@ -2173,7 +2195,7 @@ export default class KpiService {
         };
     }
 
-    private calculateWorkerIssueStats(issues: any[]): any[] {
+    private calculateWorkerIssueStats(issues: any[], ordersByWorker?: Map<number, number>): any[] {
         // Group issues by worker
         const workerMap = new Map<string, any[]>();
 
@@ -2192,7 +2214,10 @@ export default class KpiService {
             const worker = workerIssues[0].order.worker;
 
             const openIssues = workerIssues.filter(i => i.status === 'OPEN');
-            const resolvedIssues = workerIssues.filter(i => i.status === 'RESOLVED');
+            const inReviewIssues = workerIssues.filter(i => i.status === 'IN_REVIEW');
+            const resolvedIssues = workerIssues.filter(
+                i => i.status === 'RESOLVED' || i.status === 'CLOSED'
+            );
             const urgentIssues = workerIssues.filter(i => i.priority === 'URGENT');
             const highIssues = workerIssues.filter(i => i.priority === 'HIGH');
 
@@ -2210,9 +2235,17 @@ export default class KpiService {
                 );
             }
 
-            // Calculate issue rate (issues per order)
-            const totalOrders = workerIssues[0].order.worker?.workerOrders?.length || 1;
-            const issueRate = parseFloat(((workerIssues.length / totalOrders) * 100).toFixed(2));
+            const uniqueOrders = new Set(workerIssues.map(i => i.orderId)).size;
+            const totalOrders = ordersByWorker?.get(parseInt(workerId)) ?? 0;
+            const issueRate = totalOrders > 0
+                ? parseFloat(((uniqueOrders / totalOrders) * 100).toFixed(2))
+                : null;
+
+            const lastIssueDate = workerIssues.reduce(
+                (latest, issue) =>
+                    new Date(issue.createdAt) > new Date(latest) ? issue.createdAt : latest,
+                workerIssues[0].createdAt
+            );
 
             return {
                 workerId: parseInt(workerId),
@@ -2220,12 +2253,15 @@ export default class KpiService {
                 discordUsername: worker?.discordUsername || 'Unknown',
                 totalIssues: workerIssues.length,
                 openIssues: openIssues.length,
+                inReviewIssues: inReviewIssues.length,
                 resolvedIssues: resolvedIssues.length,
                 urgentIssues: urgentIssues.length,
                 highPriorityIssues: highIssues.length,
                 avgResolutionHours,
+                ordersInPeriod: totalOrders,
+                ordersWithIssues: uniqueOrders,
                 issueRate,
-                lastIssueDate: workerIssues[0].createdAt
+                lastIssueDate
             };
         }).sort((a, b) => b.totalIssues - a.totalIssues);
     }
@@ -2357,12 +2393,33 @@ export default class KpiService {
     private calculateServiceCompletionBreakdown(orders: any[]): any[] {
         const serviceMap = new Map<string, any[]>();
 
+        const serviceNames = new Map<string, string>();
+
         orders.forEach(order => {
-            const serviceId = order.serviceId || 'unknown';
-            if (!serviceMap.has(serviceId)) {
-                serviceMap.set(serviceId, []);
+            const linked: Array<{ id: string; name: string }> = Array.isArray(order.services)
+                ? order.services
+                      .filter((row: any) => row?.service?.id)
+                      .map((row: any) => ({ id: row.service.id, name: row.service.name }))
+                : [];
+
+            if (linked.length === 0) {
+                linked.push({
+                    id: order.serviceId || 'unknown',
+                    name: order.service?.name || 'Unknown',
+                });
             }
-            serviceMap.get(serviceId)!.push(order);
+
+            const seen = new Set<string>();
+            for (const entry of linked) {
+                if (seen.has(entry.id)) continue;
+                seen.add(entry.id);
+
+                serviceNames.set(entry.id, entry.name);
+                if (!serviceMap.has(entry.id)) {
+                    serviceMap.set(entry.id, []);
+                }
+                serviceMap.get(entry.id)!.push(order);
+            }
         });
 
         return Array.from(serviceMap.entries()).map(([serviceId, serviceOrders]) => {
@@ -2392,7 +2449,7 @@ export default class KpiService {
 
             return {
                 serviceId,
-                serviceName: serviceOrders[0].service?.name || 'Unknown',
+                serviceName: serviceNames.get(serviceId) || serviceOrders[0].service?.name || 'Unknown',
                 totalOrders: serviceOrders.length,
                 avgActualHours: parseFloat(avgActual.toFixed(2)),
                 avgEstimatedHours: parseFloat(avgEstimated.toFixed(2)),
