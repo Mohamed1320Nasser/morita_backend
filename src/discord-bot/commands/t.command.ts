@@ -7,6 +7,7 @@ import { Command } from "../types/discord.types";
 import logger from "../../common/loggers";
 import { discordApiClient } from "../clients/DiscordApiClient";
 import { createTransactionsEmbed } from "../utils/wallet-embeds.util";
+import { unwrapApiData } from "../utils/apiResponse.util";
 
 export default {
     data: new SlashCommandBuilder()
@@ -25,8 +26,7 @@ export default {
                 { params: { limit: 10 } }
             );
 
-            const responseData = response.data || response;
-            const data = responseData.data || responseData;
+            const data = unwrapApiData<any>(response) || {};
             const transactions = data.list || [];
 
             const embed = createTransactionsEmbed(transactions, {

@@ -4,6 +4,7 @@ import { config } from "dotenv";
 import { resolve } from "path";
 import express from "express";
 import cors from "cors";
+import { EmbedBuilder } from "discord.js";
 import logger from "../common/loggers";
 import { discordConfig } from "./config/discord.config";
 import { onboardingConfig } from "./config/onboarding.config";
@@ -429,6 +430,94 @@ app.post("/discord/channels/publish/payments", async (req, res) => {
     } catch (error: any) {
         logger.error("[Bot API] Error publishing payments channel:", error);
         await updateChannelStatus("PAYMENTS", { status: "error", lastError: error.message });
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * Posts an order status change into its ticket channel. Called by the backend
+ * whenever a status moves, so a change made from the admin panel is visible to
+ * the customer and worker rather than happening silently.
+ */
+app.post("/discord/notify/order-status", async (req, res) => {
+    try {
+        if (!discordClient.isReady()) {
+            return res.status(400).json({ success: false, error: "Discord bot not connected" });
+        }
+
+        const {
+            channelId,
+            orderNumber,
+            fromStatus,
+            toStatus,
+            reason,
+            customerDiscordId,
+            workerDiscordId,
+        } = req.body || {};
+
+        if (!channelId || !toStatus) {
+            return res.status(400).json({
+                success: false,
+                error: "channelId and toStatus are required",
+            });
+        }
+
+        const channel = await discordClient.channels.fetch(channelId).catch(() => null);
+
+        if (!channel || !("send" in channel)) {
+            return res.status(404).json({ success: false, error: "Channel not found" });
+        }
+
+        const STATUS_LOOK: Record<string, { emoji: string; label: string; color: number }> = {
+            PENDING: { emoji: "🕗", label: "Pending", color: 0x9ca3af },
+            CLAIMING: { emoji: "🙋", label: "Claiming", color: 0x3b82f6 },
+            ASSIGNED: { emoji: "📌", label: "Assigned", color: 0x3b82f6 },
+            IN_PROGRESS: { emoji: "⚙️", label: "In Progress", color: 0xf59e0b },
+            AWAITING_CONFIRM: { emoji: "🟠", label: "Awaiting Confirmation", color: 0xf59e0b },
+            COMPLETED: { emoji: "✅", label: "Completed", color: 0x22c55e },
+            CANCELLED: { emoji: "🚫", label: "Cancelled", color: 0xef4444 },
+            DISPUTED: { emoji: "⚠️", label: "Disputed", color: 0xef4444 },
+            REFUNDED: { emoji: "💸", label: "Refunded", color: 0xa855f7 },
+        };
+
+        const to = STATUS_LOOK[toStatus] || { emoji: "🔄", label: toStatus, color: 0x6b7280 };
+        const from = fromStatus ? STATUS_LOOK[fromStatus] : null;
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${to.emoji} Order #${orderNumber ?? "?"} — ${to.label}`)
+            .setColor(to.color)
+            .setTimestamp();
+
+        if (from) {
+            embed.addFields({
+                name: "Status",
+                value: `${from.label} → **${to.label}**`,
+                inline: false,
+            });
+        }
+
+        if (reason) {
+            embed.addFields({
+                name: "Reason",
+                value: String(reason).substring(0, 1024),
+                inline: false,
+            });
+        }
+
+        const mentions = [customerDiscordId, workerDiscordId]
+            .filter(Boolean)
+            .map((id: string) => `<@${id}>`)
+            .join(" ");
+
+        await (channel as any).send({
+            content: mentions || undefined,
+            embeds: [embed.toJSON()],
+        });
+
+        logger.info(`[Bot API] Order status notification sent to ${channelId}: ${toStatus}`);
+        res.json({ success: true });
+    } catch (error: any) {
+        logger.error("[Bot API] Failed to send order status notification:", error);
         res.status(500).json({ success: false, error: error.message });
     }
 });

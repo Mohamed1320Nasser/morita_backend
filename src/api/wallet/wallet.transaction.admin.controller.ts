@@ -13,7 +13,7 @@ import { Decimal } from "@prisma/client/runtime/library";
 import API from "../../common/config/api.types";
 
 // Admin Transaction Controller (for transaction management in admin panel)
-@JsonController("/api/admin/transactions")
+@JsonController("/admin/transactions")
 @Service()
 export default class AdminTransactionController {
     /**

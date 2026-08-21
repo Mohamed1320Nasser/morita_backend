@@ -13,7 +13,7 @@ import prisma from "../../common/prisma/client";
 import API from "../../common/config/api.types";
 import UserService from "./user.service";
 
-@JsonController("/api/admin/users")
+@JsonController("/admin/users")
 @Service()
 export default class AdminUserController {
     constructor(private userService: UserService) {}

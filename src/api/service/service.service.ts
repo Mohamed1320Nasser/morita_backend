@@ -473,12 +473,75 @@ export default class ServiceService {
         };
     }
 
+    /**
+     * Name suggestions for Discord autocomplete. Unlike lookupByName this never
+     * errors on an ambiguous or empty term - it just returns what matches, so
+     * the user picks an exact name instead of guessing one.
+     */
+    async suggestByName(term: string, limit = 25) {
+        const searchTerm = (term || "").trim();
+
+        const services = await prisma.service.findMany({
+            where: {
+                active: true,
+                deletedAt: null,
+                // Category is searchable too, since the suggestion label reads
+                // "skills - Agility" and users type what they see.
+                ...(searchTerm
+                    ? {
+                          OR: [
+                              { name: { contains: searchTerm } },
+                              { slug: { contains: searchTerm } },
+                              { category: { name: { contains: searchTerm } } },
+                          ],
+                      }
+                    : {}),
+            },
+            include: {
+                category: { select: { id: true, name: true } },
+            },
+            orderBy: { name: "asc" },
+            take: Math.min(Math.max(limit, 1), 25),
+        });
+
+        return {
+            success: true,
+            services: services.map((s) => ({
+                id: s.id,
+                name: s.name.trim(),
+                fullName: s.category?.name
+                    ? `${s.category.name} - ${s.name.trim()}`
+                    : s.name.trim(),
+            })),
+        };
+    }
+
     async lookupByName(name: string) {
         if (!name || name.trim() === "") {
             throw new BadRequestError("Service name is required");
         }
 
-        const searchTerm = name.trim();
+        let searchTerm = name.trim();
+
+        // Autocomplete labels read "Category - Service", and that whole string
+        // gets submitted when someone types it out instead of clicking the
+        // suggestion. Fall back to the part after the separator so the label a
+        // user can see always resolves.
+        if (searchTerm.includes(" - ")) {
+            const [categoryPart, ...rest] = searchTerm.split(" - ");
+            const servicePart = rest.join(" - ").trim();
+
+            if (servicePart) {
+                const category = await prisma.serviceCategory.findFirst({
+                    where: { name: categoryPart.trim() },
+                    select: { id: true },
+                });
+
+                if (category) {
+                    searchTerm = servicePart;
+                }
+            }
+        }
 
         // Search for services matching the name (case-insensitive, partial match)
         const services = await prisma.service.findMany({

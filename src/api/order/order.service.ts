@@ -24,6 +24,14 @@ import { withTransactionRetry, checkWalletBalanceWithLock, updateWalletBalance, 
 import { PAYOUT_STRUCTURE, FINANCIAL_LIMITS, isValidAmount } from "../../common/constants/security.constants";
 import { InsufficientBalanceError } from "../../common/utils/errorHandler.util";
 import { OrderStatus as PrismaOrderStatus } from "@prisma/client";
+import axios from "axios";
+
+const MAX_SERVICES_PER_ORDER = 10;
+
+/** Preserves order while removing repeats, so the first entry stays primary. */
+function dedupeIds(ids: string[]): string[] {
+    return [...new Set(ids.filter(Boolean))];
+}
 
 @Service()
 export default class OrderService {
@@ -65,15 +73,35 @@ export default class OrderService {
             throw new NotFoundError("Customer not found");
         }
 
-        if (data.serviceId) {
-            const service = await prisma.service.findUnique({
-                where: { id: data.serviceId },
+        // serviceId stays the primary service; serviceIds carries the full set
+        // when an order covers several. The primary is always first in the list.
+        const requestedServiceIds = dedupeIds([
+            ...(data.serviceId ? [data.serviceId] : []),
+            ...(data.serviceIds || []),
+        ]);
+
+        if (requestedServiceIds.length > MAX_SERVICES_PER_ORDER) {
+            throw new BadRequestError(
+                `An order can link at most ${MAX_SERVICES_PER_ORDER} services`
+            );
+        }
+
+        if (requestedServiceIds.length > 0) {
+            const found = await prisma.service.findMany({
+                where: { id: { in: requestedServiceIds } },
+                select: { id: true },
             });
 
-            if (!service) {
-                throw new NotFoundError("Service not found");
+            if (found.length !== requestedServiceIds.length) {
+                const foundIds = new Set(found.map(s => s.id));
+                const missing = requestedServiceIds.filter(id => !foundIds.has(id));
+                throw new NotFoundError(
+                    `Service not found: ${missing.join(", ")}`
+                );
             }
         }
+
+        const primaryServiceId = requestedServiceIds[0] || data.serviceId || null;
 
         const customerWallet = await this.walletService.getWalletByUserId(data.customerId);
         if (!customerWallet) {
@@ -206,7 +234,15 @@ export default class OrderService {
                     supportId: data.supportId,
                     ticketId: data.ticketId,
                     ticketChannelId: data.discordChannelId, // Map discordChannelId to ticketChannelId in DB
-                    serviceId: data.serviceId,
+                    serviceId: primaryServiceId,
+                    services: requestedServiceIds.length > 0
+                        ? {
+                              create: requestedServiceIds.map((serviceId, position) => ({
+                                  serviceId,
+                                  position,
+                              })),
+                          }
+                        : undefined,
                     methodId: data.methodId,
                     paymentMethodId: data.paymentMethodId,
                     orderValue: data.orderValue,
@@ -248,6 +284,10 @@ export default class OrderService {
                         },
                     },
                     service: true,
+                    services: {
+                        include: { service: { select: { id: true, name: true } } },
+                        orderBy: { position: "asc" },
+                    },
                     method: true,
                     paymentMethod: true,
                 },
@@ -345,6 +385,7 @@ export default class OrderService {
             ticketId: data.ticketId,
             discordChannelId: data.discordChannelId,
             serviceId: data.serviceId,
+            serviceIds: data.serviceIds,
             methodId: data.methodId,
             paymentMethodId: data.paymentMethodId,
             orderValue: data.orderValue,
@@ -584,6 +625,22 @@ export default class OrderService {
             logger.info(`[OrderService] Filtering by ticketId: ${ticketId}`);
         }
 
+        // Match the service wherever it appears on the order, not only when it
+        // happens to be the primary one. Nested under AND so it stays a separate
+        // condition from the search OR rather than widening it.
+        if (query.serviceId) {
+            where.AND = [
+                ...(where.AND || []),
+                {
+                    OR: [
+                        { serviceId: query.serviceId },
+                        { services: { some: { serviceId: query.serviceId } } },
+                    ],
+                },
+            ];
+            logger.info(`[OrderService] Filtering by serviceId: ${query.serviceId}`);
+        }
+
         logger.info(`[OrderService] Built where clause:`, JSON.stringify(where));
         logger.info(`[OrderService] Pagination: skip=${skip}, take=${limit}`);
 
@@ -609,6 +666,10 @@ export default class OrderService {
                             },
                         },
                         service: true,
+                        services: {
+                            include: { service: { select: { id: true, name: true } } },
+                            orderBy: { position: "asc" },
+                        },
                         method: true,
                     },
                     skip,
@@ -852,6 +913,16 @@ export default class OrderService {
             }
         }
 
+        // Reversal runs before the status is written: if the money cannot be
+        // reclaimed the order must not be left reading as refunded.
+        if (data.status === OrderStatus.REFUNDED && order.payoutProcessed) {
+            await this.reverseOrderPayouts(
+                orderId,
+                data.reason || "Order refunded",
+                data.changedById
+            );
+        }
+
         const updatedOrder = await prisma.order.update({
             where: { id: orderId },
             data: {
@@ -903,9 +974,70 @@ export default class OrderService {
             }
         }
 
+        // Reaching COMPLETED is what releases the escrow and pays the worker,
+        // support and system. confirmOrderCompletion does this itself, but an
+        // admin moving the status directly would otherwise leave the order
+        // finished with nobody paid and the customer's funds locked forever.
+        // processOrderPayouts is idempotent via the payoutProcessed flag.
+        if (data.status === OrderStatus.COMPLETED && !order.payoutProcessed) {
+            try {
+                await this.processOrderPayouts(orderId);
+            } catch (error) {
+                logger.error(
+                    `[OrderService] Payout failed for order ${orderId} after status change to COMPLETED:`,
+                    error
+                );
+                throw error;
+            }
+        }
+
+
+        await this.notifyOrderStatusChange(order, data.status, data.reason);
+
         logger.info(`[OrderService] Order ${orderId} status updated: ${order.status} → ${data.status}`);
 
         return updatedOrder;
+    }
+
+    /**
+     * Posts the status change into the order's ticket channel so a change made
+     * from the admin panel is not invisible to the customer and worker.
+     *
+     * Best effort: a Discord outage must never roll back a status change that
+     * has already been written and, for COMPLETED, already moved money.
+     */
+    private async notifyOrderStatusChange(
+        order: any,
+        toStatus: OrderStatus,
+        reason?: string
+    ) {
+        const channelId = order.ticketChannelId || order.orderChannelId;
+
+        if (!channelId) {
+            return;
+        }
+
+        try {
+            const botApiUrl = process.env.BOT_API_URL || "http://localhost:3002";
+
+            await axios.post(
+                `${botApiUrl}/discord/notify/order-status`,
+                {
+                    channelId,
+                    orderNumber: order.orderNumber,
+                    fromStatus: order.status,
+                    toStatus,
+                    reason,
+                    customerDiscordId: order.customer?.discordId,
+                    workerDiscordId: order.worker?.discordId,
+                },
+                { timeout: 5000 }
+            );
+        } catch (error: any) {
+            logger.warn(
+                `[OrderService] Could not notify Discord of status change for order ${order.id}: ${error.message}`
+            );
+        }
     }
 
     async completeOrder(data: CompleteOrderDto) {
@@ -1061,6 +1193,139 @@ export default class OrderService {
                 `Allowed transitions: ${allowedStatuses.join(', ') || 'None'}`
             );
         }
+    }
+
+    /**
+     * Reverses a completed order's payouts: claws back the worker's earnings and
+     * the support commission, then refunds the customer.
+     *
+     * Deliberately fails rather than partially reversing. A refund that moved no
+     * money is worse than a refused one, because the order would read as settled
+     * while the customer is still out of pocket.
+     */
+    private async reverseOrderPayouts(orderId: string, reason: string, reversedById: number) {
+        const order = await this.getOrderById(orderId);
+
+        if (!order.payoutProcessed) {
+            logger.info(`[OrderService] Order ${orderId} has no payouts to reverse`);
+            return;
+        }
+
+        if (!order.workerId || !order.supportId) {
+            throw new BadRequestError("Cannot reverse payouts: missing worker or support");
+        }
+
+        const customerWallet = await this.walletService.getWalletByUserId(order.customerId);
+        const workerWallet = await this.walletService.getWalletByUserId(order.workerId);
+        const supportWallet = await this.walletService.getWalletByUserId(order.supportId);
+
+        if (!customerWallet || !workerWallet || !supportWallet) {
+            throw new BadRequestError("Missing wallet for payout reversal");
+        }
+
+        const orderValue = new Decimal(order.orderValue.toString());
+        const workerPayout = new Decimal(order.workerPayout!.toString());
+        const supportPayout = new Decimal(order.supportPayout!.toString());
+
+        await withTransactionRetry(async (tx) => {
+            const workerCheck = await checkWalletBalanceWithLock(
+                tx,
+                workerWallet.id,
+                workerPayout.toNumber(),
+                "customer"
+            );
+
+            if (!workerCheck.sufficient) {
+                throw new BadRequestError(
+                    `Cannot reverse payout: worker has $${workerCheck.available.toFixed(2)} ` +
+                    `but $${workerPayout.toFixed(2)} must be reclaimed. Resolve manually.`
+                );
+            }
+
+            const supportCheck = await checkWalletBalanceWithLock(
+                tx,
+                supportWallet.id,
+                supportPayout.toNumber(),
+                "customer"
+            );
+
+            if (!supportCheck.sufficient) {
+                throw new BadRequestError(
+                    `Cannot reverse payout: support has $${supportCheck.available.toFixed(2)} ` +
+                    `but $${supportPayout.toFixed(2)} must be reclaimed. Resolve manually.`
+                );
+            }
+
+            const workerBefore = new Decimal(workerCheck.wallet.balance.toString());
+            await updateWalletBalance(tx, workerWallet.id, workerPayout.neg().toNumber());
+            await tx.walletTransaction.create({
+                data: {
+                    walletId: workerWallet.id,
+                    orderId: order.id,
+                    type: "ADJUSTMENT",
+                    amount: workerPayout.neg(),
+                    balanceBefore: workerBefore,
+                    balanceAfter: workerBefore.minus(workerPayout),
+                    currency: workerWallet.currency,
+                    status: "COMPLETED",
+                    reference: `Order #${order.orderNumber} - Earnings reclaimed`,
+                    notes: reason,
+                    createdById: reversedById,
+                },
+            });
+
+            const supportBefore = new Decimal(supportCheck.wallet.balance.toString());
+            await updateWalletBalance(tx, supportWallet.id, supportPayout.neg().toNumber());
+            await tx.walletTransaction.create({
+                data: {
+                    walletId: supportWallet.id,
+                    orderId: order.id,
+                    type: "ADJUSTMENT",
+                    amount: supportPayout.neg(),
+                    balanceBefore: supportBefore,
+                    balanceAfter: supportBefore.minus(supportPayout),
+                    currency: supportWallet.currency,
+                    status: "COMPLETED",
+                    reference: `Order #${order.orderNumber} - Commission reclaimed`,
+                    notes: reason,
+                    createdById: reversedById,
+                },
+            });
+
+            const customerBefore = await tx.wallet.findUniqueOrThrow({
+                where: { id: customerWallet.id },
+                select: { balance: true },
+            });
+            const custBalance = new Decimal(customerBefore.balance.toString());
+
+            await updateWalletBalance(tx, customerWallet.id, orderValue.toNumber());
+            await tx.walletTransaction.create({
+                data: {
+                    walletId: customerWallet.id,
+                    orderId: order.id,
+                    type: "REFUND",
+                    amount: orderValue,
+                    balanceBefore: custBalance,
+                    balanceAfter: custBalance.plus(orderValue),
+                    currency: customerWallet.currency,
+                    status: "COMPLETED",
+                    reference: `Order #${order.orderNumber} - Refunded after dispute`,
+                    notes: reason,
+                    createdById: reversedById,
+                },
+            });
+
+            await tx.order.update({
+                where: { id: orderId },
+                data: { payoutProcessed: false },
+            });
+        });
+
+        logger.info(
+            `[OrderService] Reversed payouts for order ${orderId}: ` +
+            `reclaimed $${workerPayout.toFixed(2)} worker + $${supportPayout.toFixed(2)} support, ` +
+            `refunded $${orderValue.toFixed(2)} to customer`
+        );
     }
 
     private async processOrderPayouts(orderId: string) {
@@ -1714,6 +1979,10 @@ export default class OrderService {
                         },
                     },
                     service: true,
+                    services: {
+                        include: { service: { select: { id: true, name: true } } },
+                        orderBy: { position: "asc" },
+                    },
                     method: true,
                 },
                 skip,
@@ -1827,6 +2096,17 @@ export default class OrderService {
 
         if (!cancelledBy) {
             throw new NotFoundError("User not found");
+        }
+
+        // Cancelling decides how much of the escrow is refunded and how much is
+        // forfeited, so it must not rest on the bot's role check alone.
+        if (
+            cancelledBy.discordRole !== "support" &&
+            cancelledBy.discordRole !== "admin"
+        ) {
+            throw new BadRequestError(
+                "Only support or admin can cancel an order"
+            );
         }
 
         return this.cancelOrder({

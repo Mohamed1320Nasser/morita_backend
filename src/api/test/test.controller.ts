@@ -1,7 +1,7 @@
 import { JsonController, Get } from "routing-controllers";
 import { Service } from "typedi";
 
-@JsonController("/api/test")
+@JsonController("/test")
 @Service()
 export default class TestController {
     @Get("/public")

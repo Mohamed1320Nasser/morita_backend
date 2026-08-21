@@ -5,7 +5,7 @@ import logger from "../../common/loggers";
 import API from "../../common/config/api.types";
 import { Decimal } from "@prisma/client/runtime/library";
 
-@JsonController("/api/admin/services/stats")
+@JsonController("/admin/services/stats")
 @Service()
 export default class ServiceAnalyticsController {
     @Get("/overview")

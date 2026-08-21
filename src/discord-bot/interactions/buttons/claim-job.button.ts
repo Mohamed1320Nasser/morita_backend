@@ -3,6 +3,7 @@ import logger from "../../../common/loggers";
 import { discordApiClient } from "../../clients/DiscordApiClient";
 import { createJobClaimedEmbed, createClaimButton } from "../../utils/jobClaimingEmbed";
 import { getOrderChannelService } from "../../services/orderChannel.service";
+import { unwrapApiData } from "../../utils/apiResponse.util";
 
 export async function handleClaimJobButton(interaction: ButtonInteraction): Promise<void> {
     try {
@@ -15,8 +16,7 @@ export async function handleClaimJobButton(interaction: ButtonInteraction): Prom
             `/discord/wallets/balance/${workerDiscordId}`
         );
 
-        const responseData = balanceResponse.data || balanceResponse;
-        let balanceData = responseData.data || responseData;
+        let balanceData = unwrapApiData<any>(balanceResponse) || {};
 
         if (!balanceData.hasWallet) {
             try {
@@ -127,7 +127,7 @@ export async function handleClaimJobButton(interaction: ButtonInteraction): Prom
 
         if (claimedOrder.ticketId) {
             try {
-                const ticketResponse: any = await discordApiClient.get(`/api/discord/tickets/${claimedOrder.ticketId}`);
+                const ticketResponse: any = await discordApiClient.get(`/discord/tickets/${claimedOrder.ticketId}`);
                 const ticketData = ticketResponse.data?.data || ticketResponse.data || ticketResponse;
 
                 if (ticketData?.channelId) {

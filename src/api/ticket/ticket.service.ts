@@ -822,6 +822,12 @@ export default class TicketService {
                                 id: true,
                                 name: true
                             }
+                        },
+                        services: {
+                            select: {
+                                service: { select: { id: true, name: true } }
+                            },
+                            orderBy: { position: "asc" }
                         }
                     }
                 }

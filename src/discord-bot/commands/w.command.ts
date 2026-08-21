@@ -7,6 +7,7 @@ import { Command } from "../types/discord.types";
 import logger from "../../common/loggers";
 import { discordApiClient } from "../clients/DiscordApiClient";
 import { createBalanceEmbed } from "../utils/wallet-embeds.util";
+import { unwrapApiData } from "../utils/apiResponse.util";
 
 export default {
     data: new SlashCommandBuilder()
@@ -24,8 +25,7 @@ export default {
                 `/discord/wallets/balance/${discordId}`
             );
 
-            const responseData = response.data || response;
-            const data = responseData.data || responseData;
+            const data = unwrapApiData<any>(response) || {};
 
             const embed = createBalanceEmbed(data, {
                 isAdminView: false,

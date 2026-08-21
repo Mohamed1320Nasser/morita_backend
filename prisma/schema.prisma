@@ -281,6 +281,7 @@ model Service {
   serviceModifiers ServiceModifier[] @relation("serviceModifiers")
   pricingMethods   PricingMethod[]   @relation("servicePricingMethods")
   orders           Order[]           @relation("serviceOrders")
+  orderLinks       OrderService[]    @relation("orderServiceService")
   tickets          Ticket[]          @relation("serviceTickets")
 
   shortcuts Json?
@@ -498,6 +499,7 @@ model Order {
   support            User?                @relation("supportOrders", fields: [supportId], references: [id])
   ticket             Ticket?              @relation("ticketOrders", fields: [ticketId], references: [id])
   service            Service?             @relation("serviceOrders", fields: [serviceId], references: [id])
+  services           OrderService[]       @relation("orderServiceOrder")
   method             PricingMethod?       @relation("pricingMethodOrders", fields: [methodId], references: [id])
   paymentMethod      PaymentMethod?       @relation("paymentMethodOrders", fields: [paymentMethodId], references: [id])
   account            Account?             @relation("accountOrders", fields: [accountId], references: [id])
@@ -1110,6 +1112,24 @@ model ReferralRewardConfig {
 }
 
 // Order Reward Claims (Track each order reward)
+/// Services attached to an order. Order.serviceId stays as the primary service
+/// so existing listings, filters and KPIs keep working; this table records every
+/// service on the order, including that primary one.
+model OrderService {
+  id        String   @id @default(uuid())
+  orderId   String
+  serviceId String
+  position  Int      @default(0)
+  createdAt DateTime @default(now()) @db.DateTime(0)
+
+  order   Order   @relation("orderServiceOrder", fields: [orderId], references: [id])
+  service Service @relation("orderServiceService", fields: [serviceId], references: [id])
+
+  @@unique([orderId, serviceId])
+  @@index([orderId])
+  @@index([serviceId])
+}
+
 model OrderRewardClaim {
   id           String          @id @default(uuid())
   orderId      String?         @unique // null for manual grants

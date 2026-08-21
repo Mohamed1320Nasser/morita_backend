@@ -60,7 +60,7 @@ export default class ServiceCategoryController {
 }
 
 // Public API for Discord bot
-@JsonController("/api/public/service-categories")
+@JsonController("/public/service-categories")
 @Service()
 export class PublicServiceCategoryController {
     constructor(private serviceCategoryService: ServiceCategoryService) {}

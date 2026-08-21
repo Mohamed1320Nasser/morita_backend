@@ -95,7 +95,7 @@ async function trackTicketMessage(message: Message): Promise<void> {
         logger.debug(`[TicketMessage] Processing message in channel ${channelId} from ${authorName}`);
 
         // 1. Get ticket by channel ID
-        const ticketResponse: any = await discordApiClient.get(`/api/discord/tickets/channel/${channelId}`);
+        const ticketResponse: any = await discordApiClient.get(`/discord/tickets/channel/${channelId}`);
         let ticket = ticketResponse.data || ticketResponse;
 
         // Handle nested data structure (API returns data.data)
@@ -132,7 +132,7 @@ async function trackTicketMessage(message: Message): Promise<void> {
             isWelcome: false,
         };
 
-        await discordApiClient.post(`/api/discord/tickets/${ticket.id}/messages`, messageData);
+        await discordApiClient.post(`/discord/tickets/${ticket.id}/messages`, messageData);
 
         logger.info(
             `[TicketMessage] ✅ Saved message to ticket #${ticket.ticketNumber} from ${authorName} (${user.discordRole || 'customer'})`
@@ -541,9 +541,6 @@ async function processSingleSkillRequest(message: Message, requestString: string
                 String(m.methodId).startsWith("group_") ||
                 String(m.methodId).includes("_segment_");
 
-            const realMethods = data.methodOptions.filter((m: any) => !isVariant(m));
-            const listed = realMethods.length > 0 ? realMethods : data.methodOptions;
-
             const rangeOf = (m: any) => {
                 if (!m.levelRanges || m.levelRanges.length === 0) return "";
                 const min = Math.min(...m.levelRanges.map((r: any) => r.startLevel));
@@ -558,18 +555,70 @@ async function processSingleSkillRequest(message: Message, requestString: string
                   )
                 : data.methodOptions.find((m: any) => m.isCheapest);
 
-            const shown = listed.some((m: any) => m.methodId === cheapest?.methodId)
-                ? listed
-                : [...listed, cheapest].filter(Boolean);
+            const groups = data.methodOptions.filter(
+                (m: any) => String(m.methodId).startsWith("group_")
+            );
 
-            const optionRows = shown.map((m: any) => ({
+            // A group already prices every one of its segments, so the loose
+            // segment rows would otherwise repeat the same work twice.
+            const groupedSegmentNames = new Set<string>();
+            for (const g of groups) {
+                for (const seg of g.levelRanges || []) {
+                    if (seg.methodName) groupedSegmentNames.add(seg.methodName);
+                }
+            }
+
+            const standalone = data.methodOptions.filter((m: any) => {
+                if (isVariant(m)) return false;
+                return !groupedSegmentNames.has(m.methodName);
+            });
+
+            const looseSegments = data.methodOptions.filter((m: any) => {
+                if (!String(m.methodId).includes("_segment_")) return false;
+                const bare = String(m.methodName).replace(/\s*\(\d+\s*-\s*\d+\)\s*$/, "").trim();
+                return !groupedSegmentNames.has(bare);
+            });
+
+            const listed = [...standalone, ...looseSegments];
+            const shown = listed.length > 0 ? listed : data.methodOptions.filter((m: any) => !isVariant(m));
+
+            const toRow = (m: any, isChild = false) => ({
                 name: m.methodName,
                 range: rangeOf(m),
                 originalPrice: m.loyaltyDiscount?.originalPrice,
                 finalPrice: m.finalPrice,
                 discountPercent: m.loyaltyDiscount?.discountPercent,
-                isBest: m.methodId === cheapest?.methodId,
-            }));
+                isBest: !isChild && m.methodId === cheapest?.methodId,
+                isChild,
+            });
+
+            const optionRows: any[] = [];
+
+            for (const m of shown) {
+                optionRows.push(toRow(m));
+            }
+
+            // Each group prints its total, then one indented row per segment so
+            // the customer can see how the total was reached.
+            for (const g of groups) {
+                optionRows.push(toRow(g));
+
+                const segments = g.levelRanges || [];
+                if (segments.length < 2) continue;
+
+                for (const seg of segments) {
+                    optionRows.push({
+                        name: "",
+                        range: `${seg.startLevel}-${seg.endLevel}`,
+                        finalPrice: seg.totalPrice,
+                        isChild: true,
+                    });
+                }
+            }
+
+            if (cheapest && !optionRows.some((r: any) => r.isBest)) {
+                optionRows.unshift(toRow(cheapest));
+            }
 
             const optionsTable = buildOptionsTable(optionRows);
             if (optionsTable) {
@@ -583,8 +632,10 @@ async function processSingleSkillRequest(message: Message, requestString: string
             if (cheapest) {
                 embed.addFields({
                     name: "\u{1F4B0} Price Summary",
+                    // The starred row in the options table already identifies the
+                    // chosen method, so naming it again here only adds a line.
                     value: buildTotalBlock(
-                        cheapest.methodName,
+                        "",
                         cheapest.subtotal,
                         collectAdjustments(cheapest),
                         cheapest.finalPrice

@@ -15,6 +15,11 @@ import {
 import { NotFoundError, BadRequestError } from "routing-controllers";
 import { Decimal } from "@prisma/client/runtime/library";
 import logger from "../../common/loggers";
+import {
+    withTransactionRetry,
+    lockWalletForUpdate,
+    updateWalletBalance,
+} from "../../common/utils/transaction.util";
 
 @Service()
 export default class WalletService {
@@ -236,42 +241,38 @@ export default class WalletService {
         data: AddBalanceDto,
         createdById: number
     ) {
-        const wallet = await this.getWalletById(walletId);
+        const amount = new Decimal(data.amount);
 
-        if (!wallet.isActive) {
-            throw new BadRequestError("Wallet is not active");
+        if (amount.lte(0)) {
+            throw new BadRequestError("Amount must be greater than zero");
         }
 
-        const amount = new Decimal(data.amount);
         const isDepositTransaction = data.transactionType === "WORKER_DEPOSIT";
 
-        // Determine which field to update
-        const balanceBefore = new Decimal(wallet.balance.toString());
-        const depositBefore = new Decimal(wallet.deposit.toString());
+        // The wallet is read under FOR UPDATE inside the transaction so two
+        // concurrent credits cannot both compute from the same starting value.
+        const result = await withTransactionRetry(async (tx) => {
+            const locked = await lockWalletForUpdate(tx, walletId);
 
-        const balanceAfter = isDepositTransaction ? balanceBefore : balanceBefore.add(amount);
-        const depositAfter = isDepositTransaction ? depositBefore.add(amount) : depositBefore;
-
-        logger.info(`[AddBalance] Transaction type: ${data.transactionType}, isDepositTransaction: ${isDepositTransaction}`);
-        logger.info(`[AddBalance] Before - Balance: ${balanceBefore}, Deposit: ${depositBefore}`);
-        logger.info(`[AddBalance] After - Balance: ${balanceAfter}, Deposit: ${depositAfter}`);
-
-        // Use transaction to ensure atomicity
-        const result = await prisma.$transaction(async (tx) => {
-            // Update wallet - either balance or deposit
-            const updateData: any = {};
-            if (isDepositTransaction) {
-                updateData.deposit = depositAfter;
-                logger.info(`[AddBalance] Updating DEPOSIT field only to ${depositAfter}`);
-            } else {
-                updateData.balance = balanceAfter;
-                logger.info(`[AddBalance] Updating BALANCE field only to ${balanceAfter}`);
+            if (!locked.isActive) {
+                throw new BadRequestError("Wallet is not active");
             }
-            logger.info(`[AddBalance] Update data:`, updateData);
 
-            const updatedWallet = await tx.wallet.update({
+            const balanceBefore = new Decimal(locked.balance.toString());
+            const depositBefore = new Decimal(locked.deposit.toString());
+            const balanceAfter = isDepositTransaction ? balanceBefore : balanceBefore.add(amount);
+            const depositAfter = isDepositTransaction ? depositBefore.add(amount) : depositBefore;
+
+            await updateWalletBalance(
+                tx,
+                walletId,
+                isDepositTransaction ? 0 : amount.toNumber(),
+                0,
+                isDepositTransaction ? amount.toNumber() : 0
+            );
+
+            const updatedWallet = await tx.wallet.findUniqueOrThrow({
                 where: { id: walletId },
-                data: updateData,
                 include: {
                     user: {
                         select: {
@@ -293,7 +294,7 @@ export default class WalletService {
                 amount,
                 balanceBefore,
                 balanceAfter,
-                currency: data.currency || wallet.currency,
+                currency: data.currency || locked.currency,
                 status: "COMPLETED",
                 createdById: createdById || 1, // Fallback to admin user ID
             };
@@ -325,11 +326,11 @@ export default class WalletService {
 
         if (isDepositTransaction) {
             logger.info(
-                `Added ${amount} to worker deposit ${walletId}. Deposit: ${depositBefore} -> ${depositAfter}`
+                `Added ${amount} to worker deposit ${walletId}. Deposit: ${result.depositBefore} -> ${result.depositAfter}`
             );
         } else {
             logger.info(
-                `Added ${amount} to wallet ${walletId}. Balance: ${balanceBefore} -> ${balanceAfter}`
+                `Added ${amount} to wallet ${walletId}. Balance: ${result.balanceBefore} -> ${result.balanceAfter}`
             );
         }
 
@@ -354,26 +355,19 @@ export default class WalletService {
             data.customerDiscordDisplayName
         );
 
-        // If wallet exists but has wrong type, update it
-        if (wallet.walletType !== walletType) {
+        // Only promote CUSTOMER -> WORKER when collateral is posted. Crediting
+        // spendable balance must never demote an existing worker back to
+        // CUSTOMER, since the same person can both buy and work.
+        if (
+            data.transactionType === "WORKER_DEPOSIT" &&
+            wallet.walletType !== WalletType.WORKER
+        ) {
             await prisma.wallet.update({
                 where: { id: wallet.id },
-                data: { walletType },
+                data: { walletType: WalletType.WORKER },
             });
-            logger.info(`[addBalanceByDiscord] Updated wallet ${wallet.id} type: ${wallet.walletType} -> ${walletType}`);
-            wallet.walletType = walletType;
-        }
-
-        // Also update user's discordRole if adding worker deposit
-        if (data.transactionType === "WORKER_DEPOSIT" && wallet.user) {
-            const user = await prisma.user.findUnique({ where: { id: wallet.userId } });
-            if (user && user.discordRole !== "worker") {
-                await prisma.user.update({
-                    where: { id: wallet.userId },
-                    data: { discordRole: "worker" },
-                });
-                logger.info(`[addBalanceByDiscord] Updated user ${wallet.userId} discordRole to worker`);
-            }
+            logger.info(`[addBalanceByDiscord] Wallet ${wallet.id} type: ${wallet.walletType} -> WORKER (deposit posted)`);
+            wallet.walletType = WalletType.WORKER;
         }
 
         // Add balance
@@ -400,43 +394,41 @@ export default class WalletService {
         data: DeductBalanceDto,
         createdById: number
     ) {
-        const wallet = await this.getWalletById(walletId);
-
-        if (!wallet.isActive) {
-            throw new BadRequestError("Wallet is not active");
-        }
-
         const amount = new Decimal(data.amount);
-        const currentBalance = new Decimal(wallet.balance.toString());
 
-        // Check sufficient balance
-        if (currentBalance.lt(amount)) {
-            throw new BadRequestError(
-                `Insufficient balance. Available: ${currentBalance}, Required: ${amount}`
+        if (amount.lte(0)) {
+            throw new BadRequestError("Amount must be greater than zero");
+        }
+
+        // Both the sufficiency check and the write happen under the same row
+        // lock, so concurrent deductions cannot each pass the check and
+        // overdraw the wallet.
+        const result = await withTransactionRetry(async (tx) => {
+            const locked = await lockWalletForUpdate(tx, walletId);
+
+            if (!locked.isActive) {
+                throw new BadRequestError("Wallet is not active");
+            }
+
+            const balanceBefore = new Decimal(locked.balance.toString());
+
+            if (balanceBefore.lt(amount)) {
+                throw new BadRequestError(
+                    `Insufficient balance. Available: ${balanceBefore}, Required: ${amount}`
+                );
+            }
+
+            const balanceAfter = balanceBefore.sub(amount);
+
+            await updateWalletBalance(
+                tx,
+                walletId,
+                amount.neg().toNumber(),
+                data.lockAsPending ? amount.toNumber() : 0
             );
-        }
 
-        const balanceBefore = currentBalance;
-        let balanceAfter: Decimal;
-        let pendingBalanceAfter = new Decimal(wallet.pendingBalance.toString());
-
-        if (data.lockAsPending) {
-            // Move to pending balance instead of deducting
-            balanceAfter = balanceBefore.sub(amount);
-            pendingBalanceAfter = pendingBalanceAfter.add(amount);
-        } else {
-            balanceAfter = balanceBefore.sub(amount);
-        }
-
-        // Use transaction to ensure atomicity
-        const result = await prisma.$transaction(async (tx) => {
-            // Update wallet balance
-            const updatedWallet = await tx.wallet.update({
+            const updatedWallet = await tx.wallet.findUniqueOrThrow({
                 where: { id: walletId },
-                data: {
-                    balance: balanceAfter,
-                    pendingBalance: data.lockAsPending ? pendingBalanceAfter : undefined,
-                },
                 include: {
                     user: {
                         select: {
@@ -460,18 +452,18 @@ export default class WalletService {
                     amount: amount.neg(), // Negative for deduction
                     balanceBefore,
                     balanceAfter,
-                    currency: wallet.currency,
+                    currency: locked.currency,
                     status: data.lockAsPending ? "PENDING" : "COMPLETED",
                     notes: data.notes,
                     createdById,
                 },
             });
 
-            return { wallet: updatedWallet, transaction };
+            return { wallet: updatedWallet, transaction, balanceAfter: balanceAfter.toNumber() };
         });
 
         logger.info(
-            `Deducted ${amount} from wallet ${walletId}. New balance: ${balanceAfter}`
+            `Deducted ${amount} from wallet ${walletId}. New balance: ${result.balanceAfter}`
         );
 
         return result;
@@ -486,24 +478,31 @@ export default class WalletService {
         orderId: string,
         createdById: number
     ) {
-        const wallet = await this.getWalletById(walletId);
         const amountDecimal = new Decimal(amount);
-        const pendingBalance = new Decimal(wallet.pendingBalance.toString());
 
-        if (pendingBalance.lt(amountDecimal)) {
-            throw new BadRequestError(
-                `Insufficient pending balance. Pending: ${pendingBalance}, Required: ${amountDecimal}`
-            );
+        if (amountDecimal.lte(0)) {
+            throw new BadRequestError("Amount must be greater than zero");
         }
 
-        const newPendingBalance = pendingBalance.sub(amountDecimal);
+        const result = await withTransactionRetry(async (tx) => {
+            const locked = await lockWalletForUpdate(tx, walletId);
+            const pendingBalance = new Decimal(locked.pendingBalance.toString());
 
-        const result = await prisma.$transaction(async (tx) => {
-            const updatedWallet = await tx.wallet.update({
+            if (pendingBalance.lt(amountDecimal)) {
+                throw new BadRequestError(
+                    `Insufficient pending balance. Pending: ${pendingBalance}, Required: ${amountDecimal}`
+                );
+            }
+
+            await updateWalletBalance(
+                tx,
+                walletId,
+                0,
+                amountDecimal.neg().toNumber()
+            );
+
+            const updatedWallet = await tx.wallet.findUniqueOrThrow({
                 where: { id: walletId },
-                data: {
-                    pendingBalance: newPendingBalance,
-                },
             });
 
             const transaction = await tx.walletTransaction.create({
@@ -512,9 +511,9 @@ export default class WalletService {
                     orderId,
                     type: "RELEASE",
                     amount: amountDecimal,
-                    balanceBefore: wallet.balance,
-                    balanceAfter: wallet.balance,
-                    currency: wallet.currency,
+                    balanceBefore: locked.balance,
+                    balanceAfter: locked.balance,
+                    currency: locked.currency,
                     status: "COMPLETED",
                     notes: `Released pending balance for order ${orderId}`,
                     createdById,
@@ -538,17 +537,21 @@ export default class WalletService {
         createdById: number,
         notes?: string
     ) {
-        const wallet = await this.getWalletById(walletId);
         const amountDecimal = new Decimal(amount);
-        const balanceBefore = new Decimal(wallet.balance.toString());
-        const balanceAfter = balanceBefore.add(amountDecimal);
 
-        const result = await prisma.$transaction(async (tx) => {
-            const updatedWallet = await tx.wallet.update({
+        if (amountDecimal.lte(0)) {
+            throw new BadRequestError("Amount must be greater than zero");
+        }
+
+        const result = await withTransactionRetry(async (tx) => {
+            const locked = await lockWalletForUpdate(tx, walletId);
+            const balanceBefore = new Decimal(locked.balance.toString());
+            const balanceAfter = balanceBefore.add(amountDecimal);
+
+            await updateWalletBalance(tx, walletId, amountDecimal.toNumber());
+
+            const updatedWallet = await tx.wallet.findUniqueOrThrow({
                 where: { id: walletId },
-                data: {
-                    balance: balanceAfter,
-                },
             });
 
             const transaction = await tx.walletTransaction.create({
@@ -559,7 +562,7 @@ export default class WalletService {
                     amount: amountDecimal,
                     balanceBefore,
                     balanceAfter,
-                    currency: wallet.currency,
+                    currency: locked.currency,
                     status: "COMPLETED",
                     notes: notes || `Refund for order ${orderId}`,
                     createdById,
@@ -919,31 +922,34 @@ export default class WalletService {
         data: { amount: number; reference?: string; notes?: string },
         createdById: number
     ) {
-        const wallet = await this.getWalletById(walletId);
-
-        if (!wallet.isActive) {
-            throw new BadRequestError("Wallet is not active");
-        }
-
         const amount = new Decimal(data.amount);
-        const balanceBefore = new Decimal(wallet.balance.toString());
-        const balanceAfter = balanceBefore.add(amount);
 
-        // Check if adjustment would result in negative balance
-        if (balanceAfter.lt(0)) {
-            throw new BadRequestError(
-                `Adjustment would result in negative balance. Current: ${balanceBefore}, Adjustment: ${amount}`
-            );
+        if (amount.isZero()) {
+            throw new BadRequestError("Adjustment amount cannot be zero");
         }
 
-        // Use transaction to ensure atomicity
-        const result = await prisma.$transaction(async (tx) => {
-            // Update wallet balance
-            const updatedWallet = await tx.wallet.update({
+        // Negative-balance check and write share one row lock, so concurrent
+        // adjustments cannot both pass the check and overdraw the wallet.
+        const result = await withTransactionRetry(async (tx) => {
+            const locked = await lockWalletForUpdate(tx, walletId);
+
+            if (!locked.isActive) {
+                throw new BadRequestError("Wallet is not active");
+            }
+
+            const balanceBefore = new Decimal(locked.balance.toString());
+            const balanceAfter = balanceBefore.add(amount);
+
+            if (balanceAfter.lt(0)) {
+                throw new BadRequestError(
+                    `Adjustment would result in negative balance. Current: ${balanceBefore}, Adjustment: ${amount}`
+                );
+            }
+
+            await updateWalletBalance(tx, walletId, amount.toNumber());
+
+            const updatedWallet = await tx.wallet.findUniqueOrThrow({
                 where: { id: walletId },
-                data: {
-                    balance: balanceAfter,
-                },
                 include: {
                     user: {
                         select: {
@@ -964,7 +970,7 @@ export default class WalletService {
                     amount,
                     balanceBefore,
                     balanceAfter,
-                    currency: wallet.currency,
+                    currency: locked.currency,
                     status: "COMPLETED",
                     reference: data.reference,
                     notes: data.notes || `Manual balance adjustment`,
@@ -972,11 +978,11 @@ export default class WalletService {
                 },
             });
 
-            return { wallet: updatedWallet, transaction };
+            return { wallet: updatedWallet, transaction, balanceAfter: balanceAfter.toNumber() };
         });
 
         logger.info(
-            `Adjusted wallet ${walletId} by ${amount}. New balance: ${balanceAfter}`
+            `Adjusted wallet ${walletId} by ${amount}. New balance: ${result.balanceAfter}`
         );
 
         return result;

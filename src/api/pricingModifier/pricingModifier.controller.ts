@@ -17,7 +17,7 @@ import {
 } from "./dtos";
 import { convertResponse } from "../../common/helpers/res.helper";
 
-@JsonController("/api/admin/pricing/modifiers")
+@JsonController("/admin/pricing/modifiers")
 @Service()
 export default class PricingModifierController {
     constructor(private pricingModifierService: PricingModifierService) {}
@@ -57,7 +57,7 @@ export default class PricingModifierController {
 }
 
 // Public API for Discord bot
-@JsonController("/api/public/pricing/modifiers")
+@JsonController("/public/pricing/modifiers")
 @Service()
 export class PublicPricingModifierController {
     constructor(private pricingModifierService: PricingModifierService) {}

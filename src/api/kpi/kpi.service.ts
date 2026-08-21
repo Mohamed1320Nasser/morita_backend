@@ -800,7 +800,12 @@ export default class KpiService {
                     orderId: order.id,
                     orderCreatedAt: order.createdAt,
                     conversionTimeMinutes,
-                    serviceName: order.service?.name || null
+                    serviceName: order.service?.name || null,
+                    // Every service on the order, so conversion time is credited
+                    // to each of them rather than only the primary.
+                    serviceNames: (order.services || [])
+                        .map((link: any) => link?.service?.name)
+                        .filter(Boolean)
                 };
             });
 
@@ -924,14 +929,19 @@ export default class KpiService {
         const serviceMap = new Map<string, { name: string; times: number[] }>();
 
         conversions.forEach(conversion => {
-            if (!conversion.serviceName) return;
+            const names: string[] = conversion.serviceNames?.length
+                ? conversion.serviceNames
+                : conversion.serviceName
+                  ? [conversion.serviceName]
+                  : [];
 
-            const serviceId = conversion.orderId;
-            if (!serviceMap.has(conversion.serviceName)) {
-                serviceMap.set(conversion.serviceName, { name: conversion.serviceName, times: [] });
-            }
+            names.forEach(name => {
+                if (!serviceMap.has(name)) {
+                    serviceMap.set(name, { name, times: [] });
+                }
 
-            serviceMap.get(conversion.serviceName)!.times.push(conversion.conversionTimeMinutes);
+                serviceMap.get(name)!.times.push(conversion.conversionTimeMinutes);
+            });
         });
 
         return Array.from(serviceMap.entries()).map(([serviceName, data]) => {
@@ -1379,20 +1389,35 @@ export default class KpiService {
         const serviceMap = new Map<string, { name: string; issues: number; orders: Set<string> }>();
 
         issues.forEach(issue => {
-            const serviceId = issue.order.serviceId;
-            const serviceName = issue.order.service?.name || 'Unknown';
+            // An order can cover several services, so the issue counts against
+            // each of them rather than only the primary one.
+            const linked: Array<{ id: string; name: string }> = Array.isArray(issue.order.services)
+                ? issue.order.services
+                      .map((link: any) => link?.service)
+                      .filter(Boolean)
+                      .map((s: any) => ({ id: s.id, name: s.name }))
+                : [];
 
-            if (!serviceMap.has(serviceId)) {
-                serviceMap.set(serviceId, {
-                    name: serviceName,
-                    issues: 0,
-                    orders: new Set()
+            if (linked.length === 0) {
+                linked.push({
+                    id: issue.order.serviceId,
+                    name: issue.order.service?.name || 'Unknown',
                 });
             }
 
-            const serviceData = serviceMap.get(serviceId)!;
-            serviceData.issues++;
-            serviceData.orders.add(issue.orderId);
+            linked.forEach(service => {
+                if (!serviceMap.has(service.id)) {
+                    serviceMap.set(service.id, {
+                        name: service.name,
+                        issues: 0,
+                        orders: new Set()
+                    });
+                }
+
+                const serviceData = serviceMap.get(service.id)!;
+                serviceData.issues++;
+                serviceData.orders.add(issue.orderId);
+            });
         });
 
         return Array.from(serviceMap.entries()).map(([serviceId, data]) => {
@@ -2073,7 +2098,11 @@ export default class KpiService {
                     include: {
                         worker: true,
                         customer: true,
-                        service: true
+                        service: true,
+                        services: {
+                            include: { service: { select: { id: true, name: true } } },
+                            orderBy: { position: "asc" },
+                        }
                     }
                 },
                 reportedBy: true,

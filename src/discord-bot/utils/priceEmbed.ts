@@ -31,6 +31,9 @@ export interface OptionRow {
     discountPercent?: number;
     discountEmoji?: string;
     isBest?: boolean;
+    // Set on rows that are one segment of the group above them; rendered
+    // indented and dimmed so the group total reads as the headline figure.
+    isChild?: boolean;
 }
 
 export interface AdjustmentRow {
@@ -208,15 +211,45 @@ export function buildOptionsTable(options: OptionRow[]): string {
 
     const lines = [header(headerText), rule(headerText.length)];
 
-    for (const option of options) {
+    // Discord rejects an embed whose field value exceeds 1024 characters, and
+    // the ANSI colour codes count toward it. Grouped tables are long enough to
+    // reach that, so rows are dropped before the limit rather than after.
+    const FIELD_LIMIT = 1024;
+    const FENCE = "```ansi\n\n```".length;
+    let budget = FIELD_LIMIT - FENCE - lines.join("\n").length;
+    let truncated = 0;
+
+    for (let i = 0; i < options.length; i++) {
+        const option = options[i];
+
+        // Blank-line a group off from its surroundings: before a parent that
+        // owns children, and after the last child, so a following standalone
+        // row is never mistaken for part of the group above it.
+        const startsGroup = !option.isChild && options[i + 1]?.isChild;
+        const followsGroup = !option.isChild && options[i - 1]?.isChild;
+        if ((startsGroup || followsGroup) && lines.length > 2) {
+            lines.push("");
+        }
+
         // Segment options arrive named "Falador Rooftop (50-60)"; the range has
         // its own column, so drop the suffix rather than print it twice.
         const bareName = option.range
             ? option.name.replace(/\s*\(\d+\s*-\s*\d+\)\s*$/, "").trim()
             : option.name;
 
-        const name = clip(bareName, nameW - 1).padEnd(nameW);
-        let row = option.isBest ? `${CYAN}${name}${RESET}` : name;
+        // Children carry a dash instead of a name: the level range already
+        // identifies the segment, and the marker ties the row to the group
+        // above it. Discord's ANSI code block font drops box-drawing glyphs,
+        // so this stays ASCII rather than using a corner character.
+        // clip() trims, so the indent is applied after clipping.
+        const name = option.isChild
+            ? `  -`.padEnd(nameW)
+            : clip(bareName, nameW - 1).padEnd(nameW);
+        let row = option.isBest
+            ? `${CYAN}${name}${RESET}`
+            : option.isChild
+              ? `${DIM}${name}${RESET}`
+              : name;
 
         if (anyRange) {
             row += `${DIM}${clip(option.range || "", LEVELS_W).padEnd(LEVELS_W)}${RESET}`;
@@ -231,22 +264,46 @@ export function buildOptionsTable(options: OptionRow[]): string {
             row += `${DIM}${was.padStart(moneyW)}${RESET}`;
             row += option.isBest
                 ? `${BOLD_GREEN}${money(option.finalPrice).padStart(moneyW)}${RESET}`
-                : `${YELLOW}${money(option.finalPrice).padStart(moneyW)}${RESET}`;
+                : option.isChild
+                  ? `${DIM}${money(option.finalPrice).padStart(moneyW)}${RESET}`
+                  : `${YELLOW}${money(option.finalPrice).padStart(moneyW)}${RESET}`;
+            // The percentage is identical for every row in a group, so print it
+            // once on the parent rather than repeating it down the column.
             row +=
-                option.discountPercent && option.discountPercent > 0
+                option.discountPercent && option.discountPercent > 0 && !option.isChild
                     ? `${GREEN}${`  ${option.discountPercent}%`.padEnd(6)}${RESET}`
                     : "";
         } else {
             row += option.isBest
                 ? `${BOLD_GREEN}${money(option.finalPrice).padStart(moneyW)}${RESET}`
-                : `${YELLOW}${money(option.finalPrice).padStart(moneyW)}${RESET}`;
+                : option.isChild
+                  ? `${DIM}${money(option.finalPrice).padStart(moneyW)}${RESET}`
+                  : `${YELLOW}${money(option.finalPrice).padStart(moneyW)}${RESET}`;
         }
 
         if (option.isBest) {
             row += "  ⭐";
         }
 
+        // A child without its parent is meaningless, so once the budget runs
+        // out the rest of the table is dropped rather than half a group.
+        const cost = row.length + 1;
+        if (cost > budget) {
+            truncated = options.length - i;
+            break;
+        }
+
+        budget -= cost;
         lines.push(row);
+    }
+
+    if (truncated > 0) {
+        const note = `${DIM}… ${truncated} more${RESET}`;
+        // Trade the last row for the note when there is no room left for both.
+        if (note.length + 1 > budget) {
+            lines.pop();
+        }
+        lines.push(note);
     }
 
     return block(lines);

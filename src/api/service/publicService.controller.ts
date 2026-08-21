@@ -2,7 +2,7 @@ import { JsonController, Get, Param, QueryParams } from "routing-controllers";
 import { Service } from "typedi";
 import ServiceService from "./service.service";
 
-@JsonController("/api/public/services")
+@JsonController("/public/services")
 @Service()
 export default class PublicServiceController {
     constructor(private serviceService: ServiceService) {}
@@ -40,5 +40,13 @@ export default class PublicServiceController {
     async lookupServiceByName(@QueryParams() query: { name: string }) {
         const result = await this.serviceService.lookupByName(query.name);
         return result;
+    }
+
+    @Get("/lookup/suggest")
+    async suggestServices(@QueryParams() query: { q?: string; limit?: number }) {
+        return await this.serviceService.suggestByName(
+            query.q || "",
+            Number(query.limit) || 25
+        );
     }
 }

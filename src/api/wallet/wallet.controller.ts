@@ -22,7 +22,7 @@ import {
 } from "./dtos";
 
 // Admin Wallet Controller
-@JsonController("/api/admin/wallets")
+@JsonController("/admin/wallets")
 @Service()
 export default class WalletController {
     constructor(private walletService: WalletService) {}

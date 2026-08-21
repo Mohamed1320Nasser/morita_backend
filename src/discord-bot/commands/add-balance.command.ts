@@ -26,22 +26,22 @@ export default {
                 .setRequired(true)
                 .setMinValue(0.01)
         )
+        .addUserOption(option =>
+            option
+                .setName("user")
+                .setDescription("Target user")
+                .setRequired(true)
+        )
         .addStringOption(option =>
             option
                 .setName("type")
-                .setDescription("Transaction type (default: Balance)")
-                .setRequired(false)
+                .setDescription("Transaction type")
+                .setRequired(true)
                 .addChoices(
                     { name: "💰 Balance (Customer)", value: "BALANCE" },
                     { name: "🔐 Worker Deposit", value: "WORKER_DEPOSIT" },
                     { name: "🔧 Adjustment (Manual Fix)", value: "ADJUSTMENT" }
                 )
-        )
-        .addUserOption(option =>
-            option
-                .setName("user")
-                .setDescription("Target user (auto-detected in tickets, editable)")
-                .setRequired(false)
         )
         .addStringOption(option =>
             option
@@ -52,14 +52,14 @@ export default {
         )
         .addStringOption(option =>
             option
-                .setName("reference")
+                .setName("ref")
                 .setDescription("Payment reference/ID (optional)")
                 .setRequired(false)
                 .setMaxLength(100)
         )
         .addStringOption(option =>
             option
-                .setName("payment_method")
+                .setName("method")
                 .setDescription("Payment method (optional)")
                 .setRequired(false)
                 .setMaxLength(50)
@@ -131,8 +131,8 @@ function extractOptions(interaction: CommandInteraction) {
         amount: interaction.options.get("amount")?.value as number,
         transactionType: (interaction.options.get("type")?.value as string) || "BALANCE",
         note: interaction.options.get("note")?.value as string | undefined,
-        reference: interaction.options.get("reference")?.value as string | undefined,
-        paymentMethod: interaction.options.get("payment_method")?.value as string | undefined,
+        reference: interaction.options.get("ref")?.value as string | undefined,
+        paymentMethod: interaction.options.get("method")?.value as string | undefined,
         specifiedUser: interaction.options.get("user")?.user || null,
     };
 }

@@ -130,7 +130,8 @@ export async function updateWalletBalance(
     tx: TransactionClient,
     walletId: string,
     balanceChange: number,
-    pendingBalanceChange?: number
+    pendingBalanceChange?: number,
+    depositChange?: number
 ): Promise<any> {
     // Lock wallet first
     await lockWalletForUpdate(tx, walletId);
@@ -147,6 +148,12 @@ export async function updateWalletBalance(
     if (pendingBalanceChange !== undefined && pendingBalanceChange !== 0) {
         updateData.pendingBalance = {
             [pendingBalanceChange > 0 ? "increment" : "decrement"]: Math.abs(pendingBalanceChange)
+        };
+    }
+
+    if (depositChange !== undefined && depositChange !== 0) {
+        updateData.deposit = {
+            [depositChange > 0 ? "increment" : "decrement"]: Math.abs(depositChange)
         };
     }
 

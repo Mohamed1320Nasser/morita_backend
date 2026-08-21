@@ -154,7 +154,7 @@ export async function handleOpenTicket(
         if (serviceId) {
             try {
                 const serviceResponse: any = await discordApiClient.get(
-                    `/api/public/services/${serviceId}/pricing`
+                    `/public/services/${serviceId}/pricing`
                 );
                 const serviceData = serviceResponse.data || serviceResponse;
                 const game = serviceData?.game || 'OSRS';

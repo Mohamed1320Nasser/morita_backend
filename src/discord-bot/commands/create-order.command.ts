@@ -1,6 +1,7 @@
 import {
     SlashCommandBuilder,
     CommandInteraction,
+    AutocompleteInteraction,
     PermissionFlagsBits,
     EmbedBuilder,
     ModalBuilder,
@@ -8,6 +9,7 @@ import {
     TextInputStyle,
     ActionRowBuilder,
 } from "discord.js";
+import { unwrapApiData } from "../utils/apiResponse.util";
 import { Command } from "../types/discord.types";
 import { discordConfig } from "../config/discord.config";
 import logger from "../../common/loggers";
@@ -41,20 +43,10 @@ export default {
         )
         .addStringOption((option) =>
             option
-                .setName("service_name")
-                .setDescription("Service name (optional, links order to service)")
-                .setRequired(false)
-        )
-        .addStringOption((option) =>
-            option
-                .setName("currency")
-                .setDescription("Currency (default: USD)")
-                .setRequired(false)
-                .addChoices(
-                    { name: "USD", value: "USD" },
-                    { name: "EUR", value: "EUR" },
-                    { name: "GBP", value: "GBP" }
-                )
+                .setName("service")
+                .setDescription("Service(s) to link — search, then add more with a comma")
+                .setRequired(true)
+                .setAutocomplete(true)
         )
         .addUserOption((option) =>
             option
@@ -62,6 +54,59 @@ export default {
                 .setDescription("Assign worker directly (optional)")
                 .setRequired(false)
         ),
+
+    async autocomplete(interaction: AutocompleteInteraction) {
+        const typed = interaction.options.getFocused();
+
+        // Several services are entered comma separated. Only the fragment after
+        // the last comma is a search term; everything before it is already
+        // chosen and must be preserved when a suggestion is picked.
+        const lastComma = typed.lastIndexOf(",");
+        const committed = lastComma >= 0 ? typed.slice(0, lastComma + 1) : "";
+        const fragment = (lastComma >= 0 ? typed.slice(lastComma + 1) : typed).trim();
+
+        const alreadyChosen = committed
+            .split(",")
+            .map(n => n.trim().toLowerCase())
+            .filter(Boolean);
+
+        try {
+            const response = await discordApiClient.get("/public/services/lookup/suggest", {
+                params: { q: fragment, limit: 25 },
+            });
+
+            const suggestions = unwrapApiData<any>(response);
+            const services: any[] = Array.isArray(suggestions)
+                ? suggestions
+                : suggestions?.services || [];
+
+            const choices = services
+                .filter(s => !alreadyChosen.includes(String(s.name).toLowerCase()))
+                .map(service => {
+                    const prefix = committed ? `${committed.trimEnd()} ` : "";
+                    // The trailing comma matters: without it, typing to search
+                    // for the next service makes the previous pick look like an
+                    // unfinished fragment, and selecting overwrites it.
+                    const value = `${prefix}${service.name}, `;
+
+                    return {
+                        // Discord rejects choice names or values over 100 chars.
+                        name: String(service.fullName || service.name).slice(0, 100),
+                        value,
+                    };
+                })
+                // A value truncated mid-name would resolve to nothing, so drop
+                // suggestions that no longer fit rather than offer a broken one.
+                .filter(choice => choice.value.length <= 100)
+                .slice(0, 25);
+
+            await interaction.respond(choices);
+        } catch (error) {
+            logger.error("[create-order] Service autocomplete failed:", error);
+            // An empty list degrades to free typing rather than breaking the command.
+            await interaction.respond([]);
+        }
+    },
 
     async execute(interaction: CommandInteraction) {
         try {
@@ -75,8 +120,8 @@ export default {
             const customerUser = interaction.options.get("customer")?.user;
             const orderValue = interaction.options.get("value")?.value as number;
             const deposit = interaction.options.get("deposit")?.value as number;
-            const serviceName = (interaction.options.get("service_name")?.value as string) || null;
-            const currency = (interaction.options.get("currency")?.value as string) || "USD";
+            const serviceName = (interaction.options.get("service")?.value as string) || null;
+            const currency = "USD";
             const workerUser = interaction.options.get("worker")?.user;
 
             if (!customerUser) {

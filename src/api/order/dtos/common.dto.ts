@@ -3,6 +3,7 @@ import {
     IsString,
     IsNumber,
     IsOptional,
+    IsArray,
     Min,
 } from "class-validator";
 
@@ -11,6 +12,17 @@ export class BaseOrderDto {
     @IsOptional()
     @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
     serviceId?: string;
+
+    /** Additional services when an order covers more than one. */
+    @IsArray()
+    @IsString({ each: true })
+    @IsOptional()
+    @Transform(({ value }) =>
+        Array.isArray(value)
+            ? value.map(v => (typeof v === "string" ? v.trim() : v)).filter(Boolean)
+            : value
+    )
+    serviceIds?: string[];
 
     @IsString()
     @IsOptional()

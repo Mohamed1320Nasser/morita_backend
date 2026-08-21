@@ -33,7 +33,7 @@ interface UpdateServiceModifierDto {
     active?: boolean;
 }
 
-@JsonController("/api/admin/services/:serviceId/modifiers")
+@JsonController("/admin/services/:serviceId/modifiers")
 @Service()
 export default class ServiceModifierController {
 

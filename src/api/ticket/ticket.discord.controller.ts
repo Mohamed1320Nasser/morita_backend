@@ -20,7 +20,7 @@ import {
 } from "./dtos";
 
 // Discord bot API - requires X-API-Key
-@JsonController("/api/discord/tickets")
+@JsonController("/discord/tickets")
 @Service()
 @UseBefore(DiscordAuthMiddleware)
 @UseBefore(DiscordRateLimitMiddleware)

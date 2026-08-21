@@ -9,7 +9,11 @@ export default {
     name: Events.InteractionCreate,
     async execute(interaction: Interaction) {
         try {
-            if (interaction.isCommand()) {
+            // Checked before isCommand(): an autocomplete interaction also
+            // satisfies isCommand() and would otherwise be run as the command.
+            if (interaction.isAutocomplete()) {
+                await handleAutocomplete(interaction);
+            } else if (interaction.isCommand()) {
                 await handleCommand(interaction);
             } else if (interaction.isButton()) {
                 await handleButton(interaction);
@@ -81,6 +85,31 @@ export default {
         }
     },
 };
+
+async function handleAutocomplete(interaction: any) {
+    const command = interaction.client.commands.get(interaction.commandName) as any;
+
+    if (!command?.autocomplete) {
+        // Discord needs a response either way or the field spins indefinitely.
+        await interaction.respond([]);
+        return;
+    }
+
+    try {
+        await command.autocomplete(interaction);
+    } catch (error) {
+        logger.error(
+            `Error in autocomplete for ${interaction.commandName}:`,
+            error
+        );
+
+        try {
+            await interaction.respond([]);
+        } catch {
+            // The 3s autocomplete window has passed; nothing to recover.
+        }
+    }
+}
 
 async function handleCommand(interaction: any) {
     const command = interaction.client.commands.get(

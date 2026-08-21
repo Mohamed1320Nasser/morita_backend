@@ -3,7 +3,7 @@ import { Service } from "typedi";
 import { Request } from "express";
 import logger from "../../common/loggers";
 
-@JsonController("/api/debug")
+@JsonController("/debug")
 @Service()
 export default class DebugController {
     @Get("/whoami")

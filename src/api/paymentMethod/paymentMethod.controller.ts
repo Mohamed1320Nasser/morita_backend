@@ -17,7 +17,7 @@ import {
 } from "./dtos";
 import { convertResponse } from "../../common/helpers/res.helper";
 
-@JsonController("/api/admin/pricing/payment-methods")
+@JsonController("/admin/pricing/payment-methods")
 @Service()
 export default class PaymentMethodController {
     constructor(private paymentMethodService: PaymentMethodService) {}
@@ -57,7 +57,7 @@ export default class PaymentMethodController {
 }
 
 // Public API for Discord bot
-@JsonController("/api/public/payment-methods")
+@JsonController("/public/payment-methods")
 @Service()
 export class PublicPaymentMethodController {
     constructor(private paymentMethodService: PaymentMethodService) {}

@@ -41,7 +41,7 @@ export async function handleTicketCreateModal(
         if (!categoryId && serviceId) {
             try {
                 const serviceResponse: any = await discordApiClient.get(
-                    `/api/public/services/${serviceId}/pricing`
+                    `/public/services/${serviceId}/pricing`
                 );
                 
                 if (serviceResponse.success && serviceResponse.data) {
@@ -59,7 +59,7 @@ export async function handleTicketCreateModal(
             
             try {
                 const categoriesResponse: any = await discordApiClient.get(
-                    "/api/public/service-categories"
+                    "/public/service-categories"
                 );
                 
                 if (

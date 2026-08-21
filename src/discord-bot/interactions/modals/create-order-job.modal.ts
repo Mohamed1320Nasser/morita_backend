@@ -5,9 +5,12 @@ import { discordApiClient } from "../../clients/DiscordApiClient";
 import { createJobClaimingEmbed, createClaimButton } from "../../utils/jobClaimingEmbed";
 import { getOrderChannelService } from "../../services/orderChannel.service";
 import { extractErrorMessage, isInsufficientBalanceError } from "../../utils/error-message.util";
+import { unwrapApiData } from "../../utils/apiResponse.util";
 import { getRedisService } from "../../../common/services/redis.service";
 
 const redisService = getRedisService();
+
+const MAX_SERVICES = 10;
 
 export async function storeOrderData(key: string, data: any): Promise<void> {
     await redisService.storeOrderData(key, data);
@@ -64,7 +67,7 @@ async function fetchTicketId(orderData: any): Promise<string | null> {
     if (!orderData.channelId) return null;
 
     try {
-        const ticketResponse = await discordApiClient.get(`/api/discord/tickets/channel/${orderData.channelId}`);
+        const ticketResponse = await discordApiClient.get(`/discord/tickets/channel/${orderData.channelId}`);
         const ticketData = ticketResponse.data.data?.data || ticketResponse.data.data || ticketResponse.data;
         return ticketData?.id || null;
     } catch (err: any) {
@@ -83,8 +86,7 @@ async function validateCustomerBalance(
         `/discord/wallets/balance/${orderData.customerDiscordId}`
     );
 
-    const responseData = balanceResponse.data || balanceResponse;
-    const balanceData = responseData.data || responseData;
+    const balanceData = unwrapApiData<any>(balanceResponse) || {};
 
     if (!balanceData.hasWallet) {
         const embed = new EmbedBuilder()
@@ -100,7 +102,26 @@ async function validateCustomerBalance(
         return null;
     }
 
-    const customerBalance = balanceData.balance;
+    const customerBalance = Number(balanceData.balance);
+
+    if (!Number.isFinite(customerBalance)) {
+        const embed = new EmbedBuilder()
+            .setTitle("❌ Could Not Read Balance")
+            .setDescription(
+                `Could not read the wallet balance for <@${orderData.customerDiscordId}>.\n\n` +
+                `Please try again, or contact an administrator if this keeps happening.`
+            )
+            .setColor(0xed4245)
+            .setTimestamp();
+
+        logger.error(
+            `[CreateOrderJob] Unreadable balance payload for ${orderData.customerDiscordId}:`,
+            balanceData
+        );
+
+        await interaction.editReply({ embeds: [embed.toJSON() as any] });
+        return null;
+    }
 
     if (customerBalance < orderData.orderValue) {
         const embed = new EmbedBuilder()
@@ -127,29 +148,68 @@ async function createOrder(orderData: any, ticketId: string | null, jobDetails: 
     let categoryId = null;
     let serviceName = null;
 
-    // 1. If service_name provided, look it up
+    let serviceIds: string[] = [];
+    let serviceNames: string[] = [];
+
+    // 1. Resolve every service named in the field. Names are comma separated so
+    // one order can cover several services; the first becomes the primary.
     if (orderData.serviceName && orderData.serviceName.trim() !== "") {
-        const lookupResult = await lookupService(orderData.serviceName);
+        const requested = orderData.serviceName
+            .split(",")
+            .map((n: string) => n.trim())
+            .filter(Boolean);
 
-        if (!lookupResult.success || !lookupResult.found) {
-            // Service not found or multiple matches
-            const errorMessage = lookupResult.message || "Service not found";
-            const suggestionsList = lookupResult.suggestions && lookupResult.suggestions.length > 0
-                ? `\n\n**Did you mean:**\n${lookupResult.suggestions.map((s: any) => `• ${s.fullName}`).join("\n")}`
-                : "";
-
-            throw new Error(`❌ ${errorMessage}${suggestionsList}`);
+        if (requested.length > MAX_SERVICES) {
+            throw new Error(
+                `❌ An order can link at most ${MAX_SERVICES} services (${requested.length} given).`
+            );
         }
 
-        // Exactly one match found
-        serviceId = lookupResult.service.id;
-        categoryId = lookupResult.service.category?.id || null;
-        serviceName = lookupResult.service.name;
+        const resolved: any[] = [];
+        const failures: string[] = [];
+
+        for (const name of requested) {
+            const lookupResult = await lookupService(name);
+
+            if (!lookupResult.success || !lookupResult.found) {
+                const reason = lookupResult.message || "Service not found";
+                const suggestions = lookupResult.suggestions?.length
+                    ? `\n   Did you mean: ${lookupResult.suggestions
+                          .map((s: any) => s.fullName)
+                          .join(", ")}`
+                    : "";
+                failures.push(`• **${name}** — ${reason}${suggestions}`);
+                continue;
+            }
+
+            resolved.push(lookupResult.service);
+        }
+
+        // Reject the whole order rather than create one that silently omits a
+        // service the customer asked for.
+        if (failures.length > 0) {
+            throw new Error(
+                `❌ Could not resolve ${failures.length} of ${requested.length} services:\n\n${failures.join("\n")}`
+            );
+        }
+
+        const unique = new Map<string, any>();
+        for (const service of resolved) {
+            if (!unique.has(service.id)) unique.set(service.id, service);
+        }
+
+        const services = [...unique.values()];
+        serviceIds = services.map(s => s.id);
+        serviceNames = services.map(s => s.name);
+
+        serviceId = services[0].id;
+        categoryId = services[0].category?.id || null;
+        serviceName = serviceNames.join(", ");
 
         // NEW: Update ticket with serviceId if ticket exists
         if (ticketId) {
             try {
-                await discordApiClient.patch(`/api/discord/tickets/${ticketId}`, {
+                await discordApiClient.patch(`/discord/tickets/${ticketId}`, {
                     serviceId: serviceId,
                     categoryId: categoryId,
                 });
@@ -163,7 +223,7 @@ async function createOrder(orderData: any, ticketId: string | null, jobDetails: 
     // 2. If no service_name but ticket exists, try to use ticket's service
     if (!serviceId && ticketId) {
         try {
-            const ticketResponse = await discordApiClient.get(`/api/tickets/${ticketId}`);
+            const ticketResponse = await discordApiClient.get(`/tickets/${ticketId}`);
             const ticketData = ticketResponse.data.data || ticketResponse.data;
 
             if (ticketData?.serviceId) {
@@ -184,6 +244,7 @@ async function createOrder(orderData: any, ticketId: string | null, jobDetails: 
         ticketId: ticketId || null,
         discordChannelId: orderData.channelId || null,
         serviceId: serviceId,
+        serviceIds: serviceIds.length > 0 ? serviceIds : undefined,
         methodId: null,
         paymentMethodId: null,
         orderValue: orderData.orderValue,
@@ -199,7 +260,7 @@ async function createOrder(orderData: any, ticketId: string | null, jobDetails: 
     // 3. Update ticket conversion status if ticket exists
     if (ticketId) {
         try {
-            await discordApiClient.patch(`/api/discord/tickets/${ticketId}`, {
+            await discordApiClient.patch(`/discord/tickets/${ticketId}`, {
                 convertedToOrder: true,
                 conversionAt: new Date(),
             });
@@ -219,7 +280,7 @@ async function createOrder(orderData: any, ticketId: string | null, jobDetails: 
 
 async function lookupService(serviceName: string) {
     try {
-        const response = await discordApiClient.get("/api/public/services/lookup/by-name", {
+        const response = await discordApiClient.get("/public/services/lookup/by-name", {
             params: { name: serviceName },
         });
 
@@ -265,12 +326,23 @@ function buildConfirmationEmbed(
             text: order.orderNumber ? `Order #${order.orderNumber}` : `Order ID: ${order.orderId}`
         });
 
-    // Show service name if linked
-    if (order.service && order.service.name) {
+    // An order can cover several services, so list them all rather than only
+    // the primary one stored on order.serviceId.
+    const linkedServices: string[] = Array.isArray(order.services)
+        ? order.services
+              .map((link: any) => link?.service?.name)
+              .filter(Boolean)
+        : [];
+
+    if (linkedServices.length === 0 && order.service?.name) {
+        linkedServices.push(order.service.name);
+    }
+
+    if (linkedServices.length > 0) {
         embed.addFields([
             {
-                name: "🎯 Service",
-                value: order.service.name,
+                name: linkedServices.length > 1 ? "🎯 Services" : "🎯 Service",
+                value: linkedServices.join("\n").substring(0, 1024),
                 inline: true
             },
         ]);

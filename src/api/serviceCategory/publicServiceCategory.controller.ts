@@ -2,7 +2,7 @@ import { JsonController, Get } from "routing-controllers";
 import { Service } from "typedi";
 import ServiceCategoryService from "./serviceCategory.service";
 
-@JsonController("/api/public/service-categories")
+@JsonController("/public/service-categories")
 @Service()
 export default class PublicServiceCategoryController {
     constructor(private serviceCategoryService: ServiceCategoryService) {}

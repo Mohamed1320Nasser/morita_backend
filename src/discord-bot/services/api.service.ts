@@ -59,7 +59,7 @@ export class ApiService {
                     data: ServiceCategory[];
                 };
                 error: boolean;
-            }> = await this.client.get("/api/public/service-categories");
+            }> = await this.client.get("/public/service-categories");
 
             if (response.data.data.success) {
                 return response.data.data.data;
@@ -81,7 +81,7 @@ export class ApiService {
                     data: ServiceCategory;
                 };
                 error: boolean;
-            }> = await this.client.get(`/api/public/service-categories/${id}`);
+            }> = await this.client.get(`/public/service-categories/${id}`);
 
             if (response.data.data.success) {
                 return response.data.data.data;
@@ -104,7 +104,7 @@ export class ApiService {
                     data: Service[];
                 };
                 error: boolean;
-            }> = await this.client.get("/api/public/services", { params });
+            }> = await this.client.get("/public/services", { params });
 
             if (response.data.data.success) {
                 return response.data.data.data;
@@ -119,7 +119,7 @@ export class ApiService {
     async getServiceById(id: string): Promise<Service> {
         try {
             const response: AxiosResponse<{ success: boolean; data: Service }> =
-                await this.client.get(`/api/public/services/${id}/pricing`);
+                await this.client.get(`/public/services/${id}/pricing`);
 
             if (response.data.success) {
                 return response.data.data;
@@ -137,7 +137,7 @@ export class ApiService {
                 success: boolean;
                 data: PricingMethod[];
             }> = await this.client.get(
-                `/api/public/pricing/methods/service/${serviceId}`
+                `/public/pricing/methods/service/${serviceId}`
             );
 
             if (response.data.success) {
@@ -173,7 +173,7 @@ export class ApiService {
                     data: PaymentMethod[];
                 };
                 error: boolean;
-            }> = await this.client.get("/api/public/payment-methods");
+            }> = await this.client.get("/public/payment-methods");
 
             if (response.data.data.success) {
                 const paymentMethods = response.data.data.data;
@@ -202,7 +202,7 @@ export class ApiService {
                 success: boolean;
                 data: PriceCalculationResult;
             }> = await this.client.post(
-                "/api/public/pricing/calculate",
+                "/public/pricing/calculate",
                 request
             );
 
@@ -227,7 +227,7 @@ export class ApiService {
                 };
                 error: boolean;
             }> = await this.client.get(
-                "/api/public/service-categories/with-services"
+                "/public/service-categories/with-services"
             );
 
             if (response.data.data.success) {
@@ -251,7 +251,7 @@ export class ApiService {
                 };
                 error: boolean;
             }> = await this.client.get(
-                `/api/public/services/${serviceId}/with-pricing`
+                `/public/services/${serviceId}/with-pricing`
             );
 
             if (response.data.data.success) {
@@ -452,7 +452,7 @@ export class ApiService {
      */
     async getTicketById(ticketId: string): Promise<any> {
         try {
-            const response = await this.client.get(`/api/discord/tickets/${ticketId}`);
+            const response = await this.client.get(`/discord/tickets/${ticketId}`);
             return response.data?.data || null;
         } catch (error) {
             logger.error("Error fetching ticket:", error);
@@ -466,7 +466,7 @@ export class ApiService {
     async updateTicketStatus(ticketId: string, status: string, reason?: string): Promise<any> {
         try {
             const response = await this.client.patch(
-                `/api/discord/tickets/${ticketId}/status`,
+                `/discord/tickets/${ticketId}/status`,
                 { status, reason }
             );
             return response.data?.data || response.data;
@@ -482,7 +482,7 @@ export class ApiService {
     async markTicketDelivered(ticketId: string): Promise<any> {
         try {
             const response = await this.client.patch(
-                `/api/discord/tickets/${ticketId}/status`,
+                `/discord/tickets/${ticketId}/status`,
                 { status: "DELIVERED", accountDelivered: true }
             );
             return response.data?.data || response.data;

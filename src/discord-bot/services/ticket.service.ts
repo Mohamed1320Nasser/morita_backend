@@ -123,7 +123,7 @@ export class TicketService {
             });
 
             const ticketResponse = await this.apiClient.post(
-                "/api/discord/tickets",
+                "/discord/tickets",
                 {
                     customerDiscordId: user.id,
                     categoryId: ticketData.categoryId,
@@ -230,7 +230,7 @@ export class TicketService {
             });
 
             const ticketResponse = await this.apiClient.post(
-                "/api/discord/tickets",
+                "/discord/tickets",
                 {
                     customerDiscordId: user.id,
                     categoryId: ticketData.categoryId,
@@ -365,7 +365,7 @@ export class TicketService {
             // Create ticket in database with accountId
             logger.info(`[TicketService] Creating ticket with accountId: ${accountId}, customerDiscordId: ${user.id}`);
             const ticketResponse = await this.apiClient.post(
-                "/api/discord/tickets",
+                "/discord/tickets",
                 {
                     customerDiscordId: user.id,
                     channelId: channel.id,
@@ -893,7 +893,7 @@ export class TicketService {
     ): Promise<void> {
         try {
             await this.apiClient.post(
-                `/api/discord/tickets/${ticketId}/metadata`,
+                `/discord/tickets/${ticketId}/metadata`,
                 metadata
             );
             logger.info(`[TicketService] Saved metadata for ticket ${ticketId}`);
@@ -1222,7 +1222,7 @@ export class TicketService {
     ): Promise<void> {
         try {
             const [_, ticket] = await Promise.all([
-                this.apiClient.post(`/api/discord/tickets/${ticketId}/close`, { reason })
+                this.apiClient.post(`/discord/tickets/${ticketId}/close`, { reason })
                     .catch(() => null),
                 this.getTicketById(ticketId),
             ]);
@@ -1351,7 +1351,7 @@ export class TicketService {
     async getTicketById(ticketId: string): Promise<any> {
         try {
             const response = await this.apiClient.get(
-                `/api/discord/tickets/${ticketId}`
+                `/discord/tickets/${ticketId}`
             );
 
             const responseData = response.data.data || response.data;
@@ -1370,7 +1370,7 @@ export class TicketService {
     async getTicketByChannelId(channelId: string): Promise<any> {
         try {
             const response = await this.apiClient.get(
-                `/api/discord/tickets/channel/${channelId}`
+                `/discord/tickets/channel/${channelId}`
             );
             
             const responseData = response.data.data || response.data;
@@ -1389,7 +1389,7 @@ export class TicketService {
     async getOpenTicketsForUser(discordId: string): Promise<any[]> {
         try {
             const response = await this.apiClient.get(
-                `/api/discord/tickets/customer/${discordId}/open`
+                `/discord/tickets/customer/${discordId}/open`
             );
             
             const responseData = response.data.data || response.data;
@@ -1412,7 +1412,7 @@ export class TicketService {
     ): Promise<void> {
         try {
             await this.apiClient.patch(
-                `/api/discord/tickets/${ticketId}/status`,
+                `/discord/tickets/${ticketId}/status`,
                 {
                     status,
                     reason,

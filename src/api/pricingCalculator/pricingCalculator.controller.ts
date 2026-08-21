@@ -47,7 +47,7 @@ class CalculateLevelRangeDto {
     endLevel: number;
 }
 
-@JsonController("/api/public/pricing")
+@JsonController("/public/pricing")
 @Service()
 export default class PricingCalculatorController {
     constructor(private pricingCalculatorService: PricingCalculatorService) {}

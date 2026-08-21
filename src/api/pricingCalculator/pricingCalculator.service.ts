@@ -982,16 +982,50 @@ export default class PricingCalculatorService {
         return options;
     }
 
+    /**
+     * Method-level modifiers across every segment of a group, de-duplicated by
+     * name so a modifier defined on each segment is offered once.
+     */
+    private collectSegmentModifiers(segments: Array<{ method: any }>): MethodOption["modifiers"] {
+        const seen = new Map<string, any>();
+
+        for (const segment of segments) {
+            for (const modifier of segment.method?.modifiers || []) {
+                // Some rows are entered as "- No Cannon" and others as
+                // "No Cannon"; the dash is a data-entry artefact, not a
+                // different extra, so it must not create a duplicate.
+                const name = String(modifier.name || "").replace(/^[-–—\s]+/, "").trim();
+                const key = name.toLowerCase();
+                if (!key || seen.has(key)) continue;
+
+                seen.set(key, {
+                    name,
+                    type: modifier.modifierType,
+                    displayType: modifier.displayType,
+                    value: Number(modifier.value),
+                    applied: false,
+                });
+            }
+        }
+
+        return [...seen.values()];
+    }
+
     private groupMethodsByName(pricingMethods: any[]): Record<string, any[]> {
         const groups: Record<string, any[]> = {};
 
         for (const method of pricingMethods) {
-            // Extract base name (remove level range patterns like "1-27", "(1-27)", etc.)
-            let baseName = method.name
-                .replace(/\s*\(\d+-\d+\)\s*/g, '') // Remove (1-27)
-                .replace(/\s*\d+-\d+\s*/g, '') // Remove 1-27
-                .replace(/\s+$/g, '') // Trim trailing spaces
-                .trim();
+            // groupName is the authoritative grouping when set. Fall back to the
+            // method name with any level range stripped, which is how ungrouped
+            // multi-segment methods are named.
+            let baseName = (method.groupName || "").trim();
+
+            if (!baseName) {
+                baseName = method.name
+                    .replace(/\s*\(\d+-\d+\)\s*/g, '') // Remove (1-27)
+                    .replace(/\s*\d+-\d+\s*/g, '') // Remove 1-27
+                    .trim();
+            }
 
             if (!baseName) {
                 baseName = method.name;
@@ -1022,7 +1056,15 @@ export default class PricingCalculatorService {
             totalPrice: number;
         }> = [];
 
-        let currentLevel = startLevel;
+        // A group that starts above the requested level (Barbarian Fishing at 48
+        // for a 1-66 request) still describes real work, so begin at the first
+        // level the group can actually cover rather than discarding it.
+        const groupStart = Math.min(...methods.map(m => m.startLevel || 1));
+        let currentLevel = Math.max(startLevel, groupStart);
+
+        if (currentLevel >= endLevel) {
+            return null;
+        }
 
         while (currentLevel < endLevel) {
             const availableMethods = methods.filter(m => {
@@ -1031,7 +1073,20 @@ export default class PricingCalculatorService {
                 return currentLevel >= methodStart && currentLevel < methodEnd;
             });
 
+            // Most ranges are written contiguously (48-58, 58-72) but some are
+            // written as 35-69 / 70-99, leaving a one-level seam. Step over a
+            // seam like that; a genuine hole still rejects the group.
             if (availableMethods.length === 0) {
+                const nextStart = methods
+                    .map(m => m.startLevel || 1)
+                    .filter(s => s > currentLevel)
+                    .sort((a, b) => a - b)[0];
+
+                if (nextStart !== undefined && nextStart - currentLevel <= 1) {
+                    currentLevel = nextStart;
+                    continue;
+                }
+
                 return null;
             }
 
@@ -1100,7 +1155,7 @@ export default class PricingCalculatorService {
 
         return {
             methodId: `group_${groupName.toLowerCase().replace(/\s+/g, '_')}`,
-            methodName: `${groupName} Only`,
+            methodName: groupName,
             basePrice: 0,
             pricingUnit: "PER_LEVEL",
             levelRanges: segments.map(seg => ({
@@ -1111,7 +1166,13 @@ export default class PricingCalculatorService {
                 methodName: seg.method.name,
                 ratePerXp: seg.basePrice,
             })),
-            modifiers: allModifiers,
+            // The group replaces its segments in the options list, so it has to
+            // carry their method-level modifiers too or those extras vanish from
+            // the quote. Listed, never applied - same as the single-method path.
+            modifiers: [
+                ...allModifiers,
+                ...this.collectSegmentModifiers(segments),
+            ],
             subtotal: Math.round(totalBasePrice * 100) / 100,
             modifiersTotal: Math.round(totalModifiers * 100) / 100,
             finalPrice: Math.round(finalPrice * 100) / 100,
@@ -1394,7 +1455,12 @@ export default class PricingCalculatorService {
                 methodName: seg.method.name,
                 ratePerXp: seg.basePrice,
             })),
-            modifiers: allModifiers,
+            // Same reasoning as the group option: this row stands in for several
+            // methods, so the extras available on each must still be listed.
+            modifiers: [
+                ...allModifiers,
+                ...this.collectSegmentModifiers(segments),
+            ],
             subtotal: Math.round(totalBasePrice * 100) / 100,
             modifiersTotal: Math.round(totalModifiers * 100) / 100,
             finalPrice: Math.round(finalPrice * 100) / 100,
