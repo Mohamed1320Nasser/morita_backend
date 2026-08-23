@@ -39,6 +39,7 @@ import { handleReportIssueButton } from "./report-issue.button";
 import { handleOrderInfoButton } from "./order-info.button";
 import { handleStartWork } from "./start-work.button";
 import { handleLeaveReviewButton } from "./leave-review.button";
+import { handleTicketReviewButton } from "./ticket-review.button";
 import { handleConfirmCloseTicket, handleCancelCloseTicket } from "./confirm-close-ticket.button";
 import { handleResolveIssueButton } from "./resolve-issue.button";
 import { handleSubmitAccountData } from "./submit-account-data.button";
@@ -254,6 +255,12 @@ export async function handleButtonInteraction(
 
         if (customId.startsWith("payment_all_")) {
             await handlePaymentAll(interaction);
+            return;
+        }
+
+        // Checked before the order review prefixes, which are substrings of it.
+        if (customId.startsWith("ticket_review_")) {
+            await handleTicketReviewButton(interaction);
             return;
         }
 

@@ -489,12 +489,82 @@ export default class KpiService {
                 case 'monthly':
                     gte = new Date(now.getFullYear(), now.getMonth(), 1);
                     break;
+                case 'weekly':
+                    // Week starts Monday. getDay() is 0 for Sunday, so shift it.
+                    const dayOfWeek = (now.getDay() + 6) % 7;
+                    gte = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek);
+                    break;
                 default: // 'all'
                     gte = undefined;
             }
         }
 
         return { gte, lte };
+    }
+
+    /**
+     * The calendar period immediately before the current one: last month rather
+     * than the previous 30 days, so "this month vs last month" compares whole
+     * months. Ends one millisecond before the current period starts, so the two
+     * never overlap.
+     *
+     * A custom startDate has no calendar meaning, so that case falls back to a
+     * window of the same length placed directly before it.
+     */
+    private previousDateRange(period?: string, startDate?: string, endDate?: string) {
+        const { gte, lte } = this.calculateDateRange(period, startDate, endDate);
+
+        if (!gte) {
+            return { gte: undefined, lte: undefined };
+        }
+
+        const endsAt = new Date(gte.getTime() - 1);
+
+        if (startDate) {
+            const span = (lte || new Date()).getTime() - gte.getTime();
+            return { gte: new Date(gte.getTime() - span), lte: endsAt };
+        }
+
+        let previousStart: Date;
+        switch (period) {
+            case 'yearly':
+                previousStart = new Date(gte.getFullYear() - 1, 0, 1);
+                break;
+            case 'quarterly':
+                previousStart = new Date(gte.getFullYear(), gte.getMonth() - 3, 1);
+                break;
+            case 'monthly':
+                previousStart = new Date(gte.getFullYear(), gte.getMonth() - 1, 1);
+                break;
+            case 'weekly':
+                previousStart = new Date(
+                    gte.getFullYear(),
+                    gte.getMonth(),
+                    gte.getDate() - 7
+                );
+                break;
+            default:
+                return { gte: undefined, lte: undefined };
+        }
+
+        return { gte: previousStart, lte: endsAt };
+    }
+
+    private static changeBetween(current: number, previous: number) {
+        const difference = current - previous;
+        const percentChange =
+            previous === 0
+                ? current === 0
+                    ? 0
+                    : null
+                : Math.round((difference / previous) * 100 * 10) / 10;
+
+        return {
+            current,
+            previous,
+            difference: Math.round(difference * 100) / 100,
+            percentChange,
+        };
     }
 
     async getSupportResponseTime(query: SupportResponseQueryDto): Promise<SupportResponseResponse> {
@@ -2169,8 +2239,14 @@ export default class KpiService {
             );
         }
 
+        const prior = this.previousDateRange(period, startDate, endDate);
+        const comparison = prior.gte
+            ? await this.compareIssueTotals(summary, prior.gte, prior.lte!)
+            : null;
+
         return {
             summary,
+            comparison,
             workerStats: workerIssueStats,
             recentIssues: issues.slice(0, 10).map(issue => ({
                 issueId: issue.id,
@@ -2192,6 +2268,42 @@ export default class KpiService {
                     )
                     : null
             }))
+        };
+    }
+
+    private async compareIssueTotals(summary: any, gte: Date, lte: Date) {
+        const [totalIssues, openIssues, urgentIssues, resolvedRows] = await Promise.all([
+            prisma.orderIssue.count({ where: { createdAt: { gte, lte } } }),
+            prisma.orderIssue.count({ where: { createdAt: { gte, lte }, status: 'OPEN' } }),
+            prisma.orderIssue.count({ where: { createdAt: { gte, lte }, priority: 'URGENT' } }),
+            prisma.orderIssue.findMany({
+                where: { createdAt: { gte, lte }, resolvedAt: { not: null } },
+                select: { createdAt: true, resolvedAt: true },
+            }),
+        ]);
+
+        let avgResolutionTimeHours = 0;
+        if (resolvedRows.length > 0) {
+            const total = resolvedRows.reduce(
+                (sum, row) =>
+                    sum + (new Date(row.resolvedAt!).getTime() - new Date(row.createdAt).getTime()),
+                0
+            );
+            avgResolutionTimeHours = parseFloat(
+                (total / resolvedRows.length / (1000 * 60 * 60)).toFixed(2)
+            );
+        }
+
+        return {
+            periodStart: gte,
+            periodEnd: lte,
+            totalIssues: KpiService.changeBetween(summary.totalIssues, totalIssues),
+            openIssues: KpiService.changeBetween(summary.openIssues, openIssues),
+            urgentIssues: KpiService.changeBetween(summary.urgentIssues, urgentIssues),
+            avgResolutionTimeHours: KpiService.changeBetween(
+                summary.avgResolutionTimeHours,
+                avgResolutionTimeHours
+            ),
         };
     }
 

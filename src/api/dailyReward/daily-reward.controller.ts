@@ -47,6 +47,21 @@ export default class DailyRewardController {
         return this.dailyRewardService.getClaimStatus(discordId);
     }
 
+    /**
+     * Members who joined long enough ago, have never claimed, and have not been
+     * reminded. Derived from the database on every call so pending reminders
+     * survive a bot restart.
+     */
+    @Get("/pending-reminders")
+    async getPendingReminders() {
+        return this.dailyRewardService.getPendingReminders();
+    }
+
+    @Post("/mark-reminded")
+    async markReminded(@Body() data: { discordIds: string[] }) {
+        return this.dailyRewardService.markReminded(data.discordIds || []);
+    }
+
     @Post("/claim")
     async claimReward(@Body() data: ClaimRewardDto) {
         return this.dailyRewardService.claimReward(data.discordId);

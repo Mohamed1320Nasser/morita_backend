@@ -10,7 +10,7 @@ export class CategoryButtonComponent {
         const button = new ButtonBuilder()
             .setCustomId(`pricing_category_${category.id}_toggle`)
             .setLabel(
-                `${category.emoji} ${category.name} - Click Here ${isExpanded ? "▲" : "▼"}`
+                `${category.emoji} ${category.name} ${isExpanded ? "▲" : "▼"}`
             )
             .setStyle(ButtonStyle.Secondary);
 

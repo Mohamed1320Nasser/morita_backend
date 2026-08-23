@@ -26,6 +26,7 @@ import {
     buildGrandTotal,
     buildExtrasTable,
     collectAdjustments,
+    applyCalculatorBranding,
 } from "../utils/priceEmbed";
 
 /**
@@ -498,6 +499,7 @@ async function processSingleSkillRequest(message: Message, requestString: string
             .setTitle(`${data.service.emoji || '⭐'} ${data.service.name} Calculator`)
             .setColor(0xfca311)
             .setTimestamp();
+        applyCalculatorBranding(embed);
 
         const cheapestMethod = data.methodOptions?.find((m: any) => m.isCheapest);
         const allDiscounts = cheapestMethod?.modifiers?.filter((m: any) => m.applied && Number(m.value) < 0) || [];
@@ -899,6 +901,7 @@ async function processSingleBossCalculation(
             .setTitle(`🔥 Bossing Calculator`)
             .setColor(0xfca311)
             .setTimestamp();
+        applyCalculatorBranding(embed);
 
         const serviceModifiers = service.serviceModifiers || [];
         const discountModifiers = serviceModifiers.filter((m: any) =>
@@ -1371,6 +1374,7 @@ async function handleBatchMinigameQuote(
             .setTitle(`🎮 Minigame Batch Quote`)
             .setColor(0xfca311)
             .setTimestamp();
+        applyCalculatorBranding(embed);
 
         let itemsList = `\`\`\`yml\n`;
         for (let i = 0; i < calculations.length; i++) {
@@ -1582,6 +1586,7 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
                 .setTitle(`${service.emoji || '🎮'} ${service.name}`)
                 .setColor(0xfca311)
                 .setTimestamp();
+            applyCalculatorBranding(embed);
 
             // Get loyalty discount from cheapest method for top table
             const cheapest = methodResults[0];
@@ -1653,6 +1658,7 @@ async function handleMinigamesCommand(message: Message, apiService: ApiService) 
                 .setTitle(`${service.emoji || '🎮'} ${service.name}`)
                 .setColor(0xfca311)
                 .setTimestamp();
+            applyCalculatorBranding(embed);
 
             // Get loyalty discount for top table
             const loyaltyDiscountPercent = result.loyaltyDiscount?.discountPercent || 0;
@@ -1922,6 +1928,7 @@ async function handleBatchIronmanQuote(
             .setTitle(`🔗 Ironman Batch Quote`)
             .setColor(0xfca311)
             .setTimestamp();
+        applyCalculatorBranding(embed);
 
         let itemsList = `\`\`\`yml\n`;
         for (let i = 0; i < calculations.length; i++) {
@@ -2133,6 +2140,7 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
                 .setTitle(`${service.emoji || '🔗'} ${service.name}`)
                 .setColor(0xfca311)
                 .setTimestamp();
+            applyCalculatorBranding(embed);
 
             // Get loyalty discount from cheapest method for top table
             const cheapest = methodResults[0];
@@ -2204,6 +2212,7 @@ async function handleIronmanCommand(message: Message, apiService: ApiService) {
                 .setTitle(`${service.emoji || '🔗'} ${service.name}`)
                 .setColor(0xfca311)
                 .setTimestamp();
+            applyCalculatorBranding(embed);
 
             // Get loyalty discount for top table
             const loyaltyDiscountPercent = result.loyaltyDiscount?.discountPercent || 0;
@@ -2652,6 +2661,7 @@ async function sendQuoteEmbed(
         .setTitle(`${result.emoji} ${result.title}`)
         .setColor(0xfca311)
         .setTimestamp();
+    applyCalculatorBranding(embed);
 
     // Get loyalty discount from first method (all should have same discount %)
     const loyaltyDiscountPercent = result.methods[0]?.loyaltyDiscount?.discountPercent || 0;

@@ -13,6 +13,7 @@ import { handleCreateOrderJobModal } from "./create-order-job.modal";
 import { handleCompleteOrderModal } from "./complete-order.modal";
 import { handleReportIssueModal } from "./report-issue.modal";
 import { handleOrderReviewModal } from "./order-review.modal";
+import { handleTicketReviewModal } from "./ticket-review.modal";
 import { handleResolveApproveWorkCompleteModal } from "./resolve-approve-work-complete.modal";
 import { handleResolveRequestCorrectionsModal } from "./resolve-request-corrections.modal";
 import { handleResolveApproveCustomerRefundModal } from "./resolve-approve-customer-refund.modal";
@@ -62,6 +63,10 @@ const patternModalHandlers: Array<{
     {
         pattern: /^report_issue_/,
         handler: handleReportIssueModal,
+    },
+    {
+        pattern: /^ticket_review_/,
+        handler: handleTicketReviewModal,
     },
     {
         pattern: /^order_review_/,

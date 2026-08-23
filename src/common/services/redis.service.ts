@@ -170,6 +170,57 @@ export class RedisService {
     }
 
     /**
+     * Delete every key matching a glob pattern, e.g. "pricing:range:abc:*".
+     *
+     * Uses SCAN rather than KEYS: KEYS walks the whole keyspace in one blocking
+     * call, which stalls every other client on a large database.
+     *
+     * Returns how many keys were removed.
+     */
+    async deleteByPattern(pattern: string): Promise<number> {
+        try {
+            if (this.client && this.isConnected) {
+                let cursor = "0";
+                let removed = 0;
+
+                do {
+                    const [next, keys] = await this.client.scan(
+                        cursor,
+                        "MATCH",
+                        pattern,
+                        "COUNT",
+                        200
+                    );
+                    cursor = next;
+
+                    if (keys.length > 0) {
+                        await this.client.del(...keys);
+                        removed += keys.length;
+                    }
+                } while (cursor !== "0");
+
+                return removed;
+            }
+
+            // Fallback cache is a plain Map, so translate the glob by hand.
+            const matcher = new RegExp(
+                "^" + pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$"
+            );
+            let removed = 0;
+            for (const key of Array.from(this.fallbackCache.keys())) {
+                if (matcher.test(key)) {
+                    this.fallbackCache.delete(key);
+                    removed++;
+                }
+            }
+            return removed;
+        } catch (error) {
+            logger.error(`[Redis] Error deleting keys matching ${pattern}:`, error);
+            return 0;
+        }
+    }
+
+    /**
      * Check if key exists
      */
     async exists(key: string): Promise<boolean> {

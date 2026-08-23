@@ -76,11 +76,67 @@ export default class DailyRewardService {
                 ...(data.currencyEmoji !== undefined && { currencyEmoji: data.currencyEmoji }),
                 ...(data.gifUrl !== undefined && { gifUrl: data.gifUrl }),
                 ...(data.thumbnailUrl !== undefined && { thumbnailUrl: data.thumbnailUrl }),
+                ...(data.reminderEnabled !== undefined && {
+                    reminderEnabled: data.reminderEnabled,
+                }),
+                ...(data.reminderAfterHours !== undefined && {
+                    reminderAfterHours: data.reminderAfterHours,
+                }),
+                ...(data.reminderChannelId !== undefined && {
+                    reminderChannelId: data.reminderChannelId || null,
+                }),
             },
         });
 
         logger.info("[DailyReward] Configuration updated");
         return config;
+    }
+
+    /**
+     * Members due a nudge about the daily reward: joined at least
+     * reminderAfterHours ago, never claimed, and not already reminded.
+     */
+    async getPendingReminders() {
+        const config = await this.getConfig();
+
+        if (!config.isEnabled || !config.reminderEnabled) {
+            return { enabled: false, channelId: null, users: [] };
+        }
+
+        const cutoff = new Date(Date.now() - config.reminderAfterHours * 60 * 60 * 1000);
+
+        const users = await prisma.user.findMany({
+            where: {
+                discordId: { not: null },
+                deletedAt: null,
+                createdAt: { lte: cutoff },
+                dailyRewardRemindedAt: null,
+                dailyRewardClaims: { none: {} },
+            },
+            select: { id: true, discordId: true, discordUsername: true },
+            take: 50,
+        });
+
+        return {
+            enabled: true,
+            channelId: config.reminderChannelId || null,
+            currencyName: config.currencyName,
+            currencyEmoji: config.currencyEmoji,
+            users,
+        };
+    }
+
+    async markReminded(discordIds: string[]) {
+        if (discordIds.length === 0) {
+            return { updated: 0 };
+        }
+
+        const result = await prisma.user.updateMany({
+            where: { discordId: { in: discordIds } },
+            data: { dailyRewardRemindedAt: new Date() },
+        });
+
+        return { updated: result.count };
     }
 
     async getClaimStatus(discordId: string): Promise<ClaimStatus> {

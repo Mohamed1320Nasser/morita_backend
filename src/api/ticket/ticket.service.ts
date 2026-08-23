@@ -594,6 +594,47 @@ export default class TicketService {
     }
 
     /**
+     * Record customer feedback on a ticket.
+     *
+     * Only the customer who opened it may review, and only once, matching how
+     * order reviews behave.
+     */
+    async addReview(
+        id: string,
+        data: { customerDiscordId: string; rating: number; review?: string }
+    ) {
+        if (!Number.isInteger(data.rating) || data.rating < 1 || data.rating > 5) {
+            throw new BadRequestError("Rating must be a whole number between 1 and 5");
+        }
+
+        const ticket = await prisma.ticket.findUnique({
+            where: { id },
+            include: { customer: { select: { discordId: true } } },
+        });
+
+        if (!ticket) {
+            throw new NotFoundError("Ticket not found");
+        }
+
+        if (ticket.customer?.discordId !== data.customerDiscordId) {
+            throw new BadRequestError("You are not the customer for this ticket");
+        }
+
+        if (ticket.rating || ticket.review) {
+            throw new BadRequestError("Ticket has already been reviewed");
+        }
+
+        return prisma.ticket.update({
+            where: { id },
+            data: {
+                rating: data.rating,
+                review: data.review?.trim() || null,
+                reviewedAt: new Date(),
+            },
+        });
+    }
+
+    /**
      * Get ticket statistics
      */
     async getStats() {

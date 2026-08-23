@@ -46,6 +46,22 @@ export function buildButtonsFromTicketTypes(types: any[]): ButtonBuilder[] {
     });
 }
 
+export function getTicketTypeLabel(ticketType: string): string {
+    const labels: Record<string, string> = {
+        PURCHASE_SERVICES_OSRS: "OSRS Service",
+        PURCHASE_SERVICES_RS3: "RS3 Service",
+        BUY_GOLD_OSRS: "Buy OSRS Gold",
+        BUY_GOLD_RS3: "Buy RS3 Gold",
+        SELL_GOLD_OSRS: "Sell OSRS Gold",
+        SELL_GOLD_RS3: "Sell RS3 Gold",
+        SWAP_CRYPTO: "Crypto Swap",
+        PURCHASE_ACCOUNT: "Account Purchase",
+        GENERAL: "Support",
+    };
+
+    return labels[ticketType] || "Support";
+}
+
 function getEmojiForType(ticketType: string): string {
     const emojiMap: Record<string, string> = {
         PURCHASE_SERVICES_OSRS: "🎮",

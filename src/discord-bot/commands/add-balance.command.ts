@@ -52,14 +52,14 @@ export default {
         )
         .addStringOption(option =>
             option
-                .setName("ref")
+                .setName("reference")
                 .setDescription("Payment reference/ID (optional)")
                 .setRequired(false)
                 .setMaxLength(100)
         )
         .addStringOption(option =>
             option
-                .setName("method")
+                .setName("payment_method")
                 .setDescription("Payment method (optional)")
                 .setRequired(false)
                 .setMaxLength(50)
@@ -131,8 +131,8 @@ function extractOptions(interaction: CommandInteraction) {
         amount: interaction.options.get("amount")?.value as number,
         transactionType: (interaction.options.get("type")?.value as string) || "BALANCE",
         note: interaction.options.get("note")?.value as string | undefined,
-        reference: interaction.options.get("ref")?.value as string | undefined,
-        paymentMethod: interaction.options.get("method")?.value as string | undefined,
+        reference: interaction.options.get("reference")?.value as string | undefined,
+        paymentMethod: interaction.options.get("payment_method")?.value as string | undefined,
         specifiedUser: interaction.options.get("user")?.user || null,
     };
 }

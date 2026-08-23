@@ -6,6 +6,22 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { TrackReferralDto, GiveRewardDto, GetReferralsDto } from './dtos';
 import ReferralRewardService from '../referralReward/referral-reward.service';
 
+function summariseRetention(referralCount: number, leftCount: number) {
+  const activeCount = Math.max(0, referralCount - leftCount);
+  const retentionRate = referralCount > 0 ? (activeCount / referralCount) * 100 : 100;
+  return { activeCount, retentionRate };
+}
+
+function scoreRisk(last24hCount: number, referralCount: number, retentionRate: number) {
+  if (last24hCount >= 8 || (referralCount >= 10 && retentionRate < 30)) {
+    return 'HIGH';
+  }
+  if (last24hCount >= 5 || (referralCount >= 5 && retentionRate < 50)) {
+    return 'MEDIUM';
+  }
+  return 'LOW';
+}
+
 @Service()
 export default class ReferralService {
   constructor(private referralRewardService: ReferralRewardService) {}
@@ -120,6 +136,77 @@ export default class ReferralService {
         return null;
       }
 
+      if (config.requireOnboarding && !referral.onboardedAt) {
+        logger.info(
+          `[Referral] Reward held for ${dto.referredDiscordId}: onboarding not complete`
+        );
+        return null;
+      }
+
+      if (config.minimumDaysInServer > 0) {
+        const joinedAt = new Date(referral.joinedAt).getTime();
+        const daysInServer = Math.floor((Date.now() - joinedAt) / (24 * 60 * 60 * 1000));
+
+        if (referral.hasLeftServer || daysInServer < config.minimumDaysInServer) {
+          logger.info(
+            `[Referral] Reward held for ${dto.referredDiscordId}: ` +
+              `${daysInServer}/${config.minimumDaysInServer} days in server` +
+              (referral.hasLeftServer ? ' (has left)' : '')
+          );
+          return null;
+        }
+      }
+
+      if (config.cooldownMinutes > 0) {
+        const lastRewarded = await prisma.referral.findFirst({
+          where: {
+            referrerId: referral.referrerId,
+            rewardGiven: true,
+            rewardGivenAt: { not: null },
+          },
+          orderBy: { rewardGivenAt: 'desc' },
+          select: { rewardGivenAt: true },
+        });
+
+        if (lastRewarded?.rewardGivenAt) {
+          const minutesSince =
+            (Date.now() - new Date(lastRewarded.rewardGivenAt).getTime()) / (60 * 1000);
+
+          if (minutesSince < config.cooldownMinutes) {
+            throw new BadRequestError(
+              `Referral cooldown active. Try again in ` +
+                `${Math.ceil(config.cooldownMinutes - minutesSince)} minute(s).`
+            );
+          }
+        }
+      }
+
+      if (config.minimumRetentionRate > 0) {
+        const [referralCount, leftCount] = await Promise.all([
+          prisma.referral.count({ where: { referrerId: referral.referrerId } }),
+          prisma.referral.count({
+            where: { referrerId: referral.referrerId, hasLeftServer: true },
+          }),
+        ]);
+
+        // Only meaningful once there is enough history to judge; below that a
+        // single early leaver would block an honest referrer forever.
+        if (referralCount >= 5) {
+          const { retentionRate } = summariseRetention(referralCount, leftCount);
+
+          if (retentionRate < config.minimumRetentionRate) {
+            logger.info(
+              `[Referral] Reward held for referrer ${referral.referrerId}: ` +
+                `retention ${retentionRate.toFixed(0)}% below ${config.minimumRetentionRate}%`
+            );
+            throw new BadRequestError(
+              `Referral retention rate is ${retentionRate.toFixed(0)}%, below the required ` +
+                `${config.minimumRetentionRate}%.`
+            );
+          }
+        }
+      }
+
       const rewardAmount = dto.amount || await this.referralRewardService.calculateRewardAmount(referral.referrerId);
 
       if (rewardAmount <= 0) {
@@ -143,7 +230,24 @@ export default class ReferralService {
         }
       }
 
+      if (!referral.referredUserId) {
+        return null;
+      }
+
       const result = await prisma.$transaction(async (tx) => {
+        const claimed = await tx.referral.updateMany({
+          where: { id: referral.id, rewardGiven: false },
+          data: {
+            rewardGiven: true,
+            rewardAmount: new Decimal(rewardAmount),
+            rewardGivenAt: new Date(),
+          },
+        });
+
+        if (claimed.count === 0) {
+          return null;
+        }
+
         let wallet = await tx.wallet.findUnique({
           where: { userId: referral.referrerId },
         });
@@ -181,15 +285,6 @@ export default class ReferralService {
           },
         });
 
-        const updatedReferral = await tx.referral.update({
-          where: { id: referral.id },
-          data: {
-            rewardGiven: true,
-            rewardAmount: new Decimal(rewardAmount),
-            rewardGivenAt: new Date(),
-          },
-        });
-
         await tx.referralReward.create({
           data: {
             referralId: referral.id,
@@ -200,8 +295,12 @@ export default class ReferralService {
           },
         });
 
-        return updatedReferral;
+        return await tx.referral.findUniqueOrThrow({ where: { id: referral.id } });
       });
+
+      if (!result) {
+        return null;
+      }
 
       return {
         referralId: result.id,
@@ -449,30 +548,26 @@ export default class ReferralService {
       const usersWithRates = await Promise.all(suspiciousUsers.map(async (user) => {
         const last24hCount = user.referrals.length;
 
-        const leftCount = await prisma.referral.count({
-          where: {
-            referrerId: user.id,
-            hasLeftServer: true,
-          },
-        });
+        const [referralCount, leftCount] = await Promise.all([
+          prisma.referral.count({ where: { referrerId: user.id } }),
+          prisma.referral.count({
+            where: {
+              referrerId: user.id,
+              hasLeftServer: true,
+            },
+          }),
+        ]);
 
-        const activeCount = user.totalReferrals - leftCount;
-        const retentionRate = user.totalReferrals > 0 ? (activeCount / user.totalReferrals) * 100 : 0;
-
-        let riskLevel = last24hCount >= 8 ? 'HIGH' : last24hCount >= 5 ? 'MEDIUM' : 'LOW';
-
-        if (user.totalReferrals >= 10 && retentionRate < 30) {
-          riskLevel = 'HIGH';
-        } else if (user.totalReferrals >= 5 && retentionRate < 50) {
-          if (riskLevel === 'LOW') riskLevel = 'MEDIUM';
-        }
+        const { activeCount, retentionRate } = summariseRetention(referralCount, leftCount);
+        const riskLevel = scoreRisk(last24hCount, referralCount, retentionRate);
 
         return {
           userId: user.id,
           discordId: user.discordId,
           discordUsername: user.discordUsername,
           discordDisplayName: user.discordDisplayName,
-          totalReferrals: user.totalReferrals,
+          totalReferrals: referralCount,
+          rewardedReferrals: user.totalReferrals,
           activeCount,
           leftCount,
           retentionRate,
@@ -499,36 +594,32 @@ export default class ReferralService {
       });
 
       const topReferrersWithRetention = await Promise.all(allTopReferrers.map(async (user) => {
-        const leftCount = await prisma.referral.count({
-          where: {
-            referrerId: user.id,
-            hasLeftServer: true,
-          },
-        });
+        const [referralCount, leftCount, last24hCount] = await Promise.all([
+          prisma.referral.count({ where: { referrerId: user.id } }),
+          prisma.referral.count({
+            where: {
+              referrerId: user.id,
+              hasLeftServer: true,
+            },
+          }),
+          prisma.referral.count({
+            where: {
+              referrerId: user.id,
+              joinedAt: { gte: twentyFourHoursAgo },
+            },
+          }),
+        ]);
 
-        const activeCount = user.totalReferrals - leftCount;
-        const retentionRate = user.totalReferrals > 0 ? (activeCount / user.totalReferrals) * 100 : 0;
-
-        const last24hCount = await prisma.referral.count({
-          where: {
-            referrerId: user.id,
-            joinedAt: { gte: twentyFourHoursAgo },
-          },
-        });
-
-        let riskLevel = 'LOW';
-        if (last24hCount >= 8 || (user.totalReferrals >= 10 && retentionRate < 30)) {
-          riskLevel = 'HIGH';
-        } else if (last24hCount >= 5 || (user.totalReferrals >= 5 && retentionRate < 50)) {
-          riskLevel = 'MEDIUM';
-        }
+        const { activeCount, retentionRate } = summariseRetention(referralCount, leftCount);
+        const riskLevel = scoreRisk(last24hCount, referralCount, retentionRate);
 
         return {
           userId: user.id,
           discordId: user.discordId,
           discordUsername: user.discordUsername,
           discordDisplayName: user.discordDisplayName,
-          totalReferrals: user.totalReferrals,
+          totalReferrals: referralCount,
+          rewardedReferrals: user.totalReferrals,
           activeCount,
           leftCount,
           retentionRate,

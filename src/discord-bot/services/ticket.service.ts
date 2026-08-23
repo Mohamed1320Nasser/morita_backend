@@ -23,6 +23,13 @@ import { getTicketChannelMover } from "./ticket-channel-mover.service";
 
 import { TicketType, TicketMetadata } from "../types/discord.types";
 
+/**
+ * How long a reviewable ticket stays visible to the customer after closing, so
+ * they can use the review prompt. The DM follow-up and the access revoke both
+ * happen at the end of it.
+ */
+const REVIEW_GRACE_PERIOD_MS = 10 * 60 * 1000;
+
 export class AccountUnavailableError extends Error {
     constructor(message: string) {
         super(message);
@@ -1215,6 +1222,115 @@ export class TicketService {
         }
     }
 
+    /**
+     * Gold trades and crypto swaps are real transactions that never become an
+     * order, so their feedback has nowhere else to go. General support tickets
+     * are deliberately excluded — asking someone to rate a problem they came in
+     * with reads badly.
+     */
+    private shouldAskForReview(ticket: any): boolean {
+        if (!ticket?.customerDiscordId || ticket.rating) return false;
+        if (ticket.convertedToOrder) return false;
+
+        const reviewable = [
+            "BUY_GOLD_OSRS",
+            "BUY_GOLD_RS3",
+            "SELL_GOLD_OSRS",
+            "SELL_GOLD_RS3",
+            "SWAP_CRYPTO",
+        ];
+
+        return reviewable.includes(ticket.ticketType);
+    }
+
+    private buildReviewPrompt(ticket: any) {
+        const embed = new EmbedBuilder()
+            .setTitle("⭐ How did we do?")
+            .setDescription(
+                `Your ticket #${ticket.ticketNumber} is complete.\n\n` +
+                `If you have a moment, let us know how it went — it helps us improve.`
+            )
+            .setColor(0xfca311)
+            .setTimestamp();
+
+        const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`ticket_review_public_${ticket.id}`)
+                .setLabel("Leave a Review")
+                .setEmoji("⭐")
+                .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+                .setCustomId(`ticket_review_anon_${ticket.id}`)
+                .setLabel("Review Anonymously")
+                .setEmoji("🕵️")
+                .setStyle(ButtonStyle.Secondary)
+        );
+
+        return { embed, buttons };
+    }
+
+    /**
+     * Ask in the ticket channel, where the customer is already looking.
+     */
+    private async postReviewPrompt(channel: TextChannel, ticket: any): Promise<void> {
+        try {
+            const { embed, buttons } = this.buildReviewPrompt(ticket);
+
+            await channel.send({
+                content: `<@${ticket.customerDiscordId}>`,
+                embeds: [embed.toJSON() as any],
+                components: [buttons.toJSON() as any],
+            });
+
+            logger.info(`[CloseTicket] Review prompt posted for ticket ${ticket.id}`);
+        } catch (error: any) {
+            logger.warn(
+                `[CloseTicket] Could not post review prompt for ticket ${ticket?.id}: ${error?.message}`
+            );
+        }
+    }
+
+    /**
+     * After the grace period, take the customer's access away. If they never
+     * reviewed, follow up once by DM — a closed DM channel is their choice, so
+     * failing there is not an error.
+     */
+    private scheduleReviewFollowUp(channel: TextChannel, ticketId: string, ticket: any): void {
+        setTimeout(async () => {
+            try {
+                const latest = await this.getTicketById(ticketId).catch(() => null);
+
+                if (!latest?.rating) {
+                    const customer = await this.client.users.fetch(ticket.customerDiscordId);
+                    const { embed, buttons } = this.buildReviewPrompt(ticket);
+
+                    await customer
+                        .send({
+                            embeds: [embed.toJSON() as any],
+                            components: [buttons.toJSON() as any],
+                        })
+                        .catch((err: any) =>
+                            logger.info(
+                                `[CloseTicket] Review DM not delivered for ticket ${ticketId}: ${err?.message}`
+                            )
+                        );
+                }
+
+                if (ticket.customerDiscordId) {
+                    await channel.permissionOverwrites
+                        .edit(ticket.customerDiscordId, { ViewChannel: false })
+                        .catch(err =>
+                            logger.warn(`[CloseTicket] Permission update failed: ${err.message}`)
+                        );
+                }
+            } catch (error: any) {
+                logger.warn(
+                    `[CloseTicket] Review follow-up failed for ticket ${ticketId}: ${error?.message}`
+                );
+            }
+        }, REVIEW_GRACE_PERIOD_MS);
+    }
+
     async closeTicket(
         ticketId: string,
         closedByUser: User,
@@ -1246,10 +1362,23 @@ export class TicketService {
 
             await this.disableTicketButtons(channel);
 
-            if (ticket.customerDiscordId) {
+            const wantsReview = this.shouldAskForReview(ticket);
+
+            if (wantsReview) {
+                await this.postReviewPrompt(channel, ticket);
+            }
+
+            // Revoking access hides the review prompt, so a reviewable ticket
+            // keeps the customer in the channel for a grace period. Anything
+            // else closes immediately as before.
+            if (ticket.customerDiscordId && !wantsReview) {
                 await channel.permissionOverwrites.edit(ticket.customerDiscordId, {
                     ViewChannel: false
                 }).catch(err => logger.warn(`[CloseTicket] Permission update failed: ${err.message}`));
+            }
+
+            if (wantsReview) {
+                this.scheduleReviewFollowUp(channel, ticketId, ticket);
             }
 
             const mover = getTicketChannelMover(this.client);

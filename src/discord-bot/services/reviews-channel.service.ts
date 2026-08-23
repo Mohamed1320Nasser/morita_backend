@@ -151,6 +151,64 @@ export class ReviewsChannelService {
         }
     }
 
+    /**
+     * Post a review left on a ticket that never became an order, such as a gold
+     * trade or a crypto swap. Same channel and shape as the others; the label
+     * comes from the ticket type rather than being fixed.
+     */
+    async postTicketReview(
+        ticket: any,
+        review: any,
+        customer: User,
+        isAnonymous: boolean = false
+    ): Promise<void> {
+        try {
+            const guild = this.client.guilds.cache.get(discordConfig.guildId);
+            if (!guild) {
+                logger.error("[Reviews] Guild not found");
+                return;
+            }
+
+            const channel = await this.getOrCreateChannel(guild);
+            if (!channel) {
+                logger.error("[Reviews] Could not get channel");
+                return;
+            }
+
+            const rating = review.rating || 5;
+            const stars = "⭐".repeat(rating);
+
+            const embedColor =
+                rating >= 5 ? 0x57f287 : rating >= 4 ? 0x5865f2 : rating >= 3 ? 0xfee75c : 0xed4245;
+
+            const parts: string[] = [];
+            if (review.comment && review.comment.trim().length > 0) {
+                parts.push(`## "${review.comment.substring(0, 900)}"`);
+                parts.push("");
+            }
+            parts.push(`${stars} **${rating}/5**`);
+            parts.push("");
+            parts.push(`🪙 ${review.label || "Support"}`);
+            parts.push(`👤 ${isAnonymous ? "Anonymous" : customer.displayName}`);
+
+            const embed = new EmbedBuilder()
+                .setColor(embedColor as ColorResolvable)
+                .setDescription(parts.join("\n"))
+                .setFooter({
+                    text: `Ticket #${String(ticket.ticketNumber).padStart(4, "0")} • ${
+                        review.label || "Support"
+                    }`,
+                })
+                .setTimestamp();
+
+            await channel.send({ embeds: [embed.toJSON() as any] });
+
+            logger.info(`[Reviews] Posted ticket review #${ticket.ticketNumber} to channel`);
+        } catch (error) {
+            logger.error("[Reviews] Error posting ticket review:", error);
+        }
+    }
+
     private formatAccountReviewEmbed(
         order: any,
         review: any,

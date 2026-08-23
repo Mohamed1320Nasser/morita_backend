@@ -12,7 +12,7 @@ export class SelectMenuPricingBuilder {
         components: ActionRowBuilder<StringSelectMenuBuilder>[];
     } {
         
-        const content = `**${category.emoji} ${category.name} - Click Here**`;
+        const content = `**${category.emoji} ${category.name}**`;
 
         const selectMenu = new StringSelectMenuBuilder()
             .setCustomId(`pricing_service_select_${category.id}`)

@@ -7,6 +7,10 @@ import {
 } from "./dtos";
 import { NotFoundError, BadRequestError } from "routing-controllers";
 import { countStart } from "../../common/helpers/pagination.helper";
+import {
+    invalidatePricingCache,
+    invalidatePricingCacheForMethod,
+} from "../../common/helpers/pricingCache.helper";
 
 @Service()
 export default class PricingMethodService {
@@ -24,6 +28,8 @@ export default class PricingMethodService {
         const pricingMethod = await prisma.pricingMethod.create({
             data,
         });
+
+        await invalidatePricingCache(data.serviceId);
 
         return pricingMethod;
     }
@@ -44,6 +50,8 @@ export default class PricingMethodService {
                 updatedAt: new Date(),
             },
         });
+
+        await invalidatePricingCache(method.serviceId);
 
         return updatedMethod;
     }
@@ -232,6 +240,8 @@ export default class PricingMethodService {
                 updatedAt: new Date(),
             },
         });
+
+        await invalidatePricingCache(method.serviceId);
 
         return { message: "Pricing method deleted successfully" };
     }

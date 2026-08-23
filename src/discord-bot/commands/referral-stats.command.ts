@@ -1,5 +1,11 @@
-import { SlashCommandBuilder, EmbedBuilder, ChatInputCommandInteraction } from "discord.js";
+import {
+    SlashCommandBuilder,
+    EmbedBuilder,
+    ChatInputCommandInteraction,
+    PermissionFlagsBits,
+} from "discord.js";
 import { discordApiClient } from "../clients/DiscordApiClient";
+import { discordConfig } from "../config/discord.config";
 import logger from "../../common/loggers";
 
 const SORT_EMOJIS: Record<string, string> = {
@@ -13,6 +19,7 @@ export default {
     data: new SlashCommandBuilder()
         .setName("referral-stats")
         .setDescription("[ADMIN] View detailed referral stats for a user")
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addUserOption(option =>
             option.setName("user")
                 .setDescription("User to check (leave empty for overall stats)")
@@ -32,6 +39,17 @@ export default {
 
     async execute(interaction: ChatInputCommandInteraction) {
         await interaction.deferReply({ ephemeral: true });
+
+        const member = interaction.member;
+        const isAdmin =
+            member && "roles" in member && (member.roles as any).cache?.has(discordConfig.adminRoleId);
+
+        if (!isAdmin) {
+            await interaction.editReply({
+                content: "❌ Only admins can view referral stats for other members.",
+            });
+            return;
+        }
 
         const targetUser = interaction.options.getUser("user");
         const sortBy = interaction.options.getString("sort") || "total";

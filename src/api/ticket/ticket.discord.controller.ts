@@ -3,6 +3,7 @@ import {
     Get,
     Post,
     Patch,
+    Put,
     Param,
     Body,
     UseBefore,
@@ -114,6 +115,24 @@ export default class DiscordTicketController {
         @Body() data: { reason?: string }
     ) {
         const ticket = await this.ticketService.close(id, data.reason);
+        return {
+            success: true,
+            data: ticket,
+        };
+    }
+
+    /**
+     * Leave a review on a ticket (from Discord)
+     *
+     * Gold and crypto tickets never become orders, so their feedback lands on
+     * the ticket itself rather than going through the order review flow.
+     */
+    @Put("/:id/review")
+    async reviewTicket(
+        @Param("id") id: string,
+        @Body() data: { customerDiscordId: string; rating: number; review?: string }
+    ) {
+        const ticket = await this.ticketService.addReview(id, data);
         return {
             success: true,
             data: ticket,

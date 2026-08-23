@@ -10,6 +10,7 @@ import {
 } from "routing-controllers";
 import { Service } from "typedi";
 import prisma from "../../common/prisma/client";
+import { invalidatePricingCache } from "../../common/helpers/pricingCache.helper";
 import logger from "../../common/loggers";
 import API from "../../common/config/api.types";
 
@@ -119,6 +120,8 @@ export default class ServiceModifierController {
                 },
             });
 
+            await invalidatePricingCache(serviceId);
+
             return {
                 success: true,
                 data: modifier,
@@ -164,6 +167,8 @@ export default class ServiceModifierController {
                 },
             });
 
+            await invalidatePricingCache(serviceId);
+
             return {
                 success: true,
                 data: modifier,
@@ -199,6 +204,8 @@ export default class ServiceModifierController {
                 where: { id: modifierId },
             });
 
+            await invalidatePricingCache(serviceId);
+
             return {
                 success: true,
                 message: "Modifier deleted successfully",
@@ -233,6 +240,8 @@ export default class ServiceModifierController {
                 where: { id: modifierId },
                 data: { active: !existing.active },
             });
+
+            await invalidatePricingCache(serviceId);
 
             return {
                 success: true,

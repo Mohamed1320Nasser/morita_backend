@@ -189,9 +189,7 @@ export class EnhancedPricingBuilder {
 
         const selectMenu = new StringSelectMenuBuilder()
             .setCustomId(`pricing_service_select_${category.id}`)
-            .setPlaceholder(
-                `${categoryEmojiPlaceholder} ${category.name} - Click Here`
-            )
+            .setPlaceholder(`${categoryEmojiPlaceholder} ${category.name}`)
             .setMinValues(1)
             .setMaxValues(1);
 

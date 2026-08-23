@@ -75,11 +75,45 @@ export class CompletedOrdersChannelService {
         }
     }
 
+    /**
+     * Post the proof a worker has uploaded so far, while the order is still
+     * running. Same layout as a completed post, but marked in progress so it
+     * cannot be mistaken for delivered work.
+     *
+     * Only the screenshots from this upload are shown, so repeated uploads do
+     * not re-post images that already appeared.
+     */
+    async postOrderProgress(
+        order: any,
+        worker: User,
+        customer: User,
+        newScreenshots: string[],
+        orderChannel?: TextChannel
+    ): Promise<void> {
+        return this.postToChannel(
+            { ...order, proofScreenshots: newScreenshots },
+            worker,
+            customer,
+            orderChannel,
+            true
+        );
+    }
+
     async postCompletedOrder(
         order: any,
         worker: User,
         customer: User,
         orderChannel?: TextChannel
+    ): Promise<void> {
+        return this.postToChannel(order, worker, customer, orderChannel, false);
+    }
+
+    private async postToChannel(
+        order: any,
+        worker: User,
+        customer: User,
+        orderChannel?: TextChannel,
+        inProgress: boolean = false
     ): Promise<void> {
         try {
             const guild = this.client.guilds.cache.get(discordConfig.guildId);
@@ -99,13 +133,23 @@ export class CompletedOrdersChannelService {
 
             logger.info(`[CompletedOrders] Order #${order.orderNumber} - ${allScreenshots.length} screenshots`);
 
-            const groupUrl = `https://morita.gg/order/${order.orderNumber}`;
+            // The URL is what groups embeds into one block, so a progress post
+            // needs its own or Discord folds it into an earlier one.
+            const groupUrl = inProgress
+                ? `https://morita.gg/order/${order.orderNumber}?p=${Date.now()}`
+                : `https://morita.gg/order/${order.orderNumber}`;
 
             // Build all embeds array
             const allEmbeds: EmbedBuilder[] = [];
 
             // Main info embed with URL for grouping
-            const mainEmbed = this.formatCompletedOrderEmbed(order, worker, customer, orderChannel);
+            const mainEmbed = this.formatCompletedOrderEmbed(
+                order,
+                worker,
+                customer,
+                orderChannel,
+                inProgress
+            );
             mainEmbed.setURL(groupUrl);
 
             // Conditional image display logic:
@@ -122,7 +166,7 @@ export class CompletedOrdersChannelService {
                     const screenshotEmbed = new EmbedBuilder()
                         .setURL(groupUrl)  // Same URL groups embeds together
                         .setImage(screenshot)  // Full-width image
-                        .setColor(0x57f287 as ColorResolvable);
+                        .setColor((inProgress ? 0xfca311 : 0x2b6cb0) as ColorResolvable);
                     allEmbeds.push(screenshotEmbed);
                 }
             } else {
@@ -139,7 +183,7 @@ export class CompletedOrdersChannelService {
             }
 
             logger.info(
-                `[CompletedOrders] Posted completed order #${order.orderNumber} to channel with ${allScreenshots.length} screenshots`
+                `[CompletedOrders] Posted ${inProgress ? "in-progress" : "completed"} order #${order.orderNumber} to channel with ${allScreenshots.length} screenshots`
             );
         } catch (error) {
             logger.error("[CompletedOrders] Error posting completed order:", error);
@@ -150,7 +194,8 @@ export class CompletedOrdersChannelService {
         order: any,
         worker: User,
         customer: User,
-        orderChannel?: TextChannel
+        orderChannel?: TextChannel,
+        inProgress: boolean = false
     ): EmbedBuilder {
         const orderNumber = order.orderNumber?.toString().padStart(4, "0") || "Unknown";
         const createdAt = order.createdAt ? new Date(order.createdAt) : null;
@@ -158,15 +203,20 @@ export class CompletedOrdersChannelService {
         const completedTimestamp = Math.floor(completedAt.getTime() / 1000);
 
         const embed = new EmbedBuilder()
-            .setColor(0x57f287 as ColorResolvable)
+            .setColor((inProgress ? 0xfca311 : 0x2b6cb0) as ColorResolvable)
+            .setTitle(
+                inProgress
+                    ? `🔄 Order #${orderNumber} — In Progress`
+                    : `🎉 Order #${orderNumber} — Completed`
+            )
             .setTimestamp();
 
-        // Build description with more details to make embed wider
-        const descriptionParts: string[] = [];
+        // Embeds shrink to fit their text, which leaves a narrow block of text
+        // sitting above a full-width image. A fixed-width rule holds the embed
+        // open so the two line up. Kept short enough not to wrap on mobile.
+        const WIDTH_RULE = "━".repeat(24);
 
-        // Header with decorative line
-        descriptionParts.push(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-        descriptionParts.push("");
+        const descriptionParts: string[] = [];
 
         // Service info
         if (order.service) {
@@ -177,14 +227,22 @@ export class CompletedOrdersChannelService {
         }
 
         // Worker info
-        descriptionParts.push(`👷 **Worker Completed By:** <@${worker.id}>`);
+        descriptionParts.push(
+            inProgress
+                ? `👷 **Worker:** <@${worker.id}>`
+                : `👷 **Worker Completed By:** <@${worker.id}>`
+        );
         descriptionParts.push("");
 
         // Timeline with more detail
-        descriptionParts.push(`✅ **Status:** Completed <t:${completedTimestamp}:R>`);
+        descriptionParts.push(
+            inProgress
+                ? `🔄 **Status:** In Progress — proof added <t:${Math.floor(Date.now() / 1000)}:R>`
+                : `✅ **Status:** Completed <t:${completedTimestamp}:R>`
+        );
 
-        // Duration with more context
-        if (createdAt && completedAt) {
+        // Duration only means something once the work is finished.
+        if (!inProgress && createdAt && completedAt) {
             const durationMs = completedAt.getTime() - createdAt.getTime();
             const days = Math.floor(durationMs / (1000 * 60 * 60 * 24));
             const hours = Math.floor((durationMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
@@ -192,34 +250,37 @@ export class CompletedOrdersChannelService {
 
             let durationStr = "";
             if (days > 0) {
-                durationStr = `${days} day${days > 1 ? 's' : ''}, ${hours} hour${hours > 1 ? 's' : ''}, ${minutes} minute${minutes > 1 ? 's' : ''}`;
+                durationStr = `${days} day${days > 1 ? 's' : ''}, ${hours} hour${hours > 1 ? 's' : ''}`;
             } else if (hours > 0) {
                 durationStr = `${hours} hour${hours > 1 ? 's' : ''}, ${minutes} minute${minutes > 1 ? 's' : ''}`;
-            } else {
+            } else if (minutes > 0) {
                 durationStr = `${minutes} minute${minutes > 1 ? 's' : ''}`;
+            } else {
+                // Anything under a minute reads better than "0 minute".
+                durationStr = "under a minute";
             }
             descriptionParts.push(`⏱️ **Completion Time:** ${durationStr}`);
         }
 
-        descriptionParts.push("");
-        descriptionParts.push(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+        if (orderChannel) {
+            descriptionParts.push(`🎫 **Ticket:** <#${orderChannel.id}>`);
+        }
 
         // Completion notes (if any)
         if (order.completionNotes) {
             descriptionParts.push("");
-            descriptionParts.push(`📝 **Completion Notes:**`);
-            descriptionParts.push(`> *"${order.completionNotes.substring(0, 300)}"*`);
+            descriptionParts.push(`📝 **Notes:** *"${order.completionNotes.substring(0, 300)}"*`);
         }
 
-        // Screenshot count with more detail
         const screenshots = (order.proofScreenshots as string[] | null) || [];
         if (screenshots.length > 0) {
             descriptionParts.push("");
-            descriptionParts.push(`📸 **Proof Screenshots Attached:** ${screenshots.length} screenshot${screenshots.length > 1 ? "s" : ""} uploaded`);
+            descriptionParts.push(
+                `📸 **Proof:** ${screenshots.length} screenshot${screenshots.length > 1 ? "s" : ""}`
+            );
         }
 
-        descriptionParts.push("");
-        descriptionParts.push(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+        descriptionParts.push(WIDTH_RULE);
 
         embed.setDescription(descriptionParts.join("\n"));
 
@@ -229,7 +290,7 @@ export class CompletedOrdersChannelService {
         }
 
         embed.setFooter({
-            text: `Order #${orderNumber}`,
+            text: inProgress ? `Order #${orderNumber} • In Progress` : `Order #${orderNumber}`,
         });
 
         return embed;

@@ -18,6 +18,13 @@ async function execute(interaction: ChatInputCommandInteraction) {
     try {
         await interaction.deferReply({ ephemeral: true });
 
+        if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+            await interaction.editReply({
+                content: "❌ Only admins can initialize account types.",
+            });
+            return;
+        }
+
         await discordApiClient.post("/account-data/types/init");
 
         const embed = new EmbedBuilder()

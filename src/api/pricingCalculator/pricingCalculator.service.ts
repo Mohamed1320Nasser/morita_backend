@@ -175,10 +175,29 @@ export default class PricingCalculatorService {
 
     async invalidateServiceCache(serviceId: string): Promise<void> {
         try {
-            // Note: Redis doesn't have a built-in way to delete by pattern in this implementation
-            // In production, you'd want to use Redis SCAN with pattern matching
-            logger.info(`[PricingCalculator] Cache invalidation requested for service: ${serviceId}`);
-            // For now, we rely on TTL expiration
+            const redis = getRedisService();
+
+            // Level-range quotes carry the service in the key, so they can be
+            // matched directly. Single-method quotes are keyed by method, so
+            // the service's methods have to be looked up first.
+            const methods = await prisma.pricingMethod.findMany({
+                where: { serviceId },
+                select: { id: true },
+            });
+
+            const patterns = [
+                `pricing:range:${serviceId}:*`,
+                ...methods.map(method => `pricing:calc:${method.id}:*`),
+            ];
+
+            let removed = 0;
+            for (const pattern of patterns) {
+                removed += await redis.deleteByPattern(pattern);
+            }
+
+            logger.info(
+                `[PricingCalculator] Invalidated ${removed} cached quote(s) for service ${serviceId}`
+            );
         } catch (error) {
             logger.error('[PricingCalculator] Error invalidating cache:', error);
         }

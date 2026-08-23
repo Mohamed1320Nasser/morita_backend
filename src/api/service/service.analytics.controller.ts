@@ -87,7 +87,11 @@ export default class ServiceAnalyticsController {
                 .filter((o) => o.status === "COMPLETED")
                 .reduce((sum, o) => sum + parseFloat(o.orderValue.toString()), 0);
 
-            const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+            // Averaged over completed orders only: dividing revenue by orders
+            // that never earned anything understates what a sale is worth, and
+            // the per-service table already averages it this way.
+            const completedOrders = orders.filter((o) => o.status === "COMPLETED").length;
+            const averageOrderValue = completedOrders > 0 ? totalRevenue / completedOrders : 0;
 
             // Find top performing service
             const serviceStats = new Map<string, { name: string; orderCount: number; revenue: number }>();

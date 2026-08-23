@@ -39,4 +39,19 @@ export class UpdateConfigDto {
     @IsOptional()
     @IsString()
     thumbnailUrl?: string;
+
+    @IsOptional()
+    @IsBoolean()
+    reminderEnabled?: boolean;
+
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @Max(168) // Max 1 week
+    reminderAfterHours?: number;
+
+    @IsOptional()
+    @IsString()
+    reminderChannelId?: string;
 }

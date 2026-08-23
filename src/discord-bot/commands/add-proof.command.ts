@@ -9,6 +9,7 @@ import { findOrderByNumber } from "../utils/order-search.util";
 import { extractErrorMessage } from "../utils/error-message.util";
 import { discordApiClient } from "../clients/DiscordApiClient";
 import { collectProofScreenshots } from "../utils/screenshot-collector.util";
+import { getCompletedOrdersChannelService } from "../services/completed-orders-channel.service";
 
 export const data = new SlashCommandBuilder()
     .setName("add-proof")
@@ -90,6 +91,29 @@ async function execute(interaction: ChatInputCommandInteraction) {
             await channel.send({
                 embeds: [publicEmbed.toJSON() as any],
             });
+        }
+
+        // Mirror the proof into the completed-orders channel so progress is
+        // visible as it happens rather than only once the order finishes.
+        try {
+            const completedOrders = getCompletedOrdersChannelService(interaction.client);
+            const customerDiscordId = orderData.customer?.discordId;
+
+            const customer = customerDiscordId
+                ? await interaction.client.users.fetch(customerDiscordId).catch(() => null)
+                : null;
+
+            await completedOrders.postOrderProgress(
+                orderData,
+                interaction.user,
+                customer || interaction.user,
+                screenshotResult.urls,
+                channel || undefined
+            );
+        } catch (progressError) {
+            // The proof is already saved; failing to mirror it must not make
+            // the upload look unsuccessful to the worker.
+            logger.error("[AddProof] Could not post progress update:", progressError);
         }
 
         logger.info(`[AddProof] Worker ${interaction.user.id} added ${screenshotResult.urls.length} proof screenshots to order #${orderNumber} (total: ${totalProof})`);

@@ -48,6 +48,9 @@ model User {
   discordId          String?      @unique
   discordUsername    String?
   discordDisplayName String?
+
+  // Set once the daily-reward nudge has been sent, so it never repeats
+  dailyRewardRemindedAt DateTime? @db.DateTime(0)
   discordRole        DiscordRole? @default(customer)
 
   // Loyalty Tier System
@@ -740,6 +743,11 @@ model Ticket {
   convertedToOrder Boolean   @default(false)
   conversionAt     DateTime? @db.DateTime(0)
 
+  // Customer feedback for tickets that never become an order (gold, crypto)
+  rating     Int?
+  review     String?   @db.Text
+  reviewedAt DateTime? @db.DateTime(0)
+
   customer      User             @relation("customerTickets", fields: [customerId], references: [id])
   support       User?            @relation("supportTickets", fields: [supportId], references: [id])
   category      ServiceCategory? @relation("categoryTickets", fields: [categoryId], references: [id])
@@ -1041,6 +1049,12 @@ model DailyRewardConfig {
   currencyEmoji String   @default("🪙") // Emoji for display
   gifUrl        String?  @db.Text // GIF URL for reward message (default handled in code)
   thumbnailUrl  String?  @db.Text // Thumbnail for embed
+
+  // Nudge new members who have never claimed
+  reminderEnabled     Boolean @default(true)
+  reminderAfterHours  Int     @default(24) // Hours after joining before reminding
+  reminderChannelId   String? // Blank = DM only
+
   createdAt     DateTime @default(now()) @db.DateTime(0)
   updatedAt     DateTime @default(now()) @updatedAt @db.DateTime(0)
 }

@@ -6,6 +6,10 @@ import {
     GetPricingModifierListDto,
 } from "./dtos";
 import { NotFoundError } from "routing-controllers";
+import {
+    invalidatePricingCache,
+    invalidatePricingCacheForMethod,
+} from "../../common/helpers/pricingCache.helper";
 
 @Service()
 export default class PricingModifierService {
@@ -24,6 +28,8 @@ export default class PricingModifierService {
         const modifier = await prisma.pricingModifier.create({
             data,
         });
+
+        await invalidatePricingCache(method.serviceId);
 
         return modifier;
     }
@@ -136,6 +142,8 @@ export default class PricingModifierService {
             },
         });
 
+        await invalidatePricingCacheForMethod(modifier.methodId);
+
         return updatedModifier;
     }
 
@@ -151,6 +159,8 @@ export default class PricingModifierService {
         await prisma.pricingModifier.delete({
             where: { id },
         });
+
+        await invalidatePricingCacheForMethod(modifier.methodId);
 
         return { message: "Pricing modifier deleted successfully" };
     }

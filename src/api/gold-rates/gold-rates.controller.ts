@@ -1,6 +1,7 @@
-import { JsonController, Get, Patch, Body } from "routing-controllers";
+import { JsonController, Get, Patch, Body, UseBefore } from "routing-controllers";
 import { Service } from "typedi";
 import { GoldRatesService } from "./gold-rates.service";
+import { DiscordAuthMiddleware } from "../../common/middlewares/discordAuth.middleware";
 
 @Service()
 @JsonController("/gold-rates")
@@ -21,6 +22,7 @@ export default class GoldRatesController {
      * Update gold rates
      */
     @Patch("/")
+    @UseBefore(DiscordAuthMiddleware)
     async updateRates(
         @Body()
         body: {

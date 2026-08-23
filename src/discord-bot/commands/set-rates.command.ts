@@ -33,6 +33,13 @@ async function execute(interaction: ChatInputCommandInteraction) {
     try {
         await interaction.deferReply({ ephemeral: true });
 
+        if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+            await interaction.editReply({
+                content: "❌ Only admins can change the gold rates.",
+            });
+            return;
+        }
+
         const buyRate = interaction.options.getNumber("buy-rate");
         const sellRate = interaction.options.getNumber("sell-rate");
 

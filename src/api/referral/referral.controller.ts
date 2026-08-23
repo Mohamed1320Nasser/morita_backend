@@ -8,9 +8,11 @@ import {
   Authorized,
   CurrentUser,
   HttpCode,
+  UseBefore,
 } from 'routing-controllers';
 import { Service } from 'typedi';
 import ReferralService from './referral.service';
+import { DiscordAuthMiddleware } from '../../common/middlewares/discordAuth.middleware';
 import {
   TrackReferralDto,
   GiveRewardDto,
@@ -28,12 +30,14 @@ export default class ReferralController {
 
   @Post('/track')
   @HttpCode(201)
+  @UseBefore(DiscordAuthMiddleware)
   async trackReferral(@Body() dto: TrackReferralDto) {
     return await this.referralService.trackReferral(dto);
   }
 
   @Post('/link/:discordId/:userId')
   @HttpCode(200)
+  @UseBefore(DiscordAuthMiddleware)
   async linkReferralToUser(
     @Param('discordId') discordId: string,
     @Param('userId') userId: number
@@ -43,6 +47,7 @@ export default class ReferralController {
 
   @Post('/reward')
   @HttpCode(200)
+  @UseBefore(DiscordAuthMiddleware)
   async giveReward(@Body() dto: GiveRewardDto) {
     const result = await this.referralService.giveReferralReward(dto);
 

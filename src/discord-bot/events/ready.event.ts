@@ -2,6 +2,7 @@ import { Events, Client } from "discord.js";
 import { ChannelManagerService } from "../services/channelManager.service";
 import { startCleanupJob } from "../jobs/cleanup.job";
 import { getMentionTrackerService } from "../services/mention-tracker.service";
+import { getDailyRewardReminderService } from "../services/daily-reward-reminder.service";
 
 import logger from "../../common/loggers";
 
@@ -34,6 +35,13 @@ export default {
             logger.info("✅ Mention tracker service started");
         } catch (error) {
             logger.error("❌ Failed to start mention tracker service:", error);
+        }
+
+        try {
+            getDailyRewardReminderService(client).start();
+            logger.info("✅ Daily reward reminder service started");
+        } catch (error) {
+            logger.error("❌ Failed to start daily reward reminder service:", error);
         }
 
         try {

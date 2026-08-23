@@ -12,6 +12,7 @@ const DIM = "\u001b[0;37m";
 const CYAN = "\u001b[0;36m";
 const GREEN = "\u001b[0;32m";
 const YELLOW = "\u001b[0;33m";
+const BOLD_YELLOW = "\u001b[1;33m";
 const BOLD_GREEN = "\u001b[1;32m";
 const RESET = "\u001b[0m";
 
@@ -197,8 +198,10 @@ export function buildOptionsTable(options: OptionRow[]): string {
     // Method names are the long values here, so give the column the space the
     // price and level columns do not need. Discounts add two more columns, so
     // the name has to give some of it back.
+    const anyGroupTotal = options.some((o, i) => !o.isChild && options[i + 1]?.isChild && !o.isBest);
+
     const nameW = anyDiscount ? (anyRange ? 18 : NAME_W + 4) : NAME_W + 8;
-    const moneyW = anyDiscount ? 9 : MONEY_W;
+    const moneyW = (anyDiscount ? 9 : MONEY_W) + (anyGroupTotal ? 2 : 0);
     const rangeCol = anyRange ? "Levels".padEnd(LEVELS_W) : "";
 
     const headerText = anyDiscount
@@ -223,13 +226,17 @@ export function buildOptionsTable(options: OptionRow[]): string {
         const option = options[i];
 
         // Blank-line a group off from its surroundings: before a parent that
-        // owns children, and after the last child, so a following standalone
-        // row is never mistaken for part of the group above it.
+        // owns children, after the last child, and after the recommended row,
+        // so a following standalone row is never mistaken for part of what
+        // sits above it.
         const startsGroup = !option.isChild && options[i + 1]?.isChild;
         const followsGroup = !option.isChild && options[i - 1]?.isChild;
-        if ((startsGroup || followsGroup) && lines.length > 2) {
+        const followsBest = !option.isChild && options[i - 1]?.isBest;
+        if ((startsGroup || followsGroup || followsBest) && lines.length > 2) {
             lines.push("");
         }
+
+        const isGroupTotal = Boolean(startsGroup) && !option.isBest;
 
         // Segment options arrive named "Falador Rooftop (50-60)"; the range has
         // its own column, so drop the suffix rather than print it twice.
@@ -255,6 +262,18 @@ export function buildOptionsTable(options: OptionRow[]): string {
             row += `${DIM}${clip(option.range || "", LEVELS_W).padEnd(LEVELS_W)}${RESET}`;
         }
 
+        const priceText = isGroupTotal
+            ? `= ${money(option.finalPrice)}`.padStart(moneyW)
+            : money(option.finalPrice).padStart(moneyW);
+
+        const priceCell = option.isBest
+            ? `${BOLD_GREEN}${priceText}${RESET}`
+            : option.isChild
+              ? `${DIM}${priceText}${RESET}`
+              : isGroupTotal
+                ? `${BOLD_YELLOW}${priceText}${RESET}`
+                : `${YELLOW}${priceText}${RESET}`;
+
         if (anyDiscount) {
             const was =
                 typeof option.originalPrice === "number" &&
@@ -262,11 +281,7 @@ export function buildOptionsTable(options: OptionRow[]): string {
                     ? money(option.originalPrice)
                     : "";
             row += `${DIM}${was.padStart(moneyW)}${RESET}`;
-            row += option.isBest
-                ? `${BOLD_GREEN}${money(option.finalPrice).padStart(moneyW)}${RESET}`
-                : option.isChild
-                  ? `${DIM}${money(option.finalPrice).padStart(moneyW)}${RESET}`
-                  : `${YELLOW}${money(option.finalPrice).padStart(moneyW)}${RESET}`;
+            row += priceCell;
             // The percentage is identical for every row in a group, so print it
             // once on the parent rather than repeating it down the column.
             row +=
@@ -274,11 +289,7 @@ export function buildOptionsTable(options: OptionRow[]): string {
                     ? `${GREEN}${`  ${option.discountPercent}%`.padEnd(6)}${RESET}`
                     : "";
         } else {
-            row += option.isBest
-                ? `${BOLD_GREEN}${money(option.finalPrice).padStart(moneyW)}${RESET}`
-                : option.isChild
-                  ? `${DIM}${money(option.finalPrice).padStart(moneyW)}${RESET}`
-                  : `${YELLOW}${money(option.finalPrice).padStart(moneyW)}${RESET}`;
+            row += priceCell;
         }
 
         if (option.isBest) {
@@ -379,6 +390,20 @@ export function buildGrandTotal(amount: number): string {
     return block([
         `${BOLD_GREEN}${"TOTAL".padEnd(LABEL_W)}${money(amount).padStart(MONEY_W)}${RESET}`,
     ]);
+}
+
+export function applyCalculatorBranding(embed: EmbedBuilder): EmbedBuilder {
+    const banner = (process.env.CALC_BANNER_URL || "").trim();
+    if (banner) {
+        embed.setImage(banner);
+    }
+
+    const thumbnail = (process.env.CALC_THUMBNAIL_URL || "").trim();
+    if (thumbnail) {
+        embed.setThumbnail(thumbnail);
+    }
+
+    return embed;
 }
 
 export function buildCalculatorEmbed(
