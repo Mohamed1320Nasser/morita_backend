@@ -5,6 +5,7 @@ import logger from "../../common/loggers";
 import UserService from "../user/user.service";
 import TicketService from "../ticket/ticket.service";
 import OrderService from "../order/order.service";
+import WorkerFeedbackService from "../workerFeedback/worker-feedback.service";
 import DiscordChannelsService from "../discord/discord.channels.service";
 import { OrderStatus } from "../order/dtos/common.dto";
 
@@ -14,7 +15,8 @@ export default class KpiService {
         private userService: UserService,
         private ticketService: TicketService,
         private orderService: OrderService,
-        private discordChannelsService: DiscordChannelsService
+        private discordChannelsService: DiscordChannelsService,
+        private workerFeedbackService: WorkerFeedbackService
     ) {}
     async recordMemberActivity(data: RecordMemberActivityDto) {
         try {
@@ -2048,8 +2050,12 @@ export default class KpiService {
             // Filter orders with workers
             const workerOrders = orders.filter((o: any) => o.workerId !== null);
 
+            // Staff feedback sits beside the order-derived numbers rather
+            // than being folded into them.
+            const staffFeedback = await this.workerFeedbackService.summaryByWorker(gte, lte);
+
             // Calculate worker stats
-            const workerStats = this.calculateWorkerStats(workerOrders);
+            const workerStats = this.calculateWorkerStats(workerOrders, staffFeedback);
 
             // Summary
             const summary = {
@@ -2072,7 +2078,7 @@ export default class KpiService {
         }
     }
 
-    private calculateWorkerStats(orders: any[]) {
+    private calculateWorkerStats(orders: any[], staffFeedback?: Map<number, any>) {
         const workerMap = new Map<number, any>();
 
         orders.forEach(order => {
@@ -2120,6 +2126,22 @@ export default class KpiService {
             const total = orders.length;
             const successRate = total > 0 ? (completed.length / total) * 100 : 0;
 
+            // Customers already rate orders 1-5; nothing was reading it.
+            const customerRatings = orders
+                .map((o: any) => o.rating)
+                .filter((r: any): r is number => typeof r === "number" && r > 0);
+
+            const avgCustomerRating = customerRatings.length
+                ? parseFloat(
+                      (
+                          customerRatings.reduce((a: number, b: number) => a + b, 0) /
+                          customerRatings.length
+                      ).toFixed(2)
+                  )
+                : null;
+
+            const staff = staffFeedback?.get(Number(workerId));
+
             return {
                 workerId,
                 workerName,
@@ -2132,7 +2154,13 @@ export default class KpiService {
                 successRate: parseFloat(successRate.toFixed(2)),
                 avgOrderValue: completed.length > 0
                     ? parseFloat((revenue / completed.length).toFixed(2))
-                    : 0
+                    : 0,
+                avgCustomerRating,
+                ratedOrders: customerRatings.length,
+                staffPraise: staff?.staffPraise || 0,
+                staffWarnings: staff?.staffWarnings || 0,
+                staffNotes: staff?.staffNotes || 0,
+                avgStaffRating: staff?.avgStaffRating ?? null,
             };
         }).filter(w => w.totalOrders > 0)
           .sort((a, b) => b.completedOrders - a.completedOrders);

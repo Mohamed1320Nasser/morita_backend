@@ -69,6 +69,8 @@ model User {
   profile                   File?                @relation("userProfile", fields: [profileId], references: [id])
   customerOrders            Order[]              @relation("customerOrders")
   workerOrders              Order[]              @relation("workerOrders")
+  workerFeedbackReceived    WorkerFeedback[]     @relation("workerFeedbackReceived")
+  workerFeedbackWritten     WorkerFeedback[]     @relation("workerFeedbackWritten")
   supportOrders             Order[]              @relation("supportOrders")
   statusChangeHistory       OrderStatusHistory[] @relation("statusChangeHistory")
   transactions              Transaction[]        @relation("userTransactions")
@@ -510,6 +512,7 @@ model Order {
   walletTransactions WalletTransaction[]  @relation("orderWalletTransactions")
   statusHistory      OrderStatusHistory[]
   issues             OrderIssue[]
+  workerFeedback     WorkerFeedback[] @relation("orderWorkerFeedback")
   orderRewardClaim   OrderRewardClaim?    @relation("orderRewardClaim")
   accountData        OrderAccountData?
 
@@ -1091,6 +1094,38 @@ model OrderRewardConfig {
 }
 
 // Referral Reward Configuration (Admin configurable)
+enum WorkerFeedbackType {
+  PRAISE
+  WARNING
+  NOTE
+}
+
+/// Staff-authored feedback on a worker.
+///
+/// Customer complaints arrive as OrderIssue and are the only record a worker
+/// has today, which means nothing good is ever written down and staff have no
+/// way to log what they saw. This sits alongside those, never replacing them.
+model WorkerFeedback {
+  id        String             @id @default(uuid())
+  workerId  Int                @db.UnsignedInt
+  authorId  Int                @db.UnsignedInt
+  type      WorkerFeedbackType @default(NOTE)
+  rating    Int? // Optional 1-5
+  comment   String             @db.Text
+  orderId   String? // Optional link to the order it concerns
+  createdAt DateTime           @default(now()) @db.DateTime(0)
+  updatedAt DateTime           @default(now()) @updatedAt @db.DateTime(0)
+
+  worker User   @relation("workerFeedbackReceived", fields: [workerId], references: [id])
+  author User   @relation("workerFeedbackWritten", fields: [authorId], references: [id])
+  order  Order? @relation("orderWorkerFeedback", fields: [orderId], references: [id])
+
+  @@index([workerId])
+  @@index([authorId])
+  @@index([type])
+  @@index([createdAt])
+}
+
 model ReferralRewardConfig {
   id                   String   @id @default("default-config")
   isEnabled            Boolean  @default(true)
