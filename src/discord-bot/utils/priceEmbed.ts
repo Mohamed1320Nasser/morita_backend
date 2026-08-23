@@ -100,15 +100,19 @@ export function buildLevelScope(
         const end = only ? only.endLevel : 0;
         const xp = only ? only.xpRequired : totalXp;
 
+        // Sized to the skill name rather than a fixed 20, which was padding the
+        // row wide enough to wrap the Discount column onto its own line.
+        const skillW = Math.min(NAME_W, Math.max("Skill".length, skillName.length) + 2);
+
         const headerText =
-            "Skill".padEnd(NAME_W) +
+            "Skill".padEnd(skillW) +
             "Levels".padEnd(LEVELS_W) +
             "XP".padStart(XP_W) +
             "  " +
             "Discount";
 
         const row =
-            `${CYAN}${clip(skillName, NAME_W - 1).padEnd(NAME_W)}${RESET}` +
+            `${CYAN}${clip(skillName, skillW - 1).padEnd(skillW)}${RESET}` +
             `${CYAN}${`${start} → ${end}`.padEnd(LEVELS_W)}${RESET}` +
             `${GREEN}${num(xp).padStart(XP_W)}${RESET}` +
             "  " +
@@ -200,7 +204,22 @@ export function buildOptionsTable(options: OptionRow[]): string {
     // the name has to give some of it back.
     const anyGroupTotal = options.some((o, i) => !o.isChild && options[i + 1]?.isChild && !o.isBest);
 
-    const nameW = anyDiscount ? (anyRange ? 18 : NAME_W + 4) : NAME_W + 8;
+    // Size the name column to the longest name actually present rather than a
+    // fixed maximum: a table of short names was padding every row out past the
+    // width Discord fits, which wrapped the price onto its own line.
+    const longestName = Math.max(
+        "Method".length,
+        ...options.map(o => {
+            if (o.isChild) return 3;
+            const bare = o.range
+                ? String(o.name).replace(/\s*\(\d+\s*-\s*\d+\)\s*$/, "").trim()
+                : String(o.name);
+            return bare.length;
+        })
+    );
+
+    const nameCap = anyDiscount ? (anyRange ? 18 : NAME_W + 4) : NAME_W + 8;
+    const nameW = Math.min(nameCap, longestName + 2);
     const moneyW = (anyDiscount ? 9 : MONEY_W) + (anyGroupTotal ? 2 : 0);
     const rangeCol = anyRange ? "Levels".padEnd(LEVELS_W) : "";
 
@@ -293,7 +312,7 @@ export function buildOptionsTable(options: OptionRow[]): string {
         }
 
         if (option.isBest) {
-            row += "  ⭐";
+            row += " ⭐";
         }
 
         // A child without its parent is meaningless, so once the budget runs
