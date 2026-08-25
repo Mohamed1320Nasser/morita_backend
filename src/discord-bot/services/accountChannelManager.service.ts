@@ -277,7 +277,17 @@ export class AccountChannelManager {
             );
 
             if (availableCategories.length === 0) {
+                // Returning silently left the channel with a header and no
+                // dropdowns, which reads as a broken shop rather than an empty
+                // one. Say so instead.
                 logger.warn("[AccountChannelManager] No categories with available accounts");
+
+                const emptyMessage = await this.accountChannel.send({
+                    embeds: [
+                        EnhancedAccountBuilder.buildOutOfStockEmbed() as any,
+                    ],
+                });
+                this.categoryMessages.set("combined", emptyMessage);
                 return;
             }
 

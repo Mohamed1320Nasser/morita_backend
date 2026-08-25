@@ -454,8 +454,11 @@ export class EnhancedAccountBuilder {
 
             if (response && response.data) {
                 const settings = response.data;
-                title = settings.welcomeTitle || title;
-                description = settings.welcomeMessage || description;
+                // welcomeTitle and welcomeMessage belong to the ticket greeting
+                // and carry {customer}/{ticket_id} placeholders that only get
+                // filled inside a ticket. Rendering them here printed the raw
+                // template in the shop channel, so only the presentation
+                // fields are shared.
                 bannerUrl = settings.bannerUrl || "";
                 thumbnailUrl = settings.thumbnailUrl || thumbnailUrl;
                 embedColor = settings.embedColor
