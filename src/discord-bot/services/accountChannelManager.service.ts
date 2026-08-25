@@ -111,7 +111,10 @@ export class AccountChannelManager {
             // Wait a bit for rate limits
             await new Promise((resolve) => setTimeout(resolve, 2000));
 
-            // Create category dropdowns (no header - just dropdowns)
+            // Header carries the banner and blurb from the admin panel, so it
+            // has to post before the dropdowns.
+            await this.createHeader();
+
             await this.createAllCategoryMessages();
 
             logger.info("[AccountChannelManager] Channel rebuild complete");
@@ -238,7 +241,7 @@ export class AccountChannelManager {
 
             // Create header embed
             const headerEmbed =
-                EnhancedAccountBuilder.buildAccountShopHeaderEmbed(
+                await EnhancedAccountBuilder.buildAccountShopHeaderEmbed(
                     totalAccounts,
                     categoryCount
                 );

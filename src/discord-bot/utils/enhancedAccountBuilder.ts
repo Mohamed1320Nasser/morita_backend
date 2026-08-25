@@ -7,6 +7,7 @@ import {
     ButtonStyle,
 } from "discord.js";
 import logger from "../../common/loggers";
+import { discordApiClient } from "../clients/DiscordApiClient";
 import { DISCORD_LIMITS } from "../constants/discord-limits";
 import {
     AccountCategory,
@@ -423,28 +424,71 @@ export class EnhancedAccountBuilder {
      * Build the main account shop header embed
      * This is the first message in the account shop channel
      */
-    static buildAccountShopHeaderEmbed(
+    /**
+     * Header for the accounts channel. Reads the same panel settings as the
+     * service pricing channel, so the banner, title and copy are editable in
+     * the admin panel rather than fixed here.
+     */
+    static async buildAccountShopHeaderEmbed(
         totalAccounts: number,
         categoryCount: number
-    ): EmbedBuilder {
-        return new EmbedBuilder()
-            .setTitle("🎮 OSRS Accounts For Sale")
-            .setDescription(
-                `**Browse our verified account inventory**\n\n` +
-                    `✅ **Instant Delivery** - Receive credentials immediately after payment\n` +
-                    `✅ **Full Credentials** - Email, password, and bank PIN provided\n` +
-                    `✅ **Verified Accounts** - All accounts thoroughly vetted\n` +
-                    `✅ **24/7 Support** - Assistance with login and security setup\n\n` +
-                    `📦 **${totalAccounts}** accounts available across **${categoryCount}** categories\n\n` +
-                    `**Select a category below to browse accounts:**`
-            )
-            .setColor(0xfca311)
-            .setThumbnail(process.env.BRAND_LOGO_URL || null)
+    ): Promise<EmbedBuilder> {
+        let title = "🎮 OSRS Accounts For Sale";
+        let description =
+            `**Browse our verified account inventory**\n\n` +
+            `✅ **Instant Delivery** - Receive credentials immediately after payment\n` +
+            `✅ **Full Credentials** - Email, password, and bank PIN provided\n` +
+            `✅ **Verified Accounts** - All accounts thoroughly vetted\n` +
+            `✅ **24/7 Support** - Assistance with login and security setup\n\n` +
+            `📦 **${totalAccounts}** accounts available across **${categoryCount}** categories\n\n` +
+            `**Select a category below to browse accounts:**`;
+        let bannerUrl = "";
+        let thumbnailUrl = process.env.BRAND_LOGO_URL || "";
+        let embedColor = 0xfca311;
+        let footerText = "MORITA Gaming • Premium Account Store";
+
+        try {
+            const response: any = await discordApiClient.get(
+                `/ticket-type-settings/PURCHASE_ACCOUNT`
+            );
+
+            if (response && response.data) {
+                const settings = response.data;
+                title = settings.welcomeTitle || title;
+                description = settings.welcomeMessage || description;
+                bannerUrl = settings.bannerUrl || "";
+                thumbnailUrl = settings.thumbnailUrl || thumbnailUrl;
+                embedColor = settings.embedColor
+                    ? parseInt(String(settings.embedColor).replace("#", ""), 16)
+                    : embedColor;
+                footerText = settings.footerText || footerText;
+            }
+        } catch (error) {
+            logger.warn(
+                "[AccountShop] Could not load panel settings, using defaults:",
+                error
+            );
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(title)
+            .setDescription(description)
+            .setColor(embedColor)
             .setTimestamp()
             .setFooter({
-                text: "MORITA Gaming • Premium Account Store",
+                text: footerText,
                 iconURL: process.env.BRAND_LOGO_URL || undefined,
             });
+
+        if (thumbnailUrl) {
+            embed.setThumbnail(thumbnailUrl);
+        }
+
+        if (bannerUrl) {
+            embed.setImage(bannerUrl);
+        }
+
+        return embed;
     }
 
     /**
