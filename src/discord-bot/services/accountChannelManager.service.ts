@@ -1,4 +1,4 @@
-import { Client, TextChannel, Message, AttachmentBuilder, EmbedBuilder } from "discord.js";
+import { Client, TextChannel, Message, EmbedBuilder } from "discord.js";
 import { ApiService } from "./api.service";
 import {
     EnhancedAccountBuilder,
@@ -6,7 +6,6 @@ import {
 } from "../utils/enhancedAccountBuilder";
 import { discordConfig } from "../config/discord.config";
 import logger from "../../common/loggers";
-import path from "path";
 
 /**
  * Account Channel Manager Service
@@ -206,20 +205,10 @@ export class AccountChannelManager {
         if (!this.accountChannel) return;
 
         try {
-            // Try to send banner image
-            try {
-                const bannerPath = path.join(
-                    __dirname,
-                    "../../../public/discord banner 01.png"
-                );
-                const bannerAttachment = new AttachmentBuilder(bannerPath);
-                await this.accountChannel.send({ files: [bannerAttachment] });
-            } catch (bannerError) {
-                logger.warn(
-                    "[AccountChannelManager] Could not send banner image:",
-                    bannerError
-                );
-            }
+            // The banner used to be a separate message carrying a file bundled
+            // with the bot, which showed alongside the embed's own banner from
+            // the admin panel - two images for one header. The embed carries it
+            // now, so it is set in one place and editable without a deploy.
 
             // Get total account stats
             let totalAccounts = 0;
