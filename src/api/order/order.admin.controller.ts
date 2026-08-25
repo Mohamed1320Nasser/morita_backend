@@ -103,12 +103,14 @@ export default class AdminOrderController {
             newWorkerId: string;
             adminId: string;
             reason: string;
+            penalizeOldWorker?: boolean;
         }
     ) {
-        return await this.orderService.assignWorker(orderId, {
-            workerId: parseInt(data.newWorkerId),
-            assignedById: parseInt(data.adminId),
-            notes: data.reason,
+        return await this.orderService.replaceWorker(orderId, {
+            newWorkerId: parseInt(data.newWorkerId),
+            replacedById: parseInt(data.adminId),
+            reason: data.reason,
+            penalizeOldWorker: data.penalizeOldWorker,
         });
     }
 

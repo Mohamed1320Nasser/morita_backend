@@ -1,6 +1,7 @@
 import { ButtonInteraction, EmbedBuilder } from "discord.js";
 import prisma from "../../../common/prisma/client";
 import logger from "../../../common/loggers";
+import { applyBrandThumbnail } from "../../utils/priceEmbed";
 
 // Format payment details as code block with syntax highlighting
 function formatPaymentBlock(type: string, details: Record<string, string>): string {
@@ -79,7 +80,7 @@ export async function handlePaymentMethods(
         const embed = new EmbedBuilder()
             .setTitle("💵 Payment Methods")
             .setDescription("Select a payment method and send to the address shown.")
-            .setColor(0x57F287)
+            .setColor(0xfca311)
             .setTimestamp();
 
         // Add each payment option as a code block field
@@ -97,9 +98,17 @@ export async function handlePaymentMethods(
                 hasUpcharge = true;
             }
 
+            // Admin-written notes for this method (schema: instructions). The
+            // block plus notes must stay under Discord's 1024-char field cap.
+            const notes = (option.instructions || "").trim();
+            const room = 1024 - formattedBlock.length - 4;
+            const notesText = notes && room > 16
+                ? `\n> ${notes.substring(0, room).replace(/\n/g, "\n> ")}`
+                : "";
+
             embed.addFields({
                 name: `${icon} ${option.name}${upchargeText}`,
-                value: formattedBlock,
+                value: `${formattedBlock}${notesText}`,
                 inline: false,
             });
         }
@@ -109,6 +118,8 @@ export async function handlePaymentMethods(
                 ? "Fees are added to your total • Open a ticket after payment with proof"
                 : "Open a ticket after payment with proof"
         });
+
+        applyBrandThumbnail(embed);
 
         await interaction.reply({
             embeds: [embed.toJSON() as any],

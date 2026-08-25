@@ -54,7 +54,7 @@ export async function handleAccountDataJagexLauncherModal(interaction: ModalSubm
                 { name: "Account Type", value: "🚀 Jagex Launcher", inline: true },
                 { name: "Fields Submitted", value: Object.keys(accountData).length.toString(), inline: true },
             ])
-            .setColor(0x57f287)
+            .setColor(0xfca311)
             .setTimestamp();
 
         await interaction.editReply({ embeds: [embed.toJSON() as any] });
@@ -75,7 +75,7 @@ export async function handleAccountDataJagexLauncherModal(interaction: ModalSubm
                             const disabledEmbed = new EmbedBuilder()
                                 .setTitle("✅ Account Data Submitted")
                                 .setDescription(`**Jagex Launcher** account data has been submitted for **Order #${order.orderNumber}**.`)
-                                .setColor(0x57f287)
+                                .setColor(0xfca311)
                                 .setTimestamp();
 
                             await msg.edit({
@@ -96,7 +96,7 @@ export async function handleAccountDataJagexLauncherModal(interaction: ModalSubm
                         { name: "Status", value: "🔓 Ready to view", inline: true },
                         { name: "Account Type", value: "🚀 Jagex Launcher", inline: true },
                     ])
-                    .setColor(0x57f287)
+                    .setColor(0xfca311)
                     .setTimestamp();
 
                 const viewButton = new ButtonBuilder()

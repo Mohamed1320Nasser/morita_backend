@@ -65,7 +65,7 @@ function createScreenshotEmbed(
                 inline: true,
             },
         ])
-        .setColor(canContinue ? 0x57f287 : 0xf59e0b)
+        .setColor(0xfca311)
         .setFooter({ text: "You have 5 minutes to upload your screenshots" })
         .setTimestamp();
 }
@@ -201,7 +201,7 @@ export async function collectCompletionScreenshots(
                 const successEmbed = new EmbedBuilder()
                     .setTitle("✅ Screenshots Collected")
                     .setDescription(`Successfully collected **${collectedUrls.length}** screenshot${collectedUrls.length !== 1 ? "s" : ""}.\n\nProceeding to completion form...`)
-                    .setColor(0x57f287)
+                    .setColor(0xfca311)
                     .setTimestamp();
                 await btnInteraction.update({ embeds: [successEmbed.toJSON() as any], components: [] });
 
@@ -335,7 +335,7 @@ export async function collectProofScreenshots(
                 const successEmbed = new EmbedBuilder()
                     .setTitle("✅ Proof Screenshots Saved")
                     .setDescription(`Successfully saved **${collectedUrls.length}** proof screenshot${collectedUrls.length !== 1 ? "s" : ""} to the order.`)
-                    .setColor(0x57f287)
+                    .setColor(0xfca311)
                     .setTimestamp();
                 await btnInteraction.update({ embeds: [successEmbed.toJSON() as any], components: [] });
 

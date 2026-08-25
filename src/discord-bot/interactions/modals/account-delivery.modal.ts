@@ -113,7 +113,7 @@ export async function handleAccountDeliveryModal(
                 "**Your account credentials are below. Please save them securely!**\n\n" +
                 "⚠️ **Save these details immediately - keep them safe!**"
             )
-            .setColor(0xc9a961 as ColorResolvable)
+            .setColor(0xfca311 as ColorResolvable)
             .addFields(
                 {
                     name: "📧 Email/Username",
@@ -178,7 +178,7 @@ export async function handleAccountDeliveryModal(
                     `Account credentials have been sent via **Direct Message** to <@${customerDiscordId}>.\n\n` +
                     "Customer: Please check your DMs for your account credentials."
                 )
-                .setColor(0x2ecc71 as ColorResolvable)
+                .setColor(0xfca311 as ColorResolvable)
                 .setTimestamp()
                 .setFooter({ text: "MORITA Gaming • Account Delivery" });
 
@@ -229,7 +229,7 @@ export async function handleAccountDeliveryModal(
                     `Could not send account credentials to <@${customerDiscordId}> via Direct Message.\n\n` +
                     "**Customer:** Please enable DMs from server members to receive your credentials, then ask staff to resend."
                 )
-                .setColor(0xf59e0b as ColorResolvable)
+                .setColor(0xfca311 as ColorResolvable)
                 .setTimestamp()
                 .setFooter({ text: "MORITA Gaming • Account Delivery" });
 
@@ -251,7 +251,7 @@ export async function handleAccountDeliveryModal(
                 "**Customer:** Please save your credentials and follow the security checklist below.\n\n" +
                 "Thank you for choosing MORITA Gaming!"
             )
-            .setColor(0x2ecc71 as ColorResolvable)
+            .setColor(0xfca311 as ColorResolvable)
             .addFields(
                 {
                     name: "🔒 Security Checklist",

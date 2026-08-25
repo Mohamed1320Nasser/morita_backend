@@ -285,7 +285,7 @@ export async function handleImprovedPricingServiceSelect(
                                 "Professional gaming service"
                             ).substring(0, 4096)
                         )
-                        .setColor(0x00d9ff)
+                        .setColor(0xfca311)
                         .addFields({
                             name: "📋 Service Information",
                             value: `**Status:** ${service.active ? "✅ Active" : "❌ Inactive"}\n\nUse the buttons below to view pricing or create an order.`,

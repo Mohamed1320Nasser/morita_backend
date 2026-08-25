@@ -97,7 +97,7 @@ export async function handlePaymentAll(interaction: ButtonInteraction): Promise<
             const cryptoEmbed = new EmbedBuilder()
                 .setTitle("🔗 Cryptocurrency Payments")
                 .setDescription("Send payment to one of the wallet addresses below:")
-                .setColor(0xF7931A);
+                .setColor(0xfca311);
 
             const walletsByCurrency: Record<string, typeof wallets> = {};
             for (const wallet of wallets) {
@@ -130,7 +130,7 @@ export async function handlePaymentAll(interaction: ButtonInteraction): Promise<
             const manualEmbed = new EmbedBuilder()
                 .setTitle("💵 Other Payment Methods")
                 .setDescription("Send payment using one of the methods below:")
-                .setColor(0x57F287);
+                .setColor(0xfca311);
 
             for (const option of paymentOptions) {
                 const icon = option.icon || PAYMENT_ICONS[option.type] || "💳";
@@ -140,9 +140,16 @@ export async function handlePaymentAll(interaction: ButtonInteraction): Promise<
                     ? ` (+${option.upchargePercent}% fee)`
                     : "";
 
+                const notes = (option.instructions || "").trim();
+                const block = `\`\`\`yaml\n${formattedBlock}\n\`\`\``;
+                const room = 1024 - block.length - 4;
+                const notesText = notes && room > 16
+                    ? `\n> ${notes.substring(0, room).replace(/\n/g, "\n> ")}`
+                    : "";
+
                 manualEmbed.addFields({
                     name: `${icon} ${option.name}${upchargeText}`,
-                    value: `\`\`\`yaml\n${formattedBlock}\n\`\`\``,
+                    value: `${block}${notesText}`,
                     inline: false,
                 });
             }

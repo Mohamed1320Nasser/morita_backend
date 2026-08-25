@@ -32,21 +32,21 @@ export function getDepositTier(depositAmount: number): DepositTierInfo {
             tier: DepositTier.LOW,
             emoji: "🟢",
             label: "Low Deposit",
-            color: 0x57f287 
+            color: 0xfca311 
         };
     } else if (depositAmount < 100) {
         return {
             tier: DepositTier.MEDIUM,
             emoji: "🟡",
             label: "Medium Deposit",
-            color: 0xf59e0b 
+            color: 0xfca311 
         };
     } else if (depositAmount < 200) {
         return {
             tier: DepositTier.HIGH,
             emoji: "🟠",
             label: "High Deposit",
-            color: 0xe67e22 
+            color: 0xfca311 
         };
     } else {
         return {
@@ -141,7 +141,7 @@ export function createJobClaimedEmbed(data: JobClaimingData, workerDiscordId: st
                 inline: true,
             },
         ])
-        .setColor(0x57f287) 
+        .setColor(0xfca311) 
         .setTimestamp()
         .setFooter({ text: `Order ID: ${data.orderId}` });
 

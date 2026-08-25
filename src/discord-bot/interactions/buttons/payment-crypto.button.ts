@@ -35,7 +35,7 @@ export async function handlePaymentCrypto(
         const embed = new EmbedBuilder()
             .setTitle("🔗 Cryptocurrency Wallets")
             .setDescription("Select a wallet address below to send your payment.")
-            .setColor(0xF7931A) // Bitcoin orange color
+            .setColor(0xfca311) // Bitcoin orange color
             .setTimestamp();
 
         // Group wallets by currency

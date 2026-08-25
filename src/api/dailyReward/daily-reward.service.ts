@@ -61,7 +61,7 @@ export default class DailyRewardService {
 
         if (effectiveMin.greaterThan(effectiveMax)) {
             throw new BadRequestError(
-                `minAmount ($${effectiveMin.toFixed(2)}) cannot be greater than maxAmount ($${effectiveMax.toFixed(2)})`
+                `minAmount ($${effectiveMin.toString()}) cannot be greater than maxAmount ($${effectiveMax.toString()})`
             );
         }
 
@@ -382,6 +382,6 @@ export default class DailyRewardService {
         const low = Math.min(min, max);
         const high = Math.max(min, max);
         const value = low + Math.random() * (high - low);
-        return Math.round(value * 100) / 100;
+        return Math.round(value * 1e8) / 1e8;
     }
 }

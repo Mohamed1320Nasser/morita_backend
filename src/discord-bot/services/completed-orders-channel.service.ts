@@ -166,7 +166,7 @@ export class CompletedOrdersChannelService {
                     const screenshotEmbed = new EmbedBuilder()
                         .setURL(groupUrl)  // Same URL groups embeds together
                         .setImage(screenshot)  // Full-width image
-                        .setColor((inProgress ? 0xfca311 : 0x2b6cb0) as ColorResolvable);
+                        .setColor(0xfca311 as ColorResolvable);
                     allEmbeds.push(screenshotEmbed);
                 }
             } else {
@@ -203,7 +203,7 @@ export class CompletedOrdersChannelService {
         const completedTimestamp = Math.floor(completedAt.getTime() / 1000);
 
         const embed = new EmbedBuilder()
-            .setColor((inProgress ? 0xfca311 : 0x2b6cb0) as ColorResolvable)
+            .setColor(0xfca311 as ColorResolvable)
             .setTitle(
                 inProgress
                     ? `🔄 Order #${orderNumber} — In Progress`

@@ -316,7 +316,7 @@ export class MentionTrackerService {
                     `You were mentioned by **${mentionedByText}** and still haven't responded.\n\n` +
                     `Please check and respond to the message.`
                 )
-                .setColor(0xffa500)
+                .setColor(0xfca311)
                 .setTimestamp();
 
             if (mention.messageUrl) {

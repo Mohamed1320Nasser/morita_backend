@@ -79,7 +79,7 @@ export async function handleViewAccountData(interaction: ButtonInteraction): Pro
                         { name: "Role", value: viewData.claimedByRole.charAt(0).toUpperCase() + viewData.claimedByRole.slice(1), inline: true },
                         { name: "Claimed At", value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: false },
                     ])
-                    .setColor(0x95a5a6)
+                    .setColor(0xfca311)
                     .setTimestamp();
 
                 await message.edit({

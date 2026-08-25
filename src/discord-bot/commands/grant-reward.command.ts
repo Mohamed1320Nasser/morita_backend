@@ -93,7 +93,7 @@ export default {
 
             const embed = new EmbedBuilder()
                 .setTitle("✅ Reward Granted")
-                .setColor(0x57f287)
+                .setColor(0xfca311)
                 .addFields(
                     { name: "Customer", value: `<@${target.id}>`, inline: true },
                     { name: "Amount", value: `$${result.rewardAmount.toFixed(2)}`, inline: true },
@@ -117,7 +117,7 @@ export default {
                         `**$${result.rewardAmount.toFixed(2)}** has been added to your wallet.` +
                             (reason ? `\n\n**Reason:** ${reason}` : "")
                     )
-                    .setColor(0x57f287)
+                    .setColor(0xfca311)
                     .setFooter({ text: "Use /w to see your balance" })
                     .setTimestamp();
 

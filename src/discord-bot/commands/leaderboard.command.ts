@@ -31,7 +31,7 @@ export default {
                 .join("\n");
 
             const embed = new EmbedBuilder()
-                .setColor(0xFFD700)
+                .setColor(0xfca311)
                 .setTitle("🏆 Referral Leaderboard")
                 .setDescription(leaderboardText)
                 .setFooter({ text: "Keep inviting to climb the ranks!" })

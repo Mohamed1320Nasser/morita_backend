@@ -11,7 +11,7 @@ export async function buildAccountShopMessage() {
     let welcomeMessage = "";
     let bannerUrl = "";
     let thumbnailUrl = "";
-    let embedColor = 0xc9a961;
+    let embedColor = 0xfca311;
     let footerText = "MORITA Gaming • Premium Account Store";
 
     // Try to fetch settings from API
@@ -98,7 +98,7 @@ Click the button below to browse available accounts.`;
 export function buildSimpleAccountShopEmbed(): EmbedBuilder {
     return new EmbedBuilder()
         .setTitle("🎮 OSRS Accounts For Sale")
-        .setColor(0xc9a961)
+        .setColor(0xfca311)
         .setDescription(
             "**Browse our verified account inventory**\n\n" +
             "✅ Instant delivery after payment\n" +

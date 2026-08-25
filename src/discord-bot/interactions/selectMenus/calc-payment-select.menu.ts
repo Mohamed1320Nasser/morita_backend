@@ -74,7 +74,7 @@ export async function handleCalcPaymentSelect(interaction: StringSelectMenuInter
         // Build result embed
         const embed = new EmbedBuilder()
             .setTitle(`${methodIcon} Payment Calculation - ${methodName}`)
-            .setColor(upchargePercent > 0 ? 0xFFA500 : 0x57F287)
+            .setColor(0xfca311)
             .setTimestamp();
 
         let description = "";

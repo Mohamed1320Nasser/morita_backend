@@ -95,7 +95,7 @@ async function handleStartWork(interaction: ChatInputCommandInteraction, orderNu
             { name: "New Status", value: "`In Progress`", inline: true },
             { name: "Next Step", value: "Use `/order-action mark-complete` when finished", inline: false },
         ])
-        .setColor(0xf1c40f)
+        .setColor(0xfca311)
         .setTimestamp();
 
     await interaction.editReply({ embeds: [successEmbed.toJSON() as any] });
@@ -156,7 +156,7 @@ async function handleMarkComplete(interaction: ChatInputCommandInteraction, orde
     const embed = new EmbedBuilder()
         .setTitle("📸 Screenshots Uploaded Successfully!")
         .setDescription(`Click the button below to confirm completion of **Order #${orderNumber}**.`)
-        .setColor(0x57f287)
+        .setColor(0xfca311)
         .setTimestamp();
 
     const confirmButton = new ButtonBuilder()

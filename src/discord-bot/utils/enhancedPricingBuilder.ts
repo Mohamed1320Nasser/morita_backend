@@ -569,7 +569,7 @@ export class EnhancedPricingBuilder {
     ): EmbedBuilder {
         const { compact = false, bannerUrl, categoryColor } = options;
 
-        const embedColor = categoryColor || 0x00d9ff;
+        const embedColor = categoryColor || 0xfca311;
 
         const serviceEmoji = this.formatEmojiForDiscord(service.emoji) || "⭐";
 

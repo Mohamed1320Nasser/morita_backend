@@ -224,7 +224,7 @@ export class OrderChannelService {
                 { name: "👷 Worker", value: `<@${workerDiscordId}>`, inline: true },
                 { name: "📊 Status", value: this.getStatusEmoji(status), inline: true },
             ])
-            .setColor(0xf59e0b)
+            .setColor(0xfca311)
             .setTimestamp();
 
         if (serviceName) {

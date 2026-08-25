@@ -134,7 +134,7 @@ export async function handleConfirmCompleteButton(interaction: ButtonInteraction
                                 inline: true
                             },
                         ])
-                        .setColor(0xf1c40f)
+                        .setColor(0xfca311)
                         .setTimestamp()
                         .setFooter({ text: "Thank you for your order!" });
 

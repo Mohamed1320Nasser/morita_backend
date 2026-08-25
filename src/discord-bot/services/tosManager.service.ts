@@ -137,7 +137,7 @@ export class TosManagerService {
             const embed = new EmbedBuilder()
                 .setTitle(activeTos.title.substring(0, 256))
                 .setDescription(activeTos.content.substring(0, 4096))
-                .setColor(parseInt(activeTos.embedColor || "5865F2", 16));
+                .setColor(parseInt(activeTos.embedColor || "fca311", 16));
 
             if (activeTos.bannerUrl) {
                 embed.setImage(activeTos.bannerUrl);

@@ -460,7 +460,7 @@ export async function handleAccountConfirm(
             .setDescription(
                 "Please wait while we set up your purchase ticket and reserve the account for you."
             )
-            .setColor(0xf1c40f as ColorResolvable)
+            .setColor(0xfca311 as ColorResolvable)
             .setTimestamp();
 
         await interaction.editReply({
@@ -506,7 +506,7 @@ export async function handleAccountConfirm(
                 "✅ The account has been reserved for you for 30 minutes.\n\n" +
                 `Please head over to your ticket channel to complete the purchase:\n<#${channel.id}>`
             )
-            .setColor(0x2ecc71 as ColorResolvable)
+            .setColor(0xfca311 as ColorResolvable)
             .setTimestamp()
             .setFooter({
                 text: "MORITA Gaming • Account Purchase",
@@ -592,7 +592,7 @@ export async function handleAccountPaymentSent(
                 `**Staff Action Required:**\n` +
                 `Please verify the payment and then deliver the account credentials.`
             )
-            .setColor(0xf1c40f as ColorResolvable)
+            .setColor(0xfca311 as ColorResolvable)
             .addFields({
                 name: "📋 Status",
                 value: "⏳ Awaiting Payment Verification",
@@ -659,7 +659,7 @@ export async function handleAccountCancelOrder(
                 "• Make the account available for other customers\n\n" +
                 "**This action cannot be undone.**"
             )
-            .setColor(0xf1c40f as ColorResolvable)
+            .setColor(0xfca311 as ColorResolvable)
             .setTimestamp()
             .setFooter({
                 text: "MORITA Gaming • Confirm Cancellation",
@@ -845,7 +845,7 @@ export async function handleAccountConfirmPayment(
                 `Payment has been verified by <@${interaction.user.id}>.\n\n` +
                 `**Next Step:** Click "Deliver Account" to send the account credentials to the customer.`
             )
-            .setColor(0x2ecc71 as ColorResolvable)
+            .setColor(0xfca311 as ColorResolvable)
             .addFields({
                 name: "📋 Status",
                 value: "✅ Payment Verified - Ready for Delivery",
@@ -963,7 +963,7 @@ export async function handleAccountRelease(
                     `The account has been released back to inventory by <@${interaction.user.id}>.\n\n` +
                     `It is now available for other customers to purchase.`
                 )
-                .setColor(0x3498db as ColorResolvable)
+                .setColor(0xfca311 as ColorResolvable)
                 .setTimestamp()
                 .setFooter({
                     text: "MORITA Gaming • Account Released",
@@ -1018,7 +1018,7 @@ export async function handleAccountConfirmDelivery(
                 `**Thank you for your purchase!**\n\n` +
                 `If you have any issues with the account, please contact support immediately.`
             )
-            .setColor(0x2ecc71 as ColorResolvable)
+            .setColor(0xfca311 as ColorResolvable)
             .setTimestamp()
             .setFooter({
                 text: "MORITA Gaming • Receipt Confirmed",
@@ -1157,7 +1157,7 @@ export async function handleAccountCloseTicket(
         const closeEmbed = new EmbedBuilder()
             .setTitle("📋 Ticket Closing")
             .setDescription(description)
-            .setColor(wasDelivered ? 0x2ecc71 : 0x95a5a6 as ColorResolvable) // Green if delivered, gray otherwise
+            .setColor(0xfca311 as ColorResolvable) // Green if delivered, gray otherwise
             .setTimestamp()
             .setFooter({
                 text: "MORITA Gaming • Ticket Closed",

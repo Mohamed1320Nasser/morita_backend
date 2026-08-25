@@ -99,7 +99,7 @@ export default {
                     `✅ **Profile updated**\n\n` +
                     `Welcome to our community! You now have access to all customer channels.`
                 )
-                .setColor(0x00FF00)
+                .setColor(0xfca311)
                 .setFooter({ text: `Registered as: ${userData.fullname}` })
                 .setTimestamp();
 

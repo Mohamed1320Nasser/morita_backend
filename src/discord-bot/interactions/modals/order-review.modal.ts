@@ -92,7 +92,7 @@ export async function handleOrderReviewModal(interaction: ModalSubmitInteraction
             .addFields([
                 { name: "⭐ Your Rating", value: `${stars} (${rating}/5)`, inline: false },
             ])
-            .setColor(0x57f287)
+            .setColor(0xfca311)
             .setTimestamp()
             .setFooter({ text: "Thank you for your business!" });
 

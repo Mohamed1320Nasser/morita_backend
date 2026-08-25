@@ -59,7 +59,7 @@ export default {
             const loadingEmbed = new EmbedBuilder()
                 .setTitle("🔍 Verifying Transaction...")
                 .setDescription(`Checking ${currency} blockchain for transaction:\n\`${txid}\``)
-                .setColor(0x5865f2)
+                .setColor(0xfca311)
                 .setTimestamp();
 
             await interaction.editReply({ embeds: [loadingEmbed.toJSON() as any] });
@@ -133,13 +133,13 @@ function buildResultEmbed(txData: any, currency: string, txid: string, verifier:
         case "confirmed":
             embed
                 .setTitle("✅ Transaction Confirmed")
-                .setColor(0x57f287)
+                .setColor(0xfca311)
                 .setDescription(`The ${currency} transaction has been **confirmed** on the blockchain.`);
             break;
         case "pending":
             embed
                 .setTitle("⏳ Transaction Pending")
-                .setColor(0xfee75c)
+                .setColor(0xfca311)
                 .setDescription(`The ${currency} transaction is **pending** confirmation.`);
             break;
         case "not_found":
@@ -157,7 +157,7 @@ function buildResultEmbed(txData: any, currency: string, txid: string, verifier:
         default:
             embed
                 .setTitle("❓ Unknown Status")
-                .setColor(0x99aab5)
+                .setColor(0xfca311)
                 .setDescription(`Transaction status: ${txData.status}`);
     }
 

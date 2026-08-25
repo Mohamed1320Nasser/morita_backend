@@ -151,7 +151,7 @@ export async function handleClaimJobButton(interaction: ButtonInteraction): Prom
         }
 
         const successEmbed = new EmbedBuilder()
-            .setColor(0x57f287)
+            .setColor(0xfca311)
             .setTitle("✅ Job Claimed Successfully!")
             .setDescription(`You have successfully claimed this job and can now begin working on it.`)
             .addFields(

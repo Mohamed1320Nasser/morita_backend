@@ -85,7 +85,7 @@ async function execute(interaction: ChatInputCommandInteraction) {
         if (channel) {
             const publicEmbed = new EmbedBuilder()
                 .setDescription(`📸 **Proof Added** - <@${interaction.user.id}> added ${screenshotResult.urls.length} proof screenshot(s) to Order #${orderNumber}.\n📊 Total proof screenshots: **${totalProof}**`)
-                .setColor(0x57f287)
+                .setColor(0xfca311)
                 .setTimestamp();
 
             await channel.send({

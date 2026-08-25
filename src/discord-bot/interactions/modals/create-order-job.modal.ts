@@ -320,7 +320,7 @@ function buildConfirmationEmbed(
             { name: "📊 Status", value: order.status, inline: true },
             { name: "💵 Customer Balance", value: `$${(customerBalance - orderData.orderValue).toFixed(2)} ${orderData.currency}`, inline: true },
         ])
-        .setColor(orderData.workerDiscordId ? 0x57f287 : 0xf59e0b)
+        .setColor(0xfca311)
         .setTimestamp()
         .setFooter({
             text: order.orderNumber ? `Order #${order.orderNumber}` : `Order ID: ${order.orderId}`

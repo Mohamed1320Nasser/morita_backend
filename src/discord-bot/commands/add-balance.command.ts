@@ -296,7 +296,7 @@ async function sendNotificationEmbed(
                 inline: true,
             }
         )
-        .setColor(isWorkerDeposit ? 0x5865f2 : 0xffd700)
+        .setColor(0xfca311)
         .setTimestamp()
         .setThumbnail(userAvatar);
 

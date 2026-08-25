@@ -4,13 +4,13 @@ import { Type } from "class-transformer";
 export class UpdateConfigDto {
     @IsOptional()
     @Type(() => Number)
-    @IsNumber({ maxDecimalPlaces: 2 })
+    @IsNumber({ maxDecimalPlaces: 8 })
     @Min(0)
     minAmount?: number;
 
     @IsOptional()
     @Type(() => Number)
-    @IsNumber({ maxDecimalPlaces: 2 })
+    @IsNumber({ maxDecimalPlaces: 8 })
     @Min(0)
     maxAmount?: number;
 

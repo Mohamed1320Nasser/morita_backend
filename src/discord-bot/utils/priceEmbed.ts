@@ -411,12 +411,26 @@ export function buildGrandTotal(amount: number): string {
     ]);
 }
 
+/**
+ * Banner only. The calculator's tables are fixed-width code blocks that cannot
+ * reflow, and a thumbnail steals roughly a quarter of the line width - enough
+ * to wrap the price column. The banner sits below the content, so it costs no
+ * horizontal room.
+ */
 export function applyCalculatorBranding(embed: EmbedBuilder): EmbedBuilder {
     const banner = (process.env.CALC_BANNER_URL || "").trim();
     if (banner) {
         embed.setImage(banner);
     }
 
+    return embed;
+}
+
+/**
+ * Logo in the top-right, for embeds built from plain text or fields. Those
+ * reflow around it, so unlike the calculators they keep their layout.
+ */
+export function applyBrandThumbnail(embed: EmbedBuilder): EmbedBuilder {
     const thumbnail = (process.env.CALC_THUMBNAIL_URL || "").trim();
     if (thumbnail) {
         embed.setThumbnail(thumbnail);

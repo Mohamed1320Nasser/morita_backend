@@ -84,7 +84,7 @@ export class DiscordLoyaltyTierService {
             ? `You upgraded from ${oldTier.emoji} ${oldTier.name} (${oldTier.discountPercent}%)`
             : `Welcome to your first loyalty tier!`)
       )
-      .setColor(0xffd700)
+      .setColor(0xfca311)
       .setThumbnail(member.user.displayAvatarURL())
       .setTimestamp()
       .setFooter({ text: 'Thank you for your continued support!' });

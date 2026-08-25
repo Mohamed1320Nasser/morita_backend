@@ -58,7 +58,7 @@ export async function handleResolveRequestCorrectionsModal(interaction: ModalSub
                     inline: false
                 },
             ])
-            .setColor(0x3498db) 
+            .setColor(0xfca311) 
             .setTimestamp()
             .setFooter({ text: `Resolved by ${interaction.user.tag}` });
 
@@ -87,7 +87,7 @@ export async function handleResolveRequestCorrectionsModal(interaction: ModalSub
                             inline: false
                         },
                     ])
-                    .setColor(0x3498db)
+                    .setColor(0xfca311)
                     .setTimestamp()
                     .setFooter({ text: "Support has reviewed this case" });
 
@@ -121,7 +121,7 @@ export async function handleResolveRequestCorrectionsModal(interaction: ModalSub
                             inline: false
                         },
                     ])
-                    .setColor(0x3498db)
+                    .setColor(0xfca311)
                     .setTimestamp()
                     .setFooter({ text: "Support has reviewed this case" });
 
@@ -154,7 +154,7 @@ export async function handleResolveRequestCorrectionsModal(interaction: ModalSub
                     const issueMessage = await issuesChannel.messages.fetch(issue.discordMessageId);
 
                     const updatedEmbed = new EmbedBuilder(issueMessage.embeds[0].data)
-                        .setColor(0x3498db) 
+                        .setColor(0xfca311) 
                         .setTitle(`🔄 IN REVIEW - ${issueMessage.embeds[0].title}`);
 
                     updatedEmbed.addFields({

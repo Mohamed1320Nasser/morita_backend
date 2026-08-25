@@ -134,7 +134,7 @@ export class PaymentChannelManagerService {
             // Build the embed
             const embed = new EmbedBuilder()
                 .setTitle((config?.title || "💳 Payment Methods").substring(0, 256))
-                .setColor(parseInt((config?.color || "5865F2").replace("#", ""), 16))
+                .setColor(parseInt((config?.color || "fca311").replace("#", ""), 16))
                 .setTimestamp();
 
             if (config?.description) {

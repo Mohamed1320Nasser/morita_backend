@@ -89,7 +89,7 @@ export default {
                 const embed = new EmbedBuilder()
                     .setTitle("⚠️ Order Already Cancelled")
                     .setDescription(`Order #${orderData.orderNumber} is already cancelled.`)
-                    .setColor(0xffa500)
+                    .setColor(0xfca311)
                     .setTimestamp();
 
                 await interaction.editReply({
@@ -105,7 +105,7 @@ export default {
                         `Order #${orderData.orderNumber} is already completed.\n\n` +
                         `Completed orders cannot be cancelled. Use refund process instead.`
                     )
-                    .setColor(0xffa500)
+                    .setColor(0xfca311)
                     .setTimestamp();
 
                 await interaction.editReply({
@@ -128,7 +128,7 @@ export default {
                     `**Reason:** ${reason}\n\n` +
                     `The customer and worker have been notified.`
                 )
-                .setColor(0x57f287)
+                .setColor(0xfca311)
                 .addFields(
                     {
                         name: "📦 Order Details",

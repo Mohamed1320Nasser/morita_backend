@@ -53,7 +53,7 @@ export default {
                                         const referrer = await member.guild.members.fetch(usedInvite.inviterId).catch(() => null);
 
                                         const embed = new EmbedBuilder()
-                                            .setColor(0x00FF00)
+                                            .setColor(0xfca311)
                                             .setTitle("🎉 New Referral!")
                                             .setDescription(
                                                 `${referrer ? `<@${usedInvite.inviterId}>` : usedInvite.inviterTag} referred ${member}`

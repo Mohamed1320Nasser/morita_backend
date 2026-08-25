@@ -90,7 +90,7 @@ async function execute(interaction: ChatInputCommandInteraction) {
                 "**Your data is encrypted and can only be viewed once by the worker/support.**\n\n" +
                 "**Please select your account type:**"
             )
-            .setColor(0x5865f2)
+            .setColor(0xfca311)
             .setFooter({ text: `Order #${order.orderNumber}` })
             .setTimestamp();
 

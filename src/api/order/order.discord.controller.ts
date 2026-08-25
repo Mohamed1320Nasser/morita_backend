@@ -108,6 +108,19 @@ export default class DiscordOrderController {
         return await this.orderService.cancelOrderByDiscordId(orderId, data);
     }
 
+    @Put("/:orderId/replace-worker")
+    async replaceWorker(
+        @Param("orderId") orderId: string,
+        @Body() data: {
+            newWorkerDiscordId: string;
+            replacedByDiscordId: string;
+            reason: string;
+            penalizeOldWorker?: boolean;
+        }
+    ) {
+        return await this.orderService.replaceWorkerByDiscordId(orderId, data);
+    }
+
     @Put("/:orderId/channel")
     async updateOrderChannel(
         @Param("orderId") orderId: string,

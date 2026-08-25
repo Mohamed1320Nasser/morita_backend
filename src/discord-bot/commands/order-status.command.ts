@@ -114,7 +114,7 @@ async function execute(interaction: ChatInputCommandInteraction) {
                     inline: true,
                 },
             ])
-            .setColor(0x2ecc71)
+            .setColor(0xfca311)
             .setTimestamp();
 
         if (reason) {

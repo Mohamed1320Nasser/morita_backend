@@ -9,7 +9,7 @@ export async function buildPurchaseGoldMessage() {
     const activeTypes = await getActiveTicketTypesForGroup("buy-gold");
 
     const embed = new EmbedBuilder()
-        .setColor(0xF1C40F) 
+        .setColor(0xfca311) 
         .setTitle("💰 Buy OSRS & RS3 Gold Instantly - Safe & Easy!")
         .setDescription(
             "**💵 Want to Buy OSRS or RS3 Gold? Here's How:**\n\n" +

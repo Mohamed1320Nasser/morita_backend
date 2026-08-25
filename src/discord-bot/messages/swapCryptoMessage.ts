@@ -9,7 +9,7 @@ export async function buildSwapCryptoMessage() {
     const activeTypes = await getActiveTicketTypesForGroup("crypto-swap");
 
     const embed = new EmbedBuilder()
-        .setColor(0x9B59B6) 
+        .setColor(0xfca311) 
         .setTitle("🔄 Swap Cryptocurrency")
         .setDescription(
             "**Ready to Swap Your Crypto?**\n\n" +

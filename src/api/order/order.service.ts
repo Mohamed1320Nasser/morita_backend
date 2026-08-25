@@ -757,6 +757,259 @@ export default class OrderService {
         return updatedOrder;
     }
 
+    async replaceWorker(
+        orderId: string,
+        data: {
+            newWorkerId: number;
+            replacedById: number;
+            reason: string;
+            penalizeOldWorker?: boolean;
+        }
+    ) {
+        const order = await this.getOrderById(orderId);
+
+        if (!order.workerId) {
+            throw new BadRequestError("This order has no worker assigned yet - use assign instead");
+        }
+
+        if (order.workerId === data.newWorkerId) {
+            throw new BadRequestError("The new worker is already assigned to this order");
+        }
+
+        if (order.payoutProcessed) {
+            throw new BadRequestError("Order funds have already been distributed and the worker cannot be replaced");
+        }
+
+        const replaceableStatuses: PrismaOrderStatus[] = [
+            PrismaOrderStatus.ASSIGNED,
+            PrismaOrderStatus.IN_PROGRESS,
+        ];
+
+        if (!replaceableStatuses.includes(order.status as PrismaOrderStatus)) {
+            throw new BadRequestError(
+                `Worker cannot be replaced while the order is ${order.status}`
+            );
+        }
+
+        const newWorker = await prisma.user.findUnique({
+            where: { id: data.newWorkerId },
+        });
+
+        if (!newWorker) {
+            throw new NotFoundError("Replacement worker not found");
+        }
+
+        const oldWorkerWallet = await this.walletService.getWalletByUserId(order.workerId);
+        const newWorkerWallet = await this.walletService.getWalletByUserId(data.newWorkerId);
+
+        if (!newWorkerWallet) {
+            throw new BadRequestError("Replacement worker does not have a wallet");
+        }
+
+        const deposit = new Decimal(order.depositAmount.toString());
+        const oldWorkerId = order.workerId;
+
+        const updated = await withTransactionRetry(async (tx) => {
+            // Re-read under the transaction so a concurrent completion or
+            // cancellation cannot slip between the checks above and the swap.
+            const current = await tx.order.findUnique({
+                where: { id: orderId },
+                select: { status: true, workerId: true, payoutProcessed: true },
+            });
+
+            if (!current) {
+                throw new NotFoundError("Order not found");
+            }
+
+            if (
+                current.workerId !== oldWorkerId ||
+                current.payoutProcessed ||
+                !replaceableStatuses.includes(current.status)
+            ) {
+                throw new BadRequestError(
+                    "Order changed while replacing the worker - please retry"
+                );
+            }
+
+            // Release the outgoing worker's locked deposit. Mirrors the
+            // cancellation path so the money never stays stranded.
+            if (oldWorkerWallet && deposit.greaterThan(0)) {
+                const walletBefore = await tx.wallet.findUnique({
+                    where: { id: oldWorkerWallet.id },
+                    select: { balance: true },
+                });
+                const balanceBefore = new Decimal(walletBefore!.balance.toString());
+
+                if (data.penalizeOldWorker) {
+                    // Deposit is forfeited: clear the hold without crediting back.
+                    await updateWalletBalance(tx, oldWorkerWallet.id, 0, -deposit.toNumber());
+
+                    await tx.systemWallet.upsert({
+                        where: { id: "system-wallet" },
+                        create: { id: "system-wallet", balance: deposit.toNumber() },
+                        update: { balance: { increment: deposit.toNumber() } },
+                    });
+
+                    await tx.walletTransaction.create({
+                        data: {
+                            walletId: oldWorkerWallet.id,
+                            orderId: order.id,
+                            type: "PAYMENT",
+                            amount: deposit.neg(),
+                            balanceBefore,
+                            balanceAfter: balanceBefore,
+                            currency: oldWorkerWallet.currency,
+                            status: "COMPLETED",
+                            reference: `Order #${order.orderNumber} - Deposit forfeited on replacement`,
+                            notes: data.reason,
+                            createdById: data.replacedById,
+                        },
+                    });
+                } else {
+                    await updateWalletBalance(
+                        tx,
+                        oldWorkerWallet.id,
+                        deposit.toNumber(),
+                        -deposit.toNumber()
+                    );
+
+                    await tx.walletTransaction.create({
+                        data: {
+                            walletId: oldWorkerWallet.id,
+                            orderId: order.id,
+                            type: "RELEASE",
+                            amount: deposit,
+                            balanceBefore,
+                            balanceAfter: balanceBefore.plus(deposit),
+                            currency: oldWorkerWallet.currency,
+                            status: "COMPLETED",
+                            reference: `Order #${order.orderNumber} - Deposit returned on replacement`,
+                            notes: data.reason,
+                            createdById: data.replacedById,
+                        },
+                    });
+                }
+            }
+
+            // Lock the incoming worker's deposit on the same terms as a claim.
+            if (deposit.greaterThan(0)) {
+                const balanceCheck = await checkWalletBalanceWithLock(
+                    tx,
+                    newWorkerWallet.id,
+                    deposit.toNumber(),
+                    "worker"
+                );
+
+                if (!balanceCheck.sufficient) {
+                    throw new InsufficientBalanceError(
+                        deposit.toNumber(),
+                        balanceCheck.available,
+                        "worker"
+                    );
+                }
+
+                const deduction = await deductFromWorkerWallet(
+                    tx,
+                    newWorkerWallet.id,
+                    deposit.toNumber(),
+                    deposit.toNumber()
+                );
+
+                const balanceBefore = balanceCheck.wallet.balance;
+
+                await tx.walletTransaction.create({
+                    data: {
+                        walletId: newWorkerWallet.id,
+                        orderId: order.id,
+                        type: "PAYMENT",
+                        amount: deposit.neg(),
+                        balanceBefore,
+                        balanceAfter: balanceBefore - deduction.fromBalance,
+                        currency: newWorkerWallet.currency,
+                        status: "PENDING",
+                        reference: `Order #${order.orderNumber} - Worker deposit locked on replacement`,
+                        notes: `Took over from previous worker. ${data.reason}`,
+                        createdById: data.replacedById,
+                    },
+                });
+            }
+
+            // The incoming worker starts fresh, so clear the progress clock but
+            // keep the order at ASSIGNED for them to pick up.
+            await tx.order.update({
+                where: { id: orderId },
+                data: {
+                    workerId: data.newWorkerId,
+                    status: OrderStatus.ASSIGNED,
+                    assignedAt: new Date(),
+                    startedAt: null,
+                },
+            });
+
+            await tx.orderStatusHistory.create({
+                data: {
+                    orderId,
+                    fromStatus: current.status,
+                    toStatus: OrderStatus.ASSIGNED,
+                    changedById: data.replacedById,
+                    reason: `Worker replaced: ${data.reason}`,
+                },
+            });
+
+            return await tx.order.findUniqueOrThrow({
+                where: { id: orderId },
+                include: {
+                    customer: true,
+                    worker: true,
+                    support: true,
+                    service: true,
+                },
+            });
+        });
+
+        logger.info(
+            `[OrderService] Order ${orderId} worker replaced: ${oldWorkerId} -> ${data.newWorkerId} ` +
+            `(deposit ${data.penalizeOldWorker ? "forfeited" : "returned"})`
+        );
+
+        return { order: updated, oldWorkerId, depositReturned: !data.penalizeOldWorker };
+    }
+
+    async replaceWorkerByDiscordId(
+        orderId: string,
+        data: {
+            newWorkerDiscordId: string;
+            replacedByDiscordId: string;
+            reason: string;
+            penalizeOldWorker?: boolean;
+        }
+    ) {
+        const newWorker = await prisma.user.findUnique({
+            where: { discordId: data.newWorkerDiscordId },
+        });
+
+        if (!newWorker) {
+            throw new NotFoundError(
+                "Replacement worker not found - they must have a registered account"
+            );
+        }
+
+        const actor = await prisma.user.findUnique({
+            where: { discordId: data.replacedByDiscordId },
+        });
+
+        if (!actor) {
+            throw new NotFoundError("Acting staff member not found");
+        }
+
+        return await this.replaceWorker(orderId, {
+            newWorkerId: newWorker.id,
+            replacedById: actor.id,
+            reason: data.reason,
+            penalizeOldWorker: data.penalizeOldWorker,
+        });
+    }
+
     async claimOrder(orderId: string, data: ClaimOrderDto) {
         const order = await this.getOrderById(orderId);
 

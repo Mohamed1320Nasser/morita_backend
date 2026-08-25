@@ -11,6 +11,8 @@ import {
 import logger from "../../common/loggers";
 import { discordApiClient } from "../clients/DiscordApiClient";
 import { getOrderChannelService } from "../services/orderChannel.service";
+import { discordConfig } from "../config/discord.config";
+import { applyCalculatorBranding, applyBrandThumbnail } from "./priceEmbed";
 import { notifySupportOrderUpdate } from "./notification.util";
 import { getCompletedOrdersChannelService } from "../services/completed-orders-channel.service";
 
@@ -33,7 +35,7 @@ export async function startWorkOnOrder(
     });
 
     const ephemeralEmbed = new EmbedBuilder()
-        .setColor(0x57f287) 
+        .setColor(0xfca311) 
         .setTitle("✅ 🚀 Work Started")
         .setDescription(`✅ You've started work on Order #${orderData.orderNumber}!`)
         .addFields([
@@ -82,7 +84,7 @@ export async function startWorkOnOrder(
 
             // Create public "Work Started" embed with Mark Complete button
             const publicEmbed = new EmbedBuilder()
-                .setColor(0x57f287)
+                .setColor(0xfca311)
                 .setTitle("🚀 Work Started")
                 .setDescription(
                     `<@${workerDiscordId}> has started work on Order #${orderData.orderNumber}!\n\n` +
@@ -168,7 +170,7 @@ export async function completeWorkOnOrder(
         .addFields([
             { name: "⏳ Next Step", value: "Waiting for customer to confirm completion", inline: false },
         ])
-        .setColor(0xf59e0b) 
+        .setColor(0xfca311) 
         .setTimestamp();
 
     if (orderChannel) {
@@ -186,7 +188,7 @@ export async function completeWorkOnOrder(
                             { name: "👷 Worker", value: `<@${orderData.worker.discordId}>`, inline: true },
                             { name: "📊 Status", value: "🟠 **AWAITING CONFIRMATION**", inline: true },
                         ])
-                        .setColor(0xf59e0b)
+                        .setColor(0xfca311)
                         .setTimestamp();
 
                     if (completionNotes) {
@@ -214,7 +216,7 @@ export async function completeWorkOnOrder(
                     { name: "👷 Worker", value: `<@${orderData.worker.discordId}>`, inline: true },
                     { name: "📊 Status", value: "🟠 Awaiting Confirmation", inline: true },
                 ])
-                .setColor(0xf59e0b)
+                .setColor(0xfca311)
                 .setTimestamp();
 
             if (completionNotes) {
@@ -300,7 +302,7 @@ export async function completeWorkOnOrder(
                     inline: false
                 },
             ])
-            .setColor(0xf59e0b)
+            .setColor(0xfca311)
             .setTimestamp()
             .setFooter({ text: "Thank you for choosing our service!" });
 
@@ -356,7 +358,7 @@ export async function confirmOrderCompletion(
             { name: "💰 Order Value", value: `$${orderValue.toFixed(2)} USD`, inline: true },
             { name: "📊 Status", value: "✅ COMPLETED", inline: true },
         ])
-        .setColor(0x57f287) 
+        .setColor(0xfca311) 
         .setTimestamp()
         .setFooter({ text: "Thank you for your business!" });
 
@@ -376,7 +378,7 @@ export async function confirmOrderCompletion(
                     { name: "💰 Order Value", value: `$${orderValue.toFixed(2)} USD`, inline: true },
                     { name: "📊 Final Status", value: "✅ **COMPLETED & PAID**", inline: false },
                 ])
-                .setColor(0x57f287)
+                .setColor(0xfca311)
                 .setTimestamp()
                 .setFooter({ text: `Order #${orderData.orderNumber} • Completed` });
 
@@ -418,7 +420,7 @@ export async function confirmOrderCompletion(
                     { name: "📦 Order", value: `#${orderData.orderNumber}`, inline: true },
                     { name: "💡 Tip", value: "Your feedback helps us maintain quality service!", inline: false },
                 ])
-                .setColor(0x57f287)
+                .setColor(0xfca311)
                 .setTimestamp();
 
             const publicReviewButton = new ButtonBuilder()
@@ -456,7 +458,7 @@ export async function confirmOrderCompletion(
                             `Thank you for your business!\n` +
                             `Great work <@${orderData.worker.discordId}>!`
                         )
-                        .setColor(0x57f287)
+                        .setColor(0xfca311)
                         .toJSON() as any
                 ]
             });
@@ -490,7 +492,7 @@ export async function confirmOrderCompletion(
                     inline: false
                 },
             ])
-            .setColor(0x57f287)
+            .setColor(0xfca311)
             .setTimestamp()
             .setFooter({ text: "Thank you for choosing our service! ❤️" });
 
@@ -499,6 +501,22 @@ export async function confirmOrderCompletion(
                 { name: "📝 Final Notes from Worker", value: orderData.completionNotes.substring(0, 1024), inline: false }
             ]);
         }
+
+        // A DM cannot resolve <#id> mentions, so the ticket needs a full URL.
+        const ticketChannelId = orderChannel?.id || orderData.ticketChannelId || orderData.discordChannelId;
+        const ticketGuildId = orderChannel?.guild?.id || discordConfig.guildId;
+        if (ticketChannelId && ticketGuildId) {
+            celebrationEmbed.addFields([
+                {
+                    name: "🎫 Your Ticket",
+                    value: `[Open ticket](https://discord.com/channels/${ticketGuildId}/${ticketChannelId})`,
+                    inline: false,
+                },
+            ]);
+        }
+
+        applyBrandThumbnail(celebrationEmbed);
+        applyCalculatorBranding(celebrationEmbed);
 
         await customerUser.send({
             embeds: [celebrationEmbed.toJSON() as any],
@@ -532,9 +550,12 @@ export async function confirmOrderCompletion(
                     inline: false
                 },
             ])
-            .setColor(0x57f287)
+            .setColor(0xfca311)
             .setTimestamp()
             .setFooter({ text: "Keep up the great work!" });
+
+        applyBrandThumbnail(workerCelebrationEmbed);
+        applyCalculatorBranding(workerCelebrationEmbed);
 
         await workerUser.send({
             embeds: [workerCelebrationEmbed.toJSON() as any],

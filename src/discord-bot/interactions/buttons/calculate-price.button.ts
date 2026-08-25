@@ -94,7 +94,7 @@ export async function handleCalculatePrice(
         }
 
         const embed = new EmbedBuilder()
-            .setColor(0x5865F2) 
+            .setColor(0xfca311) 
             .setTitle(`💰 ${service.emoji || '⭐'} ${service.name} Price Calculator`)
             .setDescription(
                 `> **Get instant pricing** for **${service.name}**!\n` +

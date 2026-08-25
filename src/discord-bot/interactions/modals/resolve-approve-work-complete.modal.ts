@@ -103,7 +103,7 @@ export async function handleResolveApproveWorkCompleteModal(interaction: ModalSu
                     inline: false
                 },
             ])
-            .setColor(0x57f287) 
+            .setColor(0xfca311) 
             .setTimestamp()
             .setFooter({ text: `Resolved by ${interaction.user.tag}` });
 
@@ -130,7 +130,7 @@ export async function handleResolveApproveWorkCompleteModal(interaction: ModalSu
                     const issueMessage = await issuesChannel.messages.fetch(issue.discordMessageId);
 
                     const resolvedEmbed = new EmbedBuilder(issueMessage.embeds[0].data)
-                        .setColor(0x57f287) 
+                        .setColor(0xfca311) 
                         .setTitle(`✅ RESOLVED - ${issueMessage.embeds[0].title}`);
 
                     resolvedEmbed.addFields({

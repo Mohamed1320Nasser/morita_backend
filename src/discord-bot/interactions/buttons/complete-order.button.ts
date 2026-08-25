@@ -42,7 +42,7 @@ export async function handleCompleteOrder(interaction: ButtonInteraction): Promi
         const embed = new EmbedBuilder()
             .setTitle("📸 Screenshots Uploaded Successfully!")
             .setDescription(`Click the button below to confirm completion of **Order #${orderData.orderNumber}**.`)
-            .setColor(0x57f287)
+            .setColor(0xfca311)
             .setTimestamp();
 
         const confirmButton = new ButtonBuilder()

@@ -109,7 +109,7 @@ export default {
 
             // Build embed with stats and invite link
             const embed = new EmbedBuilder()
-                .setColor(0xFFD700)
+                .setColor(0xfca311)
                 .setTitle("🎁 Your Referral Stats")
                 .setDescription(
                     rewardConfig.isEnabled

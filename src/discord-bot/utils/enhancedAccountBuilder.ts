@@ -262,7 +262,7 @@ export class EnhancedAccountBuilder {
     } {
         const embeds: EmbedBuilder[] = [];
         const categoryColor =
-            this.CATEGORY_COLORS[account.category] || 0xc9a961;
+            this.CATEGORY_COLORS[account.category] || 0xfca311;
         const categoryEmoji =
             this.CATEGORY_EMOJIS[account.category] || "📦";
         const categoryLabel =
@@ -438,7 +438,7 @@ export class EnhancedAccountBuilder {
                     `📦 **${totalAccounts}** accounts available across **${categoryCount}** categories\n\n` +
                     `**Select a category below to browse accounts:**`
             )
-            .setColor(0xc9a961)
+            .setColor(0xfca311)
             .setThumbnail(process.env.BRAND_LOGO_URL || null)
             .setTimestamp()
             .setFooter({

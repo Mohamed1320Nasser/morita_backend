@@ -36,7 +36,7 @@ export default class CryptoNotificationService {
       // Build embed
       const embed = new EmbedBuilder()
         .setTitle("💰 New Crypto Payment Received!")
-        .setColor(0x00ff00) // Green
+        .setColor(0xfca311) // Green
         .setTimestamp()
         .addFields(
           {

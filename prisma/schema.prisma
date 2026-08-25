@@ -1044,8 +1044,8 @@ model MentionTracker {
 // Daily Reward Configuration (Admin-managed)
 model DailyRewardConfig {
   id            String   @id @default("default-config")
-  minAmount     Decimal  @default(1) @db.Decimal(18, 2) // Minimum reward amount
-  maxAmount     Decimal  @default(5) @db.Decimal(18, 2) // Maximum reward amount
+  minAmount     Decimal  @default(1) @db.Decimal(18, 8) // Minimum reward amount
+  maxAmount     Decimal  @default(5) @db.Decimal(18, 8) // Maximum reward amount
   cooldownHours Int      @default(24) // Hours between claims
   isEnabled     Boolean  @default(true) // Enable/disable feature
   currencyName  String   @default("coins") // e.g., "coins", "gold", "points"
@@ -1066,7 +1066,7 @@ model DailyRewardConfig {
 model DailyRewardClaim {
   id        String   @id @default(uuid())
   userId    Int      @db.UnsignedInt
-  amount    Decimal  @db.Decimal(18, 2) // Amount received
+  amount    Decimal  @db.Decimal(18, 8) // Amount received
   claimedAt DateTime @default(now()) @db.DateTime(0)
 
   user User @relation("userDailyRewardClaims", fields: [userId], references: [id])

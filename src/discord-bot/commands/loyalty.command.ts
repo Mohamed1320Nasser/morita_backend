@@ -34,7 +34,7 @@ async function execute(interaction: ChatInputCommandInteraction) {
           `**Total Spent:** $${tierData.totalSpent.toFixed(2)}\n` +
           `**Discount:** ${tierData.currentTier?.discountPercent || 0}% on all orders`
       )
-      .setColor(tierData.currentTier ? 0xffd700 : 0x95a5a6)
+      .setColor(0xfca311)
       .setThumbnail(interaction.user.displayAvatarURL())
       .setTimestamp();
 

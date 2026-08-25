@@ -85,7 +85,7 @@ export default {
                 `\`\`\``;
 
             const embed = new EmbedBuilder()
-                .setColor(0x5865F2)
+                .setColor(0xfca311)
                 .setTitle(`📊 Referral Statistics`)
                 .setDescription(description)
                 .setThumbnail(targetUser.displayAvatarURL())
@@ -160,7 +160,7 @@ export default {
                 `${list}`;
 
             const embed = new EmbedBuilder()
-                .setColor(0x5865F2)
+                .setColor(0xfca311)
                 .setTitle(`🏆 Referral Leaderboard`)
                 .setDescription(description)
                 .setTimestamp();

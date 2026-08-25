@@ -10,6 +10,7 @@ import {
 } from "discord.js";
 import { discordConfig } from "../config/discord.config";
 import logger from "../../common/loggers";
+import { applyBrandThumbnail } from "../utils/priceEmbed";
 
 export class ReviewsChannelService {
     private client: Client;
@@ -153,8 +154,7 @@ export class ReviewsChannelService {
 
     /**
      * Post a review left on a ticket that never became an order, such as a gold
-     * trade or a crypto swap. Same channel and shape as the others; the label
-     * comes from the ticket type rather than being fixed.
+     * trade or a crypto swap. Same channel and shape as the others.
      */
     async postTicketReview(
         ticket: any,
@@ -179,7 +179,7 @@ export class ReviewsChannelService {
             const stars = "⭐".repeat(rating);
 
             const embedColor =
-                rating >= 5 ? 0x57f287 : rating >= 4 ? 0x5865f2 : rating >= 3 ? 0xfee75c : 0xed4245;
+                rating >= 3 ? 0xfca311 : 0xed4245;
 
             const parts: string[] = [];
             if (review.comment && review.comment.trim().length > 0) {
@@ -188,18 +188,17 @@ export class ReviewsChannelService {
             }
             parts.push(`${stars} **${rating}/5**`);
             parts.push("");
-            parts.push(`🪙 ${review.label || "Support"}`);
             parts.push(`👤 ${isAnonymous ? "Anonymous" : customer.displayName}`);
 
             const embed = new EmbedBuilder()
                 .setColor(embedColor as ColorResolvable)
                 .setDescription(parts.join("\n"))
                 .setFooter({
-                    text: `Ticket #${String(ticket.ticketNumber).padStart(4, "0")} • ${
-                        review.label || "Support"
-                    }`,
+                    text: `Ticket #${String(ticket.ticketNumber).padStart(4, "0")}`,
                 })
                 .setTimestamp();
+
+            applyBrandThumbnail(embed);
 
             await channel.send({ embeds: [embed.toJSON() as any] });
 
@@ -221,14 +220,10 @@ export class ReviewsChannelService {
         const stars = "⭐".repeat(rating);
 
         let embedColor: number;
-        if (rating >= 5) {
-            embedColor = 0x57f287; // Green
-        } else if (rating >= 4) {
-            embedColor = 0x5865f2; // Blue
-        } else if (rating >= 3) {
-            embedColor = 0xfee75c; // Yellow
+        if (rating >= 3) {
+            embedColor = 0xfca311; // Brand
         } else {
-            embedColor = 0xed4245; // Red
+            embedColor = 0xed4245; // Red - poor rating
         }
 
         const embed = new EmbedBuilder()
@@ -247,9 +242,6 @@ export class ReviewsChannelService {
         descriptionParts.push(`${stars} **${rating}/5**`);
         descriptionParts.push("");
 
-        // Service info - Account Purchase
-        descriptionParts.push(`🎮 ${order.service?.name || "Account Purchase"}`);
-
         // Customer only (no worker for account purchases)
         const customerDisplay = isAnonymous ? "Anonymous" : customer.displayName;
         descriptionParts.push(`👤 ${customerDisplay}`);
@@ -260,7 +252,7 @@ export class ReviewsChannelService {
             text: `Ticket #${orderNumber} • Account Purchase`,
         });
 
-        return embed;
+        return applyBrandThumbnail(embed);
     }
 
     private formatReviewEmbed(
@@ -276,14 +268,10 @@ export class ReviewsChannelService {
         const stars = "⭐".repeat(rating);
 
         let embedColor: number;
-        if (rating >= 5) {
-            embedColor = 0x57f287; // Green
-        } else if (rating >= 4) {
-            embedColor = 0x5865f2; // Blue
-        } else if (rating >= 3) {
-            embedColor = 0xfee75c; // Yellow
+        if (rating >= 3) {
+            embedColor = 0xfca311; // Brand
         } else {
-            embedColor = 0xed4245; // Red
+            embedColor = 0xed4245; // Red - poor rating
         }
 
         const embed = new EmbedBuilder()
@@ -303,12 +291,6 @@ export class ReviewsChannelService {
         descriptionParts.push(`${stars} **${rating}/5**`);
         descriptionParts.push("");
 
-        // Service info
-        if (order.service) {
-            const serviceEmoji = order.service.emoji || "📦";
-            descriptionParts.push(`${serviceEmoji} ${order.service.name}`);
-        }
-
         // Customer and Worker on same line (display names, not mentions)
         const customerDisplay = isAnonymous ? "Anonymous" : customer.displayName;
         descriptionParts.push(`👤 ${customerDisplay} → 👷 ${worker.displayName}`);
@@ -319,7 +301,7 @@ export class ReviewsChannelService {
             text: `Order #${orderNumber}`,
         });
 
-        return embed;
+        return applyBrandThumbnail(embed);
     }
 }
 

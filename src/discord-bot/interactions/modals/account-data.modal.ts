@@ -63,7 +63,7 @@ export async function handleAccountDataModal(interaction: ModalSubmitInteraction
             .addFields([
                 { name: "Fields Submitted", value: Object.keys(accountData).length.toString(), inline: true },
             ])
-            .setColor(0x57f287)
+            .setColor(0xfca311)
             .setTimestamp();
 
         await interaction.editReply({ embeds: [embed.toJSON() as any] });
@@ -83,7 +83,7 @@ export async function handleAccountDataModal(interaction: ModalSubmitInteraction
                             const disabledEmbed = new EmbedBuilder()
                                 .setTitle("✅ Account Data Submitted")
                                 .setDescription(`Account data has been submitted for **Order #${order.orderNumber}**.`)
-                                .setColor(0x57f287)
+                                .setColor(0xfca311)
                                 .setTimestamp();
 
                             await msg.edit({
@@ -103,7 +103,7 @@ export async function handleAccountDataModal(interaction: ModalSubmitInteraction
                     .addFields([
                         { name: "Status", value: "🔓 Ready to view", inline: true },
                     ])
-                    .setColor(0x57f287)
+                    .setColor(0xfca311)
                     .setTimestamp();
 
                 const viewButton = new ButtonBuilder()

@@ -48,7 +48,7 @@ export function createBalanceEmbed(
                 walletOwnerText + "\n\n" +
                 "A wallet will be created automatically when they receive their first deposit."
             )
-            .setColor(0x5865f2)
+            .setColor(0xfca311)
             .setTimestamp();
 
         if (isAdminView && targetUser) {
@@ -73,7 +73,7 @@ export function createBalanceEmbed(
 
     const embed = new EmbedBuilder()
         .setTitle(isAdminView ? "💰 User Wallet" : "💰 Your Wallet")
-        .setColor(0x57f287)
+        .setColor(0xfca311)
         .setTimestamp()
         .setFooter({
             text: `Wallet ID: ${data.walletId || 'N/A'} • Type: ${data.walletType || 'CUSTOMER'}`
@@ -131,7 +131,7 @@ export function createTransactionsEmbed(
         const embed = new EmbedBuilder()
             .setTitle("📜 Transaction History")
             .setDescription(noTxDescription)
-            .setColor(0x5865f2)
+            .setColor(0xfca311)
             .setTimestamp();
 
         if (isAdminView && targetUser) {
@@ -148,7 +148,7 @@ export function createTransactionsEmbed(
     const embed = new EmbedBuilder()
         .setTitle("📜 Transaction History")
         .setDescription(txDescription)
-        .setColor(0x5865f2)
+        .setColor(0xfca311)
         .setTimestamp();
 
     if (isAdminView && targetUser && targetDiscordId) {

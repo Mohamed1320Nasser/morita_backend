@@ -536,7 +536,7 @@ export class TicketService {
             const embed = new EmbedBuilder()
                 .setTitle(`${categoryEmoji}  ${accountData.name}`)
                 .setDescription(description)
-                .setColor(0xc9a961 as ColorResolvable)
+                .setColor(0xfca311 as ColorResolvable)
                 .setTimestamp()
                 .setFooter({
                     text: `MORITA Gaming • Ticket #${ticketNumber}`,
@@ -556,7 +556,7 @@ export class TicketService {
 
                     if (imageUrl && !imageUrl.includes("localhost")) {
                         const imageEmbed = new EmbedBuilder()
-                            .setColor(0xc9a961 as ColorResolvable)
+                            .setColor(0xfca311 as ColorResolvable)
                             .setURL(dummyUrl) // Same URL makes embeds display in a row (2 per row)
                             .setImage(imageUrl);
                         embeds.push(imageEmbed);
@@ -831,7 +831,7 @@ export class TicketService {
             const embed = new EmbedBuilder()
                 .setTitle(welcomeSettings.title || "🎫 Support Ticket")
                 .setDescription(welcomeSettings.message)
-                .setColor(parseInt(welcomeSettings.embedColor || "5865F2", 16) as ColorResolvable)
+                .setColor(parseInt(welcomeSettings.embedColor || "fca311", 16) as ColorResolvable)
                 .setTimestamp();
 
             if (welcomeSettings.bannerUrl) {
@@ -1029,7 +1029,7 @@ export class TicketService {
                         settingsData.welcomeMessage ||
                         "Our support team will assist you shortly.",
                     bannerUrl: settingsData.bannerUrl,
-                    embedColor: settingsData.embedColor || "5865F2",
+                    embedColor: settingsData.embedColor || "fca311",
                     footerText: settingsData.footerText,
                 };
             }
@@ -1267,6 +1267,35 @@ export class TicketService {
         );
 
         return { embed, buttons };
+    }
+
+    /**
+     * Ask for a review on demand, without closing the ticket. Customers often
+     * keep gold tickets open for future work, so the close-triggered prompt
+     * never reaches them. Leaves channel access and ticket status untouched.
+     */
+    async requestReview(
+        channel: TextChannel,
+        ticket: any
+    ): Promise<{ ok: boolean; reason?: string }> {
+        if (!ticket?.customerDiscordId) {
+            return { ok: false, reason: "This ticket has no customer attached." };
+        }
+
+        if (ticket.rating) {
+            return { ok: false, reason: "This customer has already left a review." };
+        }
+
+        const { embed, buttons } = this.buildReviewPrompt(ticket);
+
+        await channel.send({
+            content: `<@${ticket.customerDiscordId}>`,
+            embeds: [embed.toJSON() as any],
+            components: [buttons.toJSON() as any],
+        });
+
+        logger.info(`[RequestReview] Review prompt posted for ticket ${ticket.id}`);
+        return { ok: true };
     }
 
     /**

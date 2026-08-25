@@ -40,7 +40,7 @@ const PAYMENT_ICONS: Record<string, string> = {
 export function buildRateEmbed(data: RateData): EmbedBuilder {
     const embed = new EmbedBuilder()
         .setTitle("💰 GP Rates")
-        .setColor(0xf1c40f) // Gold color
+        .setColor(0xfca311) // Gold color
         .setTimestamp();
 
     // Build description with base rates
@@ -85,7 +85,7 @@ export function buildRateEmbed(data: RateData): EmbedBuilder {
 export function buildRateEmbedSimple(data: RateData): { embeds: any[] } {
     const embed = new EmbedBuilder()
         .setTitle("💰 GP Rates")
-        .setColor(0xf1c40f)
+        .setColor(0xfca311)
         .setDescription(
             `━━━━━━━━━━━━━━━━━━━━\n` +
             `**💵 Buy Rate**\n` +

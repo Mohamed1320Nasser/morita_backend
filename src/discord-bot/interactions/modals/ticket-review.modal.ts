@@ -70,7 +70,7 @@ export async function handleTicketReviewModal(interaction: ModalSubmitInteractio
                         `We appreciate you taking the time to share your experience!`
                     )
                     .addFields([{ name: "⭐ Your Rating", value: `${stars} (${rating}/5)` }])
-                    .setColor(0x57f287)
+                    .setColor(0xfca311)
                     .setTimestamp()
                     .toJSON() as any,
             ],

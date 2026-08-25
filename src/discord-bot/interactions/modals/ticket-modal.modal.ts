@@ -52,7 +52,7 @@ export async function handleTicketModal(
 
         const ticketNumber = ticket.ticketNumber.toString().padStart(4, "0");
         const successEmbed = new DiscordEmbedBuilder()
-            .setColor(0x57f287)
+            .setColor(0xfca311)
             .setTitle("✅ Ticket Created Successfully!")
             .setDescription(`Your ticket has been created and is ready for our team to assist you.`)
             .addFields(

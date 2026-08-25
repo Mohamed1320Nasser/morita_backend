@@ -57,12 +57,12 @@ export interface AccountDetail extends AccountListItem {
 
 // Color mapping for account categories
 const ACCOUNT_COLORS: Record<string, number> = {
-    MAIN: 0x3498db,      // Blue
-    IRONS: 0x7f8c8d,     // Gray
+    MAIN: 0xfca311,      // Blue
+    IRONS: 0xfca311,     // Gray
     HCIM: 0xe74c3c,      // Red
-    ZERK: 0x9b59b6,      // Purple
-    PURE: 0x2ecc71,      // Green
-    ACCOUNTS: 0xf39c12,  // Orange
+    ZERK: 0xfca311,      // Purple
+    PURE: 0xfca311,      // Green
+    ACCOUNTS: 0xfca311,  // Orange
 };
 
 // Emoji mapping for account categories
@@ -90,7 +90,7 @@ export class AccountEmbedBuilder {
                 "✅ 24/7 Support\n\n" +
                 "Click the button below to browse available accounts."
             )
-            .setColor(0xc9a961 as ColorResolvable)
+            .setColor(0xfca311 as ColorResolvable)
             .setThumbnail(
                 process.env.BRAND_LOGO_URL ||
                 "https://via.placeholder.com/64x64/c9a961/1a2744?text=🎮"
@@ -113,7 +113,7 @@ export class AccountEmbedBuilder {
         const embed = new EmbedBuilder()
             .setTitle(`${EMOJIS.BRAND || '🎮'} Select Account Type`)
             .setDescription("Choose a category to browse available accounts:")
-            .setColor(0xc9a961 as ColorResolvable)
+            .setColor(0xfca311 as ColorResolvable)
             .setTimestamp()
             .setFooter({
                 text: "MORITA Gaming • Select a category",
@@ -147,7 +147,7 @@ export class AccountEmbedBuilder {
         total: number
     ): EmbedBuilder {
         const categoryEmoji = ACCOUNT_EMOJIS[category] || '📦';
-        const categoryColor = ACCOUNT_COLORS[category] || 0xc9a961;
+        const categoryColor = ACCOUNT_COLORS[category] || 0xfca311;
         const categoryLabel = this.getCategoryLabel(category);
 
         const embed = new EmbedBuilder()
@@ -188,7 +188,7 @@ export class AccountEmbedBuilder {
      */
     static createAccountDetailEmbed(account: AccountDetail): EmbedBuilder {
         const categoryEmoji = ACCOUNT_EMOJIS[account.category] || '📦';
-        const categoryColor = ACCOUNT_COLORS[account.category] || 0xc9a961;
+        const categoryColor = ACCOUNT_COLORS[account.category] || 0xfca311;
 
         const embed = new EmbedBuilder()
             .setTitle(`${categoryEmoji} ${account.name}`)
@@ -265,7 +265,7 @@ export class AccountEmbedBuilder {
      */
     static createAccountDetailEmbeds(account: AccountDetail): EmbedBuilder[] {
         const embeds: EmbedBuilder[] = [];
-        const categoryColor = ACCOUNT_COLORS[account.category] || 0xc9a961;
+        const categoryColor = ACCOUNT_COLORS[account.category] || 0xfca311;
 
         // First embed: main account info
         const mainEmbed = this.createAccountDetailEmbed(account);
@@ -338,7 +338,7 @@ export class AccountEmbedBuilder {
                 `You are about to purchase **${account.name}** for **$${account.price.toFixed(2)}**.\n\n` +
                 `A private ticket will be created for you to complete the payment.`
             )
-            .setColor(0x2ecc71 as ColorResolvable) // Green
+            .setColor(0xfca311 as ColorResolvable) // Green
             .setTimestamp()
             .setFooter({
                 text: "MORITA Gaming",
@@ -362,7 +362,7 @@ export class AccountEmbedBuilder {
                 `Welcome ${customerMention}!\n\n` +
                 "Thank you for your purchase. Please follow the instructions below."
             )
-            .setColor(0x3498db as ColorResolvable)
+            .setColor(0xfca311 as ColorResolvable)
             .addFields(
                 {
                     name: `${categoryEmoji} Account`,
@@ -418,7 +418,7 @@ export class AccountEmbedBuilder {
                 "Your account has been delivered successfully.\n\n" +
                 "**⚠️ IMPORTANT SECURITY STEPS:**"
             )
-            .setColor(0x2ecc71 as ColorResolvable) // Success green
+            .setColor(0xfca311 as ColorResolvable) // Success green
             .addFields({
                 name: "🔐 Login Credentials",
                 value:

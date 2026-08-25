@@ -947,6 +947,25 @@ export default class PricingCalculatorService {
             }
         }
 
+        // A method covering the whole requested range is added twice: once as a
+        // full-range option and again as an overlapping segment. Same name,
+        // same levels, same price - so keep the first and drop the repeat.
+        const seenOptions = new Set<string>();
+        options = options.filter(option => {
+            const range = (option.levelRanges || [])
+                .map((r: any) => `${r.startLevel}-${r.endLevel}`)
+                .join(",");
+            const key = `${option.methodName}|${range}|${option.finalPrice}`;
+
+            if (seenOptions.has(key)) {
+                logger.info(`[PricingCalculator]   ⏭️ Duplicate dropped: "${option.methodName}" (${range})`);
+                return false;
+            }
+
+            seenOptions.add(key);
+            return true;
+        });
+
         // Sort by grouping methods with same name, then by level
         // Step 1: Extract base name and group methods
         const groupedOptions: Record<string, typeof options> = {};

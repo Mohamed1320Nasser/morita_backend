@@ -2885,7 +2885,7 @@ async function handleDailyRewardCommand(message: Message) {
             const cooldownEmbed = new EmbedBuilder()
                 .setTitle("⏰ Not Yet!")
                 .setDescription(`It's not been ${config.cooldownHours} hours yet!\n\nTime remaining: **${timeString.trim()}**`)
-                .setColor(0xffa500)
+                .setColor(0xfca311)
                 .setTimestamp()
                 .setFooter({ text: "MORITA Gaming" });
 
@@ -2936,7 +2936,7 @@ async function handleDailyRewardCommand(message: Message) {
                 const cooldownEmbed = new EmbedBuilder()
                     .setTitle("⏰ Not Yet!")
                     .setDescription(`It's not been ${config.cooldownHours} hours yet!\n\nTime remaining: **${timeString.trim()}**`)
-                    .setColor(0xffa500)
+                    .setColor(0xfca311)
                     .setTimestamp()
                     .setFooter({ text: "MORITA Gaming" });
 
@@ -2958,10 +2958,10 @@ async function handleDailyRewardCommand(message: Message) {
         const successEmbed = new EmbedBuilder()
             .setTitle(`🎁 Daily Reward Claimed!`)
             .setDescription(`Use it on your next order!`)
-            .setColor(0x2ecc71)
+            .setColor(0xfca311)
             .addFields({
                 name: "Reward",
-                value: `\`\`\`${currencyName}${amount.toLocaleString()}\`\`\``,
+                value: `\`\`\`${currencyName}${amount.toLocaleString(undefined, { maximumFractionDigits: 8 })}\`\`\``,
                 inline: true,
             })
             .setTimestamp()

@@ -14,7 +14,7 @@ export async function buildPurchaseServicesMessage() {
     let welcomeMessage = "";
     let bannerUrl = "";
     let thumbnailUrl = "";
-    let embedColor = 0x5865F2;
+    let embedColor = 0xfca311;
     let footerText = "morita | Professional Gaming Services";
 
     try {
@@ -28,7 +28,7 @@ export async function buildPurchaseServicesMessage() {
             welcomeMessage = settings.welcomeMessage || "";
             bannerUrl = settings.bannerUrl || "";
             thumbnailUrl = settings.thumbnailUrl || "";
-            embedColor = settings.embedColor ? parseInt(settings.embedColor, 16) : 0x5865F2;
+            embedColor = settings.embedColor ? parseInt(settings.embedColor, 16) : 0xfca311;
             footerText = settings.footerText || "morita | Professional Gaming Services";
         }
     } catch (error) {

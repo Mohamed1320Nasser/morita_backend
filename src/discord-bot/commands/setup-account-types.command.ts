@@ -34,7 +34,7 @@ async function execute(interaction: ChatInputCommandInteraction) {
                 { name: "1. Normal Legacy", value: "Username, Password, Bank PIN, Bank Value", inline: false },
                 { name: "2. Jagex Launcher", value: "Username, Password, Bank PIN, Bank Value, In-Game Name, Backup Codes", inline: false },
             ])
-            .setColor(0x57f287)
+            .setColor(0xfca311)
             .setTimestamp();
 
         await interaction.editReply({ embeds: [embed.toJSON() as any] });

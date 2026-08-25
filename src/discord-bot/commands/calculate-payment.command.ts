@@ -116,7 +116,7 @@ async function execute(interaction: ChatInputCommandInteraction) {
                 `**Original Amount:** $${amount.toFixed(2)}\n\n` +
                 `Select a payment method below to see the final amount with any applicable fees.`
             )
-            .setColor(0x5865F2)
+            .setColor(0xfca311)
             .setTimestamp();
 
         const selectMenu = new StringSelectMenuBuilder()

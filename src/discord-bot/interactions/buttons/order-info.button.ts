@@ -147,14 +147,14 @@ function getStatusDisplay(status: string): string {
 
 function getStatusColor(status: string): number {
     const colorMap: { [key: string]: number } = {
-        PENDING: 0x95a5a6,
-        ASSIGNED: 0x3498db,
-        IN_PROGRESS: 0xf1c40f,
-        AWAITING_CONFIRMATION: 0xf39c12,
-        AWAITING_CONFIRM: 0xf39c12,
-        COMPLETED: 0x2ecc71,
+        PENDING: 0xfca311,
+        ASSIGNED: 0xfca311,
+        IN_PROGRESS: 0xfca311,
+        AWAITING_CONFIRMATION: 0xfca311,
+        AWAITING_CONFIRM: 0xfca311,
+        COMPLETED: 0xfca311,
         CANCELLED: 0xe74c3c,
         DISPUTED: 0xc0392b,
     };
-    return colorMap[status] || 0x95a5a6;
+    return colorMap[status] || 0xfca311;
 }

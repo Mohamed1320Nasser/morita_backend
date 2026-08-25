@@ -104,7 +104,7 @@ export async function handleAccountReviewModal(
             .addFields([
                 { name: "⭐ Your Rating", value: `${stars} (${rating}/5)`, inline: false },
             ])
-            .setColor(0x57f287 as ColorResolvable)
+            .setColor(0xfca311 as ColorResolvable)
             .setTimestamp()
             .setFooter({ text: "MORITA Gaming • Thank you for your purchase!" });
 

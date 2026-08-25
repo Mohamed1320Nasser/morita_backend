@@ -1,16 +1,16 @@
 
 export const COLORS = {
     
-    PRIMARY: "#c9a961", 
-    SECONDARY: "#1a2744", 
-    ACCENT: "#d4af37", 
+    PRIMARY: "#fca311", 
+    SECONDARY: "#fca311", 
+    ACCENT: "#fca311", 
 
-    SUCCESS: "#57F287", 
-    WARNING: "#FEE75C", 
-    INFO: "#5865F2", 
+    SUCCESS: "#fca311", 
+    WARNING: "#fca311", 
+    INFO: "#fca311", 
     ERROR: "#ED4245", 
-    PREMIUM: "#9B59B6", 
-    CRYPTO: "#F39C12", 
+    PREMIUM: "#fca311", 
+    CRYPTO: "#fca311", 
 
     TEXT_PRIMARY: "#e8e8e8", 
     TEXT_SECONDARY: "#b9bbbe", 
@@ -26,17 +26,17 @@ export const COLORS = {
     LIGHT_GRAY: "#99AAB5",
     DARK_GRAY: "#23272A",
 
-    MEGASCALE: "#c9a961", 
-    CAPES: "#d4af37", 
-    BLOOD_TORVA: "#1a2744", 
-    RAIDS: "#c9a961", 
-    BOSSING: "#d4af37", 
-    COMBAT: "#c9a961", 
-    ACCOUNTS: "#1a2744", 
-    QUESTS: "#d4af37", 
-    MINIGAMES: "#c9a961", 
-    IRONMAN: "#1a2744", 
-    SKILLS: "#d4af37", 
+    MEGASCALE: "#fca311", 
+    CAPES: "#fca311", 
+    BLOOD_TORVA: "#fca311", 
+    RAIDS: "#fca311", 
+    BOSSING: "#fca311", 
+    COMBAT: "#fca311", 
+    ACCOUNTS: "#fca311", 
+    QUESTS: "#fca311", 
+    MINIGAMES: "#fca311", 
+    IRONMAN: "#fca311", 
+    SKILLS: "#fca311", 
 } as const;
 
 export const COLOR_MAPPING = {
