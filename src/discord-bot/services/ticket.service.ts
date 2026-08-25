@@ -18,6 +18,7 @@ import { onboardingConfig } from "../config/onboarding.config";
 import { botApiHeaders } from "../config/apiAuth";
 import { ApiService } from "./api.service";
 import logger from "../../common/loggers";
+import { applyBrandThumbnail } from "../utils/priceEmbed";
 import axios, { AxiosInstance } from "axios";
 import { getTicketChannelMover } from "./ticket-channel-mover.service";
 
@@ -820,7 +821,7 @@ export class TicketService {
                         `⚙️ **Payment Options:** Use \`!pm\` to view all available payment methods.\n` +
                         `🎊 Use \`!reviews\` to see how you can get up to 10% OFF your order value.\n\n` +
                         `🎊 **Note:** We appreciate your patience and look forward to assisting you!\nRemember, We beat any quote!`,
-                    embedColor: "5865F2",
+                    embedColor: "fca311",
                     bannerUrl: null,
                     footerText: null,
                     mentionCustomer: true,
@@ -835,9 +836,10 @@ export class TicketService {
                 .setTimestamp();
 
             if (welcomeSettings.bannerUrl) {
-                embed.setThumbnail(welcomeSettings.bannerUrl);
                 embed.setImage(welcomeSettings.bannerUrl);
             }
+
+            applyBrandThumbnail(embed);
 
             if (welcomeSettings.footerText) {
                 embed.setFooter({
@@ -1038,7 +1040,7 @@ export class TicketService {
                 title: "Welcome to Support!",
                 message:
                     "Our support team will assist you shortly.\n\nPlease wait patiently while we review your request.",
-                embedColor: "5865F2",
+                embedColor: "fca311",
             };
         } catch (error) {
             logger.error("Error fetching welcome message settings:", error);
@@ -1047,7 +1049,7 @@ export class TicketService {
                 title: "Welcome to Support!",
                 message:
                     "Our support team will assist you shortly.\n\nPlease wait patiently while we review your request.",
-                embedColor: "5865F2",
+                embedColor: "fca311",
             };
         }
     }
@@ -1103,7 +1105,7 @@ export class TicketService {
             return {
                 title: "Welcome to Support!",
                 message: `Hello ${variables.customer}!\n\nOur support team (${variables.support}) will assist you shortly.\n\nPlease wait patiently while we review your request.`,
-                embedColor: "5865F2",
+                embedColor: "fca311",
             };
         }
     }
@@ -1145,17 +1147,23 @@ export class TicketService {
                 )
                 .setDescription(welcomeSettings.message)
                 .setColor(
-                    parseInt(welcomeSettings.embedColor, 16) as ColorResolvable
+                    parseInt(
+                        String(welcomeSettings.embedColor || "fca311").replace("#", ""),
+                        16
+                    ) as ColorResolvable
                 )
                 .setTimestamp()
                 .setFooter({
                     text: `Ticket #${ticketNumber}`,
                 });
 
+            // A wide banner in the square thumbnail slot gets cropped, so the
+            // banner stays the bottom image and the logo takes the corner.
             if (welcomeSettings.bannerUrl) {
-                embed.setThumbnail(welcomeSettings.bannerUrl); 
-                embed.setImage(welcomeSettings.bannerUrl);     
+                embed.setImage(welcomeSettings.bannerUrl);
             }
+
+            applyBrandThumbnail(embed);
 
             const detailsLines = [];
             if (ticket.service) {
