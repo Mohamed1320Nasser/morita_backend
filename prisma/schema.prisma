@@ -815,7 +815,7 @@ model CategoryTicketSettings {
   welcomeTitle   String?  @db.VarChar(255)
   welcomeMessage String   @db.Text
   footerText     String?  @db.Text
-  embedColor     String?  @default("5865F2") @db.VarChar(6)
+  embedColor     String?  @default("FCA311") @db.VarChar(6)
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now()) @db.DateTime(0)
   updatedAt      DateTime @default(now()) @updatedAt @db.DateTime(0)
@@ -866,7 +866,7 @@ model TicketTypeSettings {
   welcomeTitle   String? @db.VarChar(255)
   welcomeMessage String  @db.Text
   footerText     String? @db.Text
-  embedColor     String? @default("5865F2") @db.VarChar(6)
+  embedColor     String? @default("FCA311") @db.VarChar(6)
 
   // Dynamic form fields (JSON array) - unique per type
   // Each field: { id, label, type, required, placeholder, options[], min, max }
@@ -903,7 +903,7 @@ model TermsOfService {
   content      String   @db.Text // Main TOS text content
   bannerUrl    String?  @db.Text // GIF/Image URL for banner
   thumbnailUrl String?  @db.Text // Thumbnail image
-  embedColor   String   @default("5865F2") @db.VarChar(6) // Hex color without #
+  embedColor   String   @default("FCA311") @db.VarChar(6) // Hex color without #
   footerText   String?  @db.Text
   buttonLabel  String   @default("Accept Terms") @db.VarChar(100)
   isActive     Boolean  @default(true)
