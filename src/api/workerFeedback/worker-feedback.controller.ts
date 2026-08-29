@@ -11,6 +11,7 @@ import {
 } from "routing-controllers";
 import { Service } from "typedi";
 import WorkerFeedbackService, { WorkerFeedbackType } from "./worker-feedback.service";
+import { GetWorkerFeedbackListDto } from "./dtos";
 import { DiscordAuthMiddleware } from "../../common/middlewares/discordAuth.middleware";
 import API from "../../common/config/api.types";
 
@@ -21,10 +22,7 @@ export default class WorkerFeedbackController {
 
     @Get("/")
     @Authorized(API.Role.admin)
-    async list(
-        @QueryParams()
-        query: { workerId?: number; type?: WorkerFeedbackType; page?: number; limit?: number }
-    ) {
+    async list(@QueryParams() query: GetWorkerFeedbackListDto) {
         const data = await this.workerFeedbackService.list(query);
         return { success: true, data };
     }

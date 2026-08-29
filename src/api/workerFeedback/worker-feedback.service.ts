@@ -1,6 +1,7 @@
 import { Service } from "typedi";
 import prisma from "../../common/prisma/client";
 import { BadRequestError, NotFoundError } from "routing-controllers";
+import { countStart } from "../../common/helpers/pagination.helper";
 import logger from "../../common/loggers";
 
 export type WorkerFeedbackType = "PRAISE" | "WARNING" | "NOTE";
@@ -111,7 +112,7 @@ export default class WorkerFeedbackService {
                     order: { select: { id: true, orderNumber: true } },
                 },
                 orderBy: { createdAt: "desc" },
-                skip: (page - 1) * limit,
+                skip: countStart(page, limit),
                 take: limit,
             }),
             prisma.workerFeedback.count({ where }),
