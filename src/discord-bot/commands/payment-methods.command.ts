@@ -5,6 +5,7 @@ import {
 } from "discord.js";
 import prisma from "../../common/prisma/client";
 import logger from "../../common/loggers";
+import { applyBrandThumbnail, applyCalculatorBranding } from "../utils/priceEmbed";
 
 const CURRENCY_ICONS: Record<string, string> = {
     BTC: "₿",
@@ -173,6 +174,11 @@ async function execute(interaction: ChatInputCommandInteraction) {
             embeds[embeds.length - 1].setFooter({
                 text: "Send payment proof after completing transaction"
             }).setTimestamp();
+
+            // Discord renders one banner per message, so it goes on the last
+            // embed and the logo on the first.
+            applyBrandThumbnail(embeds[0]);
+            applyCalculatorBranding(embeds[embeds.length - 1]);
         }
 
         await interaction.editReply({

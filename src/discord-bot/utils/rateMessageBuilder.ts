@@ -1,4 +1,5 @@
 import { EmbedBuilder, AttachmentBuilder } from "discord.js";
+import { applyBrandThumbnail, applyCalculatorBranding } from "./priceEmbed";
 
 interface PaymentMethodRate {
     name: string;
@@ -79,7 +80,8 @@ export function buildRateEmbed(data: RateData): EmbedBuilder {
 
     embed.setDescription(description);
 
-    return embed;
+    applyBrandThumbnail(embed);
+    return applyCalculatorBranding(embed);
 }
 
 export function buildRateEmbedSimple(data: RateData): { embeds: any[] } {
@@ -135,6 +137,9 @@ export function buildRateEmbedSimple(data: RateData): { embeds: any[] } {
             "Displayed rates are automated estimates based on aggregate prices from other marketplaces. Actual rates may vary.",
         inline: false,
     });
+
+    applyBrandThumbnail(embed);
+    applyCalculatorBranding(embed);
 
     return { embeds: [embed.toJSON() as any] };
 }

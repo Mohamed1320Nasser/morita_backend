@@ -1,6 +1,7 @@
 import { StringSelectMenuInteraction, EmbedBuilder } from "discord.js";
 import prisma from "../../../common/prisma/client";
 import logger from "../../../common/loggers";
+import { applyBrandThumbnail, applyCalculatorBranding } from "../../utils/priceEmbed";
 
 const CURRENCY_ICONS: Record<string, string> = {
     BTC: "₿",
@@ -100,6 +101,9 @@ export async function handleCalcPaymentSelect(interaction: StringSelectMenuInter
         }
 
         embed.setFooter({ text: "Use /payment-methods to see all payment details" });
+
+        applyBrandThumbnail(embed);
+        applyCalculatorBranding(embed);
 
         await interaction.editReply({
             embeds: [embed.toJSON() as any],
