@@ -3,6 +3,7 @@ import { OnboardingManagerService } from "../services/onboardingManager.service"
 import { discordConfig } from "../config/discord.config";
 import { discordApiClient } from "../clients/DiscordApiClient";
 import logger from "../../common/loggers";
+import { applyBrandThumbnail, applyCalculatorBranding } from "../utils/priceEmbed";
 
 export default {
     name: Events.GuildMemberAdd,
@@ -65,6 +66,9 @@ export default {
                                             )
                                             .setFooter({ text: `They'll earn $5 when ${member.user.username} completes onboarding` })
                                             .setTimestamp();
+
+                                        applyBrandThumbnail(embed);
+                                        applyCalculatorBranding(embed);
 
                                         await channel.send({ embeds: [embed.toJSON() as any] });
                                         logger.info(`[Referral] ✅ Posted notification to referral channel`);

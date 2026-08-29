@@ -7,6 +7,7 @@ import {
 import { discordConfig } from "../config/discord.config";
 import { discordApiClient } from "../clients/DiscordApiClient";
 import { extractErrorMessage } from "../utils/error-message.util";
+import { getOrderChannelService } from "../services/orderChannel.service";
 import logger from "../../common/loggers";
 
 export default {
@@ -114,6 +115,8 @@ export default {
 
             // Tell the incoming worker directly - they are now on the hook for
             // the deposit and would otherwise only find out from the channel.
+            // Sent before the channel sync below so a slow/failing Discord
+            // permission update never delays this time-sensitive notice.
             try {
                 const dm = new EmbedBuilder()
                     .setTitle("📋 You have been assigned to an order")
@@ -128,6 +131,75 @@ export default {
                 await newWorker.send({ embeds: [dm.toJSON() as any] });
             } catch (dmError) {
                 logger.warn(`[ReplaceWorker] Could not DM new worker:`, dmError);
+            }
+
+            // Keep the ticket channel in sync with the new assignment: the old
+            // worker loses access, the new worker gains it, and the posted
+            // order embed is refreshed to show who is actually assigned now.
+            // The DB swap above already happened - this is best-effort so a
+            // Discord hiccup here doesn't roll back the reassignment. The two
+            // steps are independent: the new worker is still added even if
+            // revoking the old worker's access fails.
+            const updatedOrder = result?.order || order;
+            if (updatedOrder.ticketChannelId) {
+                const orderChannelService = getOrderChannelService(interaction.client);
+
+                if (order.worker?.discordId) {
+                    const removed = await orderChannelService.removeWorkerFromTicketChannel(
+                        updatedOrder.ticketChannelId,
+                        order.worker.discordId
+                    );
+                    if (!removed) {
+                        logger.warn(
+                            `[ReplaceWorker] Could not revoke old worker's channel access for order #${order.orderNumber}`
+                        );
+                    }
+                }
+
+                const channelOrderData = {
+                    orderNumber: order.orderNumber,
+                    orderId: order.id,
+                    orderValue: parseFloat(order.orderValue || 0),
+                    depositAmount: parseFloat(order.depositAmount || 0),
+                    currency: order.currency,
+                    customerDiscordId: order.customer?.discordId,
+                    serviceName: updatedOrder.service?.name || order.service?.name,
+                    jobDetails: updatedOrder.jobDetails?.description,
+                };
+
+                const ticketChannel = await orderChannelService.addWorkerToTicketChannel({
+                    ...channelOrderData,
+                    ticketChannelId: updatedOrder.ticketChannelId,
+                    workerDiscordId: newWorker.id,
+                    status: updatedOrder.status,
+                    skipMessage: true,
+                });
+
+                if (!ticketChannel) {
+                    logger.warn(
+                        `[ReplaceWorker] Could not grant new worker channel access for order #${order.orderNumber}`
+                    );
+                }
+
+                try {
+                    await orderChannelService.updateOrderMessageStatus(
+                        updatedOrder.ticketChannelId,
+                        order.orderNumber,
+                        order.id,
+                        updatedOrder.status,
+                        {
+                            ...channelOrderData,
+                            workerDiscordId: newWorker.id,
+                            orderMessageId: updatedOrder.pinnedMessageId,
+                        }
+                    );
+                } catch (channelError) {
+                    logger.error("[ReplaceWorker] Failed to refresh order message:", channelError);
+                }
+            } else {
+                logger.warn(
+                    `[ReplaceWorker] Order #${order.orderNumber} has no ticketChannelId - skipping channel permission sync`
+                );
             }
 
             if (order.worker?.discordId) {

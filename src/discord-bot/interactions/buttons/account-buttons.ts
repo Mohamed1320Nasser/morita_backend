@@ -13,6 +13,7 @@ import {
     ACCOUNT_BUTTON_IDS,
 } from "../../utils/accountComponentBuilder";
 import { getTicketService, AccountUnavailableError } from "../../services/ticket.service";
+import { applyBrandThumbnail, applyCalculatorBranding } from "../../utils/priceEmbed";
 
 // Initialize API service
 const apiService = new ApiService(discordConfig.apiBaseUrl);
@@ -733,6 +734,9 @@ export async function handleAccountConfirmCancel(
             .setFooter({
                 text: "MORITA Gaming • Order Cancelled",
             });
+
+        applyBrandThumbnail(cancelEmbed);
+        applyCalculatorBranding(cancelEmbed);
 
         // Update the ephemeral message to show cancellation completed
         await interaction.editReply({

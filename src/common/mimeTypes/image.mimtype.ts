@@ -6,4 +6,6 @@ export const ImageMimeTypes = [
     "image/jpg",
 ];
 
+export const BrandingImageMimeTypes = [...ImageMimeTypes, "image/gif"];
+
 export const CourseTemplateMimeTypes = ["text/html"];

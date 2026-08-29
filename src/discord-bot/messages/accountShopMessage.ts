@@ -1,5 +1,6 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { discordApiClient } from "../clients/DiscordApiClient";
+import { getBrandIcon, getBrandThumbnail } from "../services/branding.service";
 import logger from "../../common/loggers";
 
 /**
@@ -67,14 +68,14 @@ Click the button below to browse available accounts.`;
         .setDescription(welcomeMessage)
         .setFooter({
             text: footerText,
-            iconURL: process.env.BRAND_LOGO_URL || undefined,
+            iconURL: getBrandIcon(),
         })
         .setTimestamp();
 
     if (thumbnailUrl) {
         embed.setThumbnail(thumbnailUrl);
-    } else if (process.env.BRAND_LOGO_URL) {
-        embed.setThumbnail(process.env.BRAND_LOGO_URL);
+    } else if (getBrandThumbnail()) {
+        embed.setThumbnail(getBrandThumbnail());
     }
 
     if (bannerUrl) {

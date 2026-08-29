@@ -3,6 +3,7 @@ import { EmbedBuilder, TextChannel } from "discord.js";
 import discordClient from "../index";
 import { discordConfig } from "../config/discord.config";
 import logger from "../../common/loggers";
+import { applyBrandThumbnail, applyCalculatorBranding } from "../utils/priceEmbed";
 
 @Service()
 export default class CryptoNotificationService {
@@ -100,6 +101,9 @@ export default class CryptoNotificationService {
           inline: false,
         });
       }
+
+      applyBrandThumbnail(embed);
+      applyCalculatorBranding(embed);
 
       // Send message
       const message = await (channel as TextChannel).send({

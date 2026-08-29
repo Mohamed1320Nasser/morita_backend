@@ -11,6 +11,7 @@ import {
     PricingMethod,
     PriceCalculationResult,
 } from "../types/discord.types";
+import { getBrandIcon } from "../services/branding.service";
 
 export class EmbedBuilder {
     private embed: DiscordEmbedBuilder;
@@ -29,21 +30,24 @@ export class EmbedBuilder {
             )
             .setColor(COLORS.PRIMARY as ColorResolvable)
             .setThumbnail(
-                process.env.BRAND_LOGO_URL ||
+                getBrandIcon(
                     "https://via.placeholder.com/64x64/c9a961/1a2744?text=🎮"
+                )!
             )
             .setAuthor({
                 name: "MORITA Gaming",
                 iconURL:
-                    process.env.BRAND_LOGO_URL ||
-                    "https://via.placeholder.com/32x32/c9a961/1a2744?text=🎮",
+                    getBrandIcon(
+                        "https://via.placeholder.com/32x32/c9a961/1a2744?text=🎮"
+                    ),
             })
             .setTimestamp()
             .setFooter({
                 text: "MORITA Gaming Services • Professional & Reliable",
                 iconURL:
-                    process.env.BRAND_LOGO_URL ||
-                    "https://via.placeholder.com/16x16/c9a961/1a2744?text=🎮",
+                    getBrandIcon(
+                        "https://via.placeholder.com/16x16/c9a961/1a2744?text=🎮"
+                    ),
             });
 
         const categoryFields = categories.map(category => ({
@@ -75,21 +79,24 @@ export class EmbedBuilder {
                 ] || (COLORS.PRIMARY as ColorResolvable)
             )
             .setThumbnail(
-                process.env.BRAND_LOGO_URL ||
+                getBrandIcon(
                     "https://via.placeholder.com/64x64/c9a961/1a2744?text=🎮"
+                )!
             )
             .setAuthor({
                 name: "MORITA Gaming",
                 iconURL:
-                    process.env.BRAND_LOGO_URL ||
-                    "https://via.placeholder.com/32x32/c9a961/1a2744?text=🎮",
+                    getBrandIcon(
+                        "https://via.placeholder.com/32x32/c9a961/1a2744?text=🎮"
+                    ),
             })
             .setTimestamp()
             .setFooter({
                 text: "MORITA Gaming Services • Professional & Reliable",
                 iconURL:
-                    process.env.BRAND_LOGO_URL ||
-                    "https://via.placeholder.com/16x16/c9a961/1a2744?text=🎮",
+                    getBrandIcon(
+                        "https://via.placeholder.com/16x16/c9a961/1a2744?text=🎮"
+                    ),
             });
 
         if (service.pricingMethods && service.pricingMethods.length > 0) {
@@ -152,8 +159,9 @@ export class EmbedBuilder {
             .setFooter({
                 text: MESSAGES.FOOTER.BRAND,
                 iconURL:
-                    process.env.BRAND_LOGO_URL ||
-                    "https://via.placeholder.com/16x16/c9a961/1a2744?text=🎮",
+                    getBrandIcon(
+                        "https://via.placeholder.com/16x16/c9a961/1a2744?text=🎮"
+                    ),
             });
 
         return embed;
@@ -168,21 +176,24 @@ export class EmbedBuilder {
             .setDescription(`\`\`\`Service: ${serviceName}\`\`\``)
             .setColor(COLORS.SUCCESS as ColorResolvable)
             .setThumbnail(
-                process.env.BRAND_LOGO_URL ||
+                getBrandIcon(
                     "https://via.placeholder.com/64x64/c9a961/1a2744?text=🎮"
+                )!
             )
             .setAuthor({
                 name: "MORITA Gaming",
                 iconURL:
-                    process.env.BRAND_LOGO_URL ||
-                    "https://via.placeholder.com/32x32/c9a961/1a2744?text=🎮",
+                    getBrandIcon(
+                        "https://via.placeholder.com/32x32/c9a961/1a2744?text=🎮"
+                    ),
             })
             .setTimestamp()
             .setFooter({
                 text: "MORITA Gaming Services • Professional & Reliable",
                 iconURL:
-                    process.env.BRAND_LOGO_URL ||
-                    "https://via.placeholder.com/16x16/c9a961/1a2744?text=🎮",
+                    getBrandIcon(
+                        "https://via.placeholder.com/16x16/c9a961/1a2744?text=🎮"
+                    ),
             });
 
         embed.addFields(
@@ -284,8 +295,9 @@ export class EmbedBuilder {
             .setFooter({
                 text: MESSAGES.FOOTER.BRAND,
                 iconURL:
-                    process.env.BRAND_LOGO_URL ||
-                    "https://via.placeholder.com/16x16/c9a961/1a2744?text=🎮",
+                    getBrandIcon(
+                        "https://via.placeholder.com/16x16/c9a961/1a2744?text=🎮"
+                    ),
             });
 
         embed.addFields(
@@ -332,8 +344,9 @@ export class EmbedBuilder {
             .setFooter({
                 text: MESSAGES.FOOTER.BRAND,
                 iconURL:
-                    process.env.BRAND_LOGO_URL ||
-                    "https://via.placeholder.com/16x16/c9a961/1a2744?text=🎮",
+                    getBrandIcon(
+                        "https://via.placeholder.com/16x16/c9a961/1a2744?text=🎮"
+                    ),
             });
 
         embed.addFields(
@@ -374,8 +387,9 @@ export class EmbedBuilder {
             .setFooter({
                 text: MESSAGES.FOOTER.BRAND,
                 iconURL:
-                    process.env.BRAND_LOGO_URL ||
-                    "https://via.placeholder.com/16x16/c9a961/1a2744?text=🎮",
+                    getBrandIcon(
+                        "https://via.placeholder.com/16x16/c9a961/1a2744?text=🎮"
+                    ),
             });
     }
 
@@ -391,8 +405,9 @@ export class EmbedBuilder {
             .setFooter({
                 text: MESSAGES.FOOTER.BRAND,
                 iconURL:
-                    process.env.BRAND_LOGO_URL ||
-                    "https://via.placeholder.com/16x16/c9a961/1a2744?text=🎮",
+                    getBrandIcon(
+                        "https://via.placeholder.com/16x16/c9a961/1a2744?text=🎮"
+                    ),
             });
     }
 
@@ -405,8 +420,9 @@ export class EmbedBuilder {
             .setFooter({
                 text: MESSAGES.FOOTER.BRAND,
                 iconURL:
-                    process.env.BRAND_LOGO_URL ||
-                    "https://via.placeholder.com/16x16/c9a961/1a2744?text=🎮",
+                    getBrandIcon(
+                        "https://via.placeholder.com/16x16/c9a961/1a2744?text=🎮"
+                    ),
             });
 
         Object.values(MESSAGES.COMMANDS).forEach(command => {

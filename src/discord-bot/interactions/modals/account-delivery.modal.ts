@@ -4,6 +4,7 @@ import { ACCOUNT_MODAL_IDS, ACCOUNT_BUTTON_IDS, AccountComponentBuilder } from "
 import { AccountEmbedBuilder } from "../../utils/accountEmbedBuilder";
 import { ApiService } from "../../services/api.service";
 import { discordConfig } from "../../config/discord.config";
+import { applyBrandThumbnail, applyCalculatorBranding } from "../../utils/priceEmbed";
 
 const apiService = new ApiService(discordConfig.apiBaseUrl);
 
@@ -147,6 +148,9 @@ export async function handleAccountDeliveryModal(
             .setTimestamp()
             .setFooter({ text: "MORITA Gaming • Account Delivery" });
 
+        applyBrandThumbnail(deliveryEmbed);
+        applyCalculatorBranding(deliveryEmbed);
+
         let dmSent = false;
 
         // Try to DM credentials to customer
@@ -275,6 +279,9 @@ export async function handleAccountDeliveryModal(
             .setFooter({
                 text: "MORITA Gaming • Thank you for your purchase!",
             });
+
+        applyBrandThumbnail(completionEmbed);
+        applyCalculatorBranding(completionEmbed);
 
         // Post-delivery buttons - first row with confirm and close
         const postDeliveryButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(

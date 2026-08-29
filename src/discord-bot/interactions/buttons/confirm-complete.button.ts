@@ -5,6 +5,7 @@ import { confirmOrderCompletion } from "../../utils/order-actions.util";
 import { discordConfig } from "../../config/discord.config";
 import { DiscordLoyaltyTierService } from "../../services/loyalty-tier.service";
 import { LoyaltyRoleSetupService } from "../../services/loyalty-role-setup.service";
+import { applyBrandThumbnail, applyCalculatorBranding } from "../../utils/priceEmbed";
 
 export async function handleConfirmCompleteButton(interaction: ButtonInteraction): Promise<void> {
     try {
@@ -147,6 +148,9 @@ export async function handleConfirmCompleteButton(interaction: ButtonInteraction
                             }
                         ]);
                     }
+
+                    applyBrandThumbnail(rewardEmbed);
+                    applyCalculatorBranding(rewardEmbed);
 
                     let delivered = false;
 

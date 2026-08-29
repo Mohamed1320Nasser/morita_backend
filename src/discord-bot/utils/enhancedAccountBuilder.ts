@@ -14,6 +14,7 @@ import {
     AccountListItem,
     AccountDetail,
 } from "./accountEmbedBuilder";
+import { getBrandIcon, getBrandThumbnail } from "../services/branding.service";
 
 /**
  * Account category with accounts list for channel display
@@ -349,7 +350,7 @@ export class EnhancedAccountBuilder {
             .setTimestamp()
             .setFooter({
                 text: "MORITA Gaming • Premium Account Store",
-                iconURL: process.env.BRAND_LOGO_URL || undefined,
+                iconURL: getBrandIcon(),
             });
 
         // Set thumbnail if available (first image as thumbnail)
@@ -443,7 +444,7 @@ export class EnhancedAccountBuilder {
             `📦 **${totalAccounts}** accounts available across **${categoryCount}** categories\n\n` +
             `**Select a category below to browse accounts:**`;
         let bannerUrl = "";
-        let thumbnailUrl = process.env.BRAND_LOGO_URL || "";
+        let thumbnailUrl = getBrandThumbnail();
         let embedColor = 0xfca311;
         let footerText = "MORITA Gaming • Premium Account Store";
 
@@ -480,7 +481,7 @@ export class EnhancedAccountBuilder {
             .setTimestamp()
             .setFooter({
                 text: footerText,
-                iconURL: process.env.BRAND_LOGO_URL || undefined,
+                iconURL: getBrandIcon(),
             });
 
         if (thumbnailUrl) {

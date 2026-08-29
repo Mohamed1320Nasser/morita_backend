@@ -1,7 +1,7 @@
 import { ButtonInteraction, EmbedBuilder } from "discord.js";
 import prisma from "../../../common/prisma/client";
 import logger from "../../../common/loggers";
-import { applyBrandThumbnail } from "../../utils/priceEmbed";
+import { applyBrandThumbnail, applyCalculatorBranding } from "../../utils/priceEmbed";
 
 // Format payment details as code block with syntax highlighting
 function formatPaymentBlock(type: string, details: Record<string, string>): string {
@@ -120,6 +120,7 @@ export async function handlePaymentMethods(
         });
 
         applyBrandThumbnail(embed);
+        applyCalculatorBranding(embed);
 
         await interaction.reply({
             embeds: [embed.toJSON() as any],

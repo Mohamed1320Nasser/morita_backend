@@ -54,6 +54,8 @@ export const upload = (
                     Sentry.captureException(new Error(errorMessage));
                     cb(new API.err(400, errorMessage), false);
                 }
+            } else {
+                cb(null, true);
             }
         },
     };

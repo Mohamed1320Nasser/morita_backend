@@ -1,6 +1,7 @@
 import { Client, EmbedBuilder, TextChannel } from "discord.js";
 import { discordApiClient } from "../clients/DiscordApiClient";
 import logger from "../../common/loggers";
+import { applyBrandThumbnail, applyCalculatorBranding } from "../utils/priceEmbed";
 
 const CHECK_INTERVAL_MS = 30 * 60 * 1000;
 
@@ -40,7 +41,7 @@ export class DailyRewardReminderService {
     }
 
     private buildEmbed(currencyEmoji: string, currencyName: string): EmbedBuilder {
-        return new EmbedBuilder()
+        const embed = new EmbedBuilder()
             .setTitle(`${currencyEmoji} Don't forget your daily reward!`)
             .setDescription(
                 `You have not claimed your daily ${currencyName} yet.\n\n` +
@@ -48,6 +49,9 @@ export class DailyRewardReminderService {
             )
             .setColor(0xfca311)
             .setTimestamp();
+
+        applyBrandThumbnail(embed);
+        return applyCalculatorBranding(embed);
     }
 
     async sendPendingReminders(): Promise<void> {

@@ -197,6 +197,13 @@ client.once(Events.ClientReady, async readyClient => {
         logger.error("Failed to initialize invite cache:", error);
     }
 
+    try {
+        const { initBranding } = await import("./services/branding.service");
+        await initBranding();
+    } catch (error) {
+        logger.error("Failed to initialize branding:", error);
+    }
+
     const { startMemberSyncCron } = await import('./cron/sync-members.cron');
     startMemberSyncCron(client);
 });

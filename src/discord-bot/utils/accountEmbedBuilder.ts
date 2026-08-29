@@ -4,6 +4,7 @@ import {
 } from "discord.js";
 import { COLORS } from "../constants/colors";
 import { EMOJIS } from "../constants/emojis";
+import { getBrandIcon } from "../services/branding.service";
 
 // Account types for type safety
 export interface AccountCategory {
@@ -92,17 +93,18 @@ export class AccountEmbedBuilder {
             )
             .setColor(0xfca311 as ColorResolvable)
             .setThumbnail(
-                process.env.BRAND_LOGO_URL ||
-                "https://via.placeholder.com/64x64/c9a961/1a2744?text=🎮"
+                getBrandIcon(
+                    "https://via.placeholder.com/64x64/c9a961/1a2744?text=🎮"
+                )!
             )
             .setAuthor({
                 name: "MORITA Gaming",
-                iconURL: process.env.BRAND_LOGO_URL || undefined,
+                iconURL: getBrandIcon(),
             })
             .setTimestamp()
             .setFooter({
                 text: "MORITA Gaming • Premium Account Store",
-                iconURL: process.env.BRAND_LOGO_URL || undefined,
+                iconURL: getBrandIcon(),
             });
     }
 

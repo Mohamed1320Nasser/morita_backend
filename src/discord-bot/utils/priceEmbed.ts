@@ -1,4 +1,5 @@
 import { EmbedBuilder } from "discord.js";
+import { getBrandBanner, getBrandThumbnail } from "../services/branding.service";
 
 export const CALC_COLOR = 0xfca311;
 
@@ -7,6 +8,11 @@ const MONEY_W = 10;
 const XP_W = 12;
 const LEVELS_W = 9;
 const LABEL_W = 16;
+
+// Widest a table row can get before Discord wraps it onto a second line on a
+// narrow client. The name column is the only elastic one, so it absorbs
+// whatever the fixed level and price columns leave behind.
+const TABLE_W = 40;
 
 const DIM = "\u001b[0;37m";
 const CYAN = "\u001b[0;36m";
@@ -218,17 +224,39 @@ export function buildOptionsTable(options: OptionRow[]): string {
         })
     );
 
+    // Size the fixed columns first, then let the name column take what is left
+    // of the row budget. Sizing the name to its longest entry alone let a long
+    // method name ("Gnome Stronghold Rooftop Course") push the row past the
+    // width Discord fits, wrapping the price onto its own line.
+    // Only the price column ever carries the "= " group-total prefix, so the
+    // "Was" column beside it keeps the plain width instead of padding to match.
+    const wasW = anyDiscount ? 9 : MONEY_W;
+    const moneyW = wasW + (anyGroupTotal ? 2 : 0);
+    // A discount table carries two money columns plus the save column, which
+    // together leave nothing for a full-width level column. Ranges are short
+    // ("1-20", "77-99"), so it gives back the padding it does not need.
+    const levelsW = anyDiscount ? 7 : LEVELS_W;
+    const rangeCol = anyRange ? "Levels".padEnd(levelsW) : "";
+    // Discount percentages are at most three digits ("100%"), so the save
+    // column drops its spare padding when all five columns are competing for
+    // the row - the only combination that otherwise overflows.
+    const saveW = anyDiscount && anyRange && anyGroupTotal ? 4 : 6;
+    const fixedW = (anyRange ? levelsW : 0) + moneyW + (anyDiscount ? wasW + saveW : 0);
+
     const nameCap = anyDiscount ? (anyRange ? 18 : NAME_W + 4) : NAME_W + 8;
-    const nameW = Math.min(nameCap, longestName + 2);
-    const moneyW = (anyDiscount ? 9 : MONEY_W) + (anyGroupTotal ? 2 : 0);
-    const rangeCol = anyRange ? "Levels".padEnd(LEVELS_W) : "";
+    // Never let the name column drop so far that names become unreadable. A
+    // discount table spends five columns on money, so it tolerates a tighter
+    // floor than a plain one rather than wrapping the row.
+    const nameFloor = anyDiscount ? 9 : 12;
+    const nameBudget = Math.max(nameFloor, TABLE_W - fixedW);
+    const nameW = Math.min(nameCap, nameBudget, longestName + 2);
 
     const headerText = anyDiscount
         ? "Method".padEnd(nameW) +
           rangeCol +
-          "Was".padStart(moneyW) +
+          "Was".padStart(wasW) +
           "Now".padStart(moneyW) +
-          "  Save".padEnd(6)
+          "  Save".padEnd(saveW)
         : "Method".padEnd(nameW) + rangeCol + "Price".padStart(moneyW);
 
     const lines = [header(headerText), rule(headerText.length)];
@@ -278,7 +306,7 @@ export function buildOptionsTable(options: OptionRow[]): string {
               : name;
 
         if (anyRange) {
-            row += `${DIM}${clip(option.range || "", LEVELS_W).padEnd(LEVELS_W)}${RESET}`;
+            row += `${DIM}${clip(option.range || "", levelsW).padEnd(levelsW)}${RESET}`;
         }
 
         const priceText = isGroupTotal
@@ -299,13 +327,13 @@ export function buildOptionsTable(options: OptionRow[]): string {
                 option.originalPrice > option.finalPrice
                     ? money(option.originalPrice)
                     : "";
-            row += `${DIM}${was.padStart(moneyW)}${RESET}`;
+            row += `${DIM}${was.padStart(wasW)}${RESET}`;
             row += priceCell;
             // The percentage is identical for every row in a group, so print it
             // once on the parent rather than repeating it down the column.
             row +=
                 option.discountPercent && option.discountPercent > 0 && !option.isChild
-                    ? `${GREEN}${`  ${option.discountPercent}%`.padEnd(6)}${RESET}`
+                    ? `${GREEN}${`  ${option.discountPercent}%`.padEnd(saveW)}${RESET}`
                     : "";
         } else {
             row += priceCell;
@@ -418,7 +446,7 @@ export function buildGrandTotal(amount: number): string {
  * horizontal room.
  */
 export function applyCalculatorBranding(embed: EmbedBuilder): EmbedBuilder {
-    const banner = (process.env.CALC_BANNER_URL || "").trim();
+    const banner = getBrandBanner();
     if (banner) {
         embed.setImage(banner);
     }
@@ -431,7 +459,7 @@ export function applyCalculatorBranding(embed: EmbedBuilder): EmbedBuilder {
  * reflow around it, so unlike the calculators they keep their layout.
  */
 export function applyBrandThumbnail(embed: EmbedBuilder): EmbedBuilder {
-    const thumbnail = (process.env.CALC_THUMBNAIL_URL || "").trim();
+    const thumbnail = getBrandThumbnail();
     if (thumbnail) {
         embed.setThumbnail(thumbnail);
     }

@@ -10,7 +10,7 @@ import {
 } from "discord.js";
 import { discordConfig } from "../config/discord.config";
 import logger from "../../common/loggers";
-import { applyBrandThumbnail } from "../utils/priceEmbed";
+import { applyBrandThumbnail, applyCalculatorBranding } from "../utils/priceEmbed";
 
 export class ReviewsChannelService {
     private client: Client;
@@ -199,6 +199,7 @@ export class ReviewsChannelService {
                 .setTimestamp();
 
             applyBrandThumbnail(embed);
+            applyCalculatorBranding(embed);
 
             await channel.send({ embeds: [embed.toJSON() as any] });
 
@@ -253,6 +254,7 @@ export class ReviewsChannelService {
         });
 
         return applyBrandThumbnail(embed);
+        applyCalculatorBranding(embed);
     }
 
     private formatReviewEmbed(
@@ -302,6 +304,7 @@ export class ReviewsChannelService {
         });
 
         return applyBrandThumbnail(embed);
+        applyCalculatorBranding(embed);
     }
 }
 

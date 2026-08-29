@@ -948,14 +948,22 @@ export default class PricingCalculatorService {
         }
 
         // A method covering the whole requested range is added twice: once as a
-        // full-range option and again as an overlapping segment. Same name,
-        // same levels, same price - so keep the first and drop the repeat.
+        // full-range option (methodId = method.id) and again as an overlapping
+        // segment (methodId = `${method.id}_segment_${start}_${end}`). Same
+        // underlying method, same levels, same price - so keep the first and
+        // drop the repeat. Keying on the raw methodName doesn't catch this:
+        // the segment path appends "(start-end)" to the name specifically so
+        // it renders differently, which made an earlier version of this same
+        // filter a no-op. Stripping the "_segment_..." suffix to recover the
+        // base method id ties the two rows back to the same PricingMethod
+        // row directly, instead of relying on name formatting.
         const seenOptions = new Set<string>();
         options = options.filter(option => {
+            const baseMethodId = option.methodId.replace(/_segment_\d+_\d+$/, "");
             const range = (option.levelRanges || [])
                 .map((r: any) => `${r.startLevel}-${r.endLevel}`)
                 .join(",");
-            const key = `${option.methodName}|${range}|${option.finalPrice}`;
+            const key = `${baseMethodId}|${range}|${option.finalPrice}`;
 
             if (seenOptions.has(key)) {
                 logger.info(`[PricingCalculator]   ⏭️ Duplicate dropped: "${option.methodName}" (${range})`);

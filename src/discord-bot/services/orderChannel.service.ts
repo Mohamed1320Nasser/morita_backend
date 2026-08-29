@@ -10,6 +10,7 @@ import {
 import { discordConfig } from "../config/discord.config";
 import logger from "../../common/loggers";
 import { discordApiClient } from "../clients/DiscordApiClient";
+import { applyBrandThumbnail, applyCalculatorBranding } from "../utils/priceEmbed";
 
 export class OrderChannelService {
     constructor(private client: Client) {}
@@ -105,6 +106,22 @@ export class OrderChannelService {
             logger.info(`[OrderChannel] Successfully updated order message for Order #${orderNumber}`);
         } catch (error) {
             logger.error("[OrderChannel] Update error:", error);
+        }
+    }
+
+    async removeWorkerFromTicketChannel(channelId: string, workerDiscordId: string): Promise<boolean> {
+        try {
+            const channel = await this.client.channels.fetch(channelId);
+
+            if (!channel || channel.type !== ChannelType.GuildText) {
+                return false;
+            }
+
+            await (channel as TextChannel).permissionOverwrites.delete(workerDiscordId);
+            return true;
+        } catch (error) {
+            logger.error("[OrderChannel] Remove worker error:", error);
+            return false;
         }
     }
 
@@ -247,7 +264,8 @@ export class OrderChannelService {
             }
         ]);
 
-        return embed;
+        applyBrandThumbnail(embed);
+        return applyCalculatorBranding(embed);
     }
 
     private buildActionButtons(orderId: string, status: string): ButtonBuilder[] {

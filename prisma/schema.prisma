@@ -103,6 +103,7 @@ model User {
   engagementRanks           EngagementRank[]       @relation("userEngagementRanks")
   createdPayoutConfigs      PayoutConfig[]         @relation("payoutConfigCreator")
   updatedPayoutConfigs      PayoutConfig[]         @relation("payoutConfigUpdater")
+  updatedBrandingSettings   BrandingSetting[]      @relation("brandingSettingUpdater")
 
   @@index([email])
   @@index([role])
@@ -162,6 +163,22 @@ model File {
   user              User?             @relation("userProfile")
   serviceCategories ServiceCategory[] @relation("categoryIcon")
   accountImages     AccountImage[]    @relation("accountImages")
+  brandingSettings  BrandingSetting[] @relation("brandingSettingFile")
+}
+
+model BrandingSetting {
+  id        String   @id @default(uuid())
+  key       String   @unique @db.VarChar(64)
+  fileId    Int      @db.UnsignedInt
+  updatedBy Int?     @db.UnsignedInt
+  createdAt DateTime @default(now()) @db.DateTime(0)
+  updatedAt DateTime @default(now()) @updatedAt @db.DateTime(0)
+
+  file    File  @relation("brandingSettingFile", fields: [fileId], references: [id])
+  updater User? @relation("brandingSettingUpdater", fields: [updatedBy], references: [id])
+
+  @@index([key])
+  @@map("branding_settings")
 }
 
 enum PricingUnit {

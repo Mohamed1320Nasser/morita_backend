@@ -18,7 +18,7 @@ import { onboardingConfig } from "../config/onboarding.config";
 import { botApiHeaders } from "../config/apiAuth";
 import { ApiService } from "./api.service";
 import logger from "../../common/loggers";
-import { applyBrandThumbnail } from "../utils/priceEmbed";
+import { applyBrandThumbnail, applyCalculatorBranding } from "../utils/priceEmbed";
 import axios, { AxiosInstance } from "axios";
 import { getTicketChannelMover } from "./ticket-channel-mover.service";
 
@@ -840,6 +840,7 @@ export class TicketService {
             }
 
             applyBrandThumbnail(embed);
+            applyCalculatorBranding(embed);
 
             if (welcomeSettings.footerText) {
                 embed.setFooter({
@@ -1164,6 +1165,7 @@ export class TicketService {
             }
 
             applyBrandThumbnail(embed);
+            applyCalculatorBranding(embed);
 
             const detailsLines = [];
             if (ticket.service) {
