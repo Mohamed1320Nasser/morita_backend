@@ -218,14 +218,6 @@ export class CompletedOrdersChannelService {
 
         const descriptionParts: string[] = [];
 
-        // Service info
-        if (order.service) {
-            const serviceEmoji = order.service.emoji || "📦";
-            descriptionParts.push(`${serviceEmoji} **Service:** ${order.service.name}`);
-        } else {
-            descriptionParts.push(`📦 **Service:** Custom Order`);
-        }
-
         // Worker info
         descriptionParts.push(
             inProgress
@@ -260,10 +252,6 @@ export class CompletedOrdersChannelService {
                 durationStr = "under a minute";
             }
             descriptionParts.push(`⏱️ **Completion Time:** ${durationStr}`);
-        }
-
-        if (orderChannel) {
-            descriptionParts.push(`🎫 **Ticket:** <#${orderChannel.id}>`);
         }
 
         // Completion notes (if any)
