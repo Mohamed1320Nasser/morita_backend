@@ -928,6 +928,17 @@ export default class PricingCalculatorService {
                 groupName
             );
 
+            // The overlap count above predicts how many segments the group will
+            // use; this checks what it actually built. They disagree whenever a
+            // level bound is missing or zero, because `|| 1` then widens that
+            // row to the whole skill and makes it look like it contributes.
+            // A single-segment combination is one method's own row wearing the
+            // group's name, so drop it here where the truth is known.
+            if (groupCombo && (groupCombo.levelRanges || []).length <= 1) {
+                logger.info(`[PricingCalculator]   ⏭️ Group "${groupName}" collapsed to one method`);
+                continue;
+            }
+
             if (groupCombo) {
                 options.push(groupCombo);
                 logger.info(`[PricingCalculator]   ✅ "${groupName} Only": $${groupCombo.finalPrice.toFixed(2)}`);
@@ -960,23 +971,26 @@ export default class PricingCalculatorService {
             }
         }
 
-        // A method covering the whole requested range is added twice: once as a
-        // full-range option (methodId = method.id) and again as an overlapping
-        // segment (methodId = `${method.id}_segment_${start}_${end}`). Same
-        // underlying method, same levels, same price - so keep the first and
-        // drop the repeat. Keying on the raw methodName doesn't catch this:
-        // the segment path appends "(start-end)" to the name specifically so
-        // it renders differently, which made an earlier version of this same
-        // filter a no-op. Stripping the "_segment_..." suffix to recover the
-        // base method id ties the two rows back to the same PricingMethod
-        // row directly, instead of relying on name formatting.
+        // The same underlying quote reaches this list under several different
+        // methodIds: a full-range method (`method.id`), the same method as an
+        // overlapping segment (`${id}_segment_${start}_${end}`), a group that
+        // resolved to it (`group_teak_trees`), and the optimal combination
+        // (`combined`). Keying on any of those ids lets the others through,
+        // which is how one method rendered as two identical rows.
+        //
+        // What the customer compares is the rendered row, so that is what has
+        // to be unique: display name, levels, and price. The segment path
+        // appends "(start-end)" to the name, so strip that back off first or
+        // the segment reads as a different method than the row it repeats.
         const seenOptions = new Set<string>();
         options = options.filter(option => {
-            const baseMethodId = option.methodId.replace(/_segment_\d+_\d+$/, "");
+            const displayName = option.methodName
+                .replace(/\s*\(\d+-\d+\)\s*$/, "")
+                .trim();
             const range = (option.levelRanges || [])
                 .map((r: any) => `${r.startLevel}-${r.endLevel}`)
                 .join(",");
-            const key = `${baseMethodId}|${range}|${option.finalPrice}`;
+            const key = `${displayName}|${range}|${option.finalPrice}`;
 
             if (seenOptions.has(key)) {
                 logger.info(`[PricingCalculator]   ⏭️ Duplicate dropped: "${option.methodName}" (${range})`);
