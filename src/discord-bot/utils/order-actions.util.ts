@@ -276,10 +276,15 @@ export async function completeWorkOnOrder(
 
         const customerUser = await client.users.fetch(orderData.customer.discordId);
 
-        // Build channel link if available
-        const channelLink = orderData.discordChannelId
-            ? `<#${orderData.discordChannelId}>`
-            : "your ticket channel";
+        // A DM cannot resolve <#id> mentions, so the ticket needs a full URL.
+        const ticketChannelId =
+            orderChannel?.id || orderData.ticketChannelId || orderData.discordChannelId;
+        const ticketGuildId = orderChannel?.guild?.id || discordConfig.guildId;
+        const ticketUrl =
+            ticketChannelId && ticketGuildId
+                ? `https://discord.com/channels/${ticketGuildId}/${ticketChannelId}`
+                : null;
+        const channelLink = ticketUrl ? `[your ticket](${ticketUrl})` : "your ticket channel";
 
         const customerDmEmbed = new EmbedBuilder()
             .setTitle("🎉 Your Order is Ready!")
@@ -305,6 +310,16 @@ export async function completeWorkOnOrder(
             .setColor(0xfca311)
             .setTimestamp()
             .setFooter({ text: "Thank you for choosing our service!" });
+
+        if (ticketUrl) {
+            customerDmEmbed.addFields([
+                {
+                    name: "🎫 Your Ticket",
+                    value: `[Open ticket](${ticketUrl})`,
+                    inline: false,
+                },
+            ]);
+        }
 
         if (completionNotes) {
             customerDmEmbed.addFields([
