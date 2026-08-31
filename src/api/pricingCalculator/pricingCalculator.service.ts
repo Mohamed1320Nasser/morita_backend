@@ -900,12 +900,6 @@ export default class PricingCalculatorService {
         const methodGroups = this.groupMethodsByName(pricingMethods);
 
         for (const [groupName, methods] of Object.entries(methodGroups)) {
-            // Only the members that actually overlap the requested range can
-            // contribute a segment. A group priced from a single member is
-            // that member's own option under another name, so it would repeat
-            // a row already generated above - which is what put "Teak Trees"
-            // in the table twice for a range sitting inside one of its two
-            // segments. Counting the group instead of the overlap missed that.
             const contributing = methods.filter(method => {
                 const methodStart = method.startLevel || 1;
                 const methodEnd = method.endLevel || 99;
@@ -928,12 +922,6 @@ export default class PricingCalculatorService {
                 groupName
             );
 
-            // The overlap count above predicts how many segments the group will
-            // use; this checks what it actually built. They disagree whenever a
-            // level bound is missing or zero, because `|| 1` then widens that
-            // row to the whole skill and makes it look like it contributes.
-            // A single-segment combination is one method's own row wearing the
-            // group's name, so drop it here where the truth is known.
             if (groupCombo && (groupCombo.levelRanges || []).length <= 1) {
                 logger.info(`[PricingCalculator]   ⏭️ Group "${groupName}" collapsed to one method`);
                 continue;
@@ -971,17 +959,6 @@ export default class PricingCalculatorService {
             }
         }
 
-        // The same underlying quote reaches this list under several different
-        // methodIds: a full-range method (`method.id`), the same method as an
-        // overlapping segment (`${id}_segment_${start}_${end}`), a group that
-        // resolved to it (`group_teak_trees`), and the optimal combination
-        // (`combined`). Keying on any of those ids lets the others through,
-        // which is how one method rendered as two identical rows.
-        //
-        // What the customer compares is the rendered row, so that is what has
-        // to be unique: display name, levels, and price. The segment path
-        // appends "(start-end)" to the name, so strip that back off first or
-        // the segment reads as a different method than the row it repeats.
         const seenOptions = new Set<string>();
         options = options.filter(option => {
             const displayName = option.methodName
