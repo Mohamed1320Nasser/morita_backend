@@ -900,9 +900,22 @@ export default class PricingCalculatorService {
         const methodGroups = this.groupMethodsByName(pricingMethods);
 
         for (const [groupName, methods] of Object.entries(methodGroups)) {
-            // A group of one method prices exactly what that method already
-            // offers on its own, so it would only duplicate an existing row.
-            if (methods.length === 1) {
+            // Only the members that actually overlap the requested range can
+            // contribute a segment. A group priced from a single member is
+            // that member's own option under another name, so it would repeat
+            // a row already generated above - which is what put "Teak Trees"
+            // in the table twice for a range sitting inside one of its two
+            // segments. Counting the group instead of the overlap missed that.
+            const contributing = methods.filter(method => {
+                const methodStart = method.startLevel || 1;
+                const methodEnd = method.endLevel || 99;
+                return (
+                    Math.max(startLevel, methodStart) <
+                    Math.min(endLevel, methodEnd)
+                );
+            });
+
+            if (contributing.length <= 1) {
                 continue;
             }
 
