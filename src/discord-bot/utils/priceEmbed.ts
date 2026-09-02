@@ -216,10 +216,12 @@ export function buildOptionsTable(options: OptionRow[]): string {
     const longestName = Math.max(
         "Method".length,
         ...options.map(o => {
-            if (o.isChild) return 3;
             const bare = o.range
                 ? String(o.name).replace(/\s*\(\d+\s*-\s*\d+\)\s*$/, "").trim()
                 : String(o.name);
+            // A child is indented two columns, so it needs that much more than
+            // its name to sit level with the group total above it.
+            if (o.isChild) return bare ? bare.length + 2 : 3;
             return bare.length;
         })
     );
@@ -291,13 +293,18 @@ export function buildOptionsTable(options: OptionRow[]): string {
             ? option.name.replace(/\s*\(\d+\s*-\s*\d+\)\s*$/, "").trim()
             : option.name;
 
-        // Children carry a dash instead of a name: the level range already
-        // identifies the segment, and the marker ties the row to the group
-        // above it. Discord's ANSI code block font drops box-drawing glyphs,
-        // so this stays ASCII rather than using a corner character.
+        // A child names the method that covers its segment, indented under the
+        // group total. Without it every segment reads as an anonymous dash and
+        // the customer cannot tell which course or method each level range is
+        // being priced at. The indent costs the same two columns the dash did,
+        // so the name column budget is unchanged. Segments from an older cached
+        // result carry no name, so the dash stays as the fallback.
         // clip() trims, so the indent is applied after clipping.
+        const childIndent = "  ";
         const name = option.isChild
-            ? `  -`.padEnd(nameW)
+            ? bareName
+                ? childIndent + clip(bareName, nameW - childIndent.length - 1).padEnd(nameW - childIndent.length)
+                : `  -`.padEnd(nameW)
             : clip(bareName, nameW - 1).padEnd(nameW);
         let row = option.isBest
             ? `${CYAN}${name}${RESET}`

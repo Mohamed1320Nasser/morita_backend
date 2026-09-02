@@ -617,7 +617,7 @@ async function processSingleSkillRequest(message: Message, requestString: string
 
                 for (const seg of segments) {
                     optionRows.push({
-                        name: "",
+                        name: seg.methodName || "",
                         range: `${seg.startLevel}-${seg.endLevel}`,
                         finalPrice: seg.totalPrice,
                         isChild: true,
