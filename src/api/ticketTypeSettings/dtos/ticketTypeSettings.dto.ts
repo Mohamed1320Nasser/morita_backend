@@ -69,6 +69,18 @@ export class CreateTicketTypeSettingsDto {
     embedColor?: string;
 
     @IsOptional()
+    @Transform(({ value }) => value === "" ? null : value)
+    @IsString()
+    @MaxLength(255)
+    shopTitle?: string;
+
+    @IsOptional()
+    @Transform(({ value }) => value === "" ? null : value)
+    @IsString()
+    @MaxLength(4000)
+    shopDescription?: string;
+
+    @IsOptional()
     @IsObject()
     customFields?: {
         fields: CustomFieldDefinition[];
@@ -136,6 +148,18 @@ export class UpdateTicketTypeSettingsDto {
         message: "embedColor must be a valid 6-character hex color (without #)",
     })
     embedColor?: string;
+
+    @IsOptional()
+    @Transform(({ value }) => value === "" ? null : value)
+    @IsString()
+    @MaxLength(255)
+    shopTitle?: string;
+
+    @IsOptional()
+    @Transform(({ value }) => value === "" ? null : value)
+    @IsString()
+    @MaxLength(4000)
+    shopDescription?: string;
 
     @IsOptional()
     @IsObject()

@@ -241,11 +241,28 @@ export class EnhancedAccountBuilder {
             );
         }
 
-        // If there are more than 5 categories, log a warning
-        if (categories.length > 5) {
+        // Discord caps a message at five action rows, so any category past the
+        // fifth has no dropdown at all. Say so in the channel rather than only
+        // in the log, otherwise that stock is invisible to customers and to
+        // whoever added it.
+        const hidden = categories.length - maxCategories;
+
+        if (hidden > 0) {
             logger.warn(
                 `[EnhancedAccountBuilder] Only showing first 5 categories out of ${categories.length} (Discord limit)`
             );
+
+            const hiddenLabels = categories
+                .slice(maxCategories)
+                .map(c => this.CATEGORY_LABELS[c.category] || c.label)
+                .join(", ");
+
+            return {
+                content:
+                    `-# ${hidden} more categor${hidden === 1 ? "y" : "ies"} in stock ` +
+                    `(${hiddenLabels}) - open a ticket to browse them.`,
+                components,
+            };
         }
 
         return {
@@ -434,6 +451,11 @@ export class EnhancedAccountBuilder {
         totalAccounts: number,
         categoryCount: number
     ): Promise<EmbedBuilder> {
+        // The dropdowns are a separate message that is only posted for
+        // categories holding stock, so with nothing in stock the header must
+        // not point at a menu that is not there.
+        const hasStock = totalAccounts > 0;
+
         let title = "🎮 OSRS Accounts For Sale";
         let description =
             `**Browse our verified account inventory**\n\n` +
@@ -441,8 +463,11 @@ export class EnhancedAccountBuilder {
             `✅ **Full Credentials** - Email, password, and bank PIN provided\n` +
             `✅ **Verified Accounts** - All accounts thoroughly vetted\n` +
             `✅ **24/7 Support** - Assistance with login and security setup\n\n` +
-            `📦 **${totalAccounts}** accounts available across **${categoryCount}** categories\n\n` +
-            `**Select a category below to browse accounts:**`;
+            (hasStock
+                ? `📦 **${totalAccounts}** accounts available across **${categoryCount}** categories\n\n` +
+                  `**Select a category below to browse accounts:**`
+                : `📦 **No accounts in stock right now**\n\n` +
+                  `New stock is added regularly - open a ticket and we will let you know when something matching your needs arrives.`);
         let bannerUrl = "";
         let thumbnailUrl = getBrandThumbnail();
         let embedColor = 0xfca311;
@@ -458,14 +483,21 @@ export class EnhancedAccountBuilder {
                 // welcomeTitle and welcomeMessage belong to the ticket greeting
                 // and carry {customer}/{ticket_id} placeholders that only get
                 // filled inside a ticket. Rendering them here printed the raw
-                // template in the shop channel, so only the presentation
-                // fields are shared.
+                // template in the shop channel, so the shop keeps its own
+                // title and description fields instead.
                 bannerUrl = settings.bannerUrl || "";
                 thumbnailUrl = settings.thumbnailUrl || thumbnailUrl;
                 embedColor = settings.embedColor
                     ? parseInt(String(settings.embedColor).replace("#", ""), 16)
                     : embedColor;
                 footerText = settings.footerText || footerText;
+                title = settings.shopTitle || title;
+
+                if (settings.shopDescription) {
+                    description = String(settings.shopDescription)
+                        .replace(/\{total_accounts\}/g, String(totalAccounts))
+                        .replace(/\{category_count\}/g, String(categoryCount));
+                }
             }
         } catch (error) {
             logger.warn(

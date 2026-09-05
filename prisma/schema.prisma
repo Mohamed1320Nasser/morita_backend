@@ -868,6 +868,9 @@ model TicketTypeSettings {
   footerText     String? @db.Text
   embedColor     String? @default("FCA311") @db.VarChar(6)
 
+  shopTitle       String? @db.VarChar(255)
+  shopDescription String? @db.Text
+
   // Dynamic form fields (JSON array) - unique per type
   // Each field: { id, label, type, required, placeholder, options[], min, max }
   customFields Json?
