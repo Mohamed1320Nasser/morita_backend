@@ -3,10 +3,23 @@ import prisma from "../../common/prisma/client";
 import { CreateServiceDto, UpdateServiceDto, GetServiceListDto } from "./dtos";
 import { NotFoundError, BadRequestError } from "routing-controllers";
 import slugify from "slugify";
+import { MAX_SERVICES_PER_CATEGORY } from "../../common/constants/discord.constants";
 
 @Service()
 export default class ServiceService {
     constructor() {}
+
+    private async assertCategoryHasRoom(categoryId: string, categoryName: string) {
+        const active = await prisma.service.count({
+            where: { categoryId, active: true, deletedAt: null },
+        });
+
+        if (active >= MAX_SERVICES_PER_CATEGORY) {
+            throw new BadRequestError(
+                `"${categoryName}" already has ${active} active services, which is the most Discord can show in one dropdown (${MAX_SERVICES_PER_CATEGORY}). Deactivate a service or move some into another category first.`
+            );
+        }
+    }
 
     async create(data: CreateServiceDto) {
         const category = await prisma.serviceCategory.findFirst({
@@ -16,6 +29,8 @@ export default class ServiceService {
         if (!category) {
             throw new NotFoundError("Category not found");
         }
+
+        await this.assertCategoryHasRoom(data.categoryId, category.name);
 
         let slug =
             data.slug || slugify(data.name, { lower: true, strict: true });
@@ -184,6 +199,18 @@ export default class ServiceService {
 
             if (!category) {
                 throw new NotFoundError("Category not found");
+            }
+
+            if (data.active ?? service.active) {
+                await this.assertCategoryHasRoom(data.categoryId, category.name);
+            }
+        } else if (data.active === true && !service.active) {
+            const category = await prisma.serviceCategory.findFirst({
+                where: { id: service.categoryId, deletedAt: null },
+            });
+
+            if (category) {
+                await this.assertCategoryHasRoom(service.categoryId, category.name);
             }
         }
 
