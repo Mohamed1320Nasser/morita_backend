@@ -83,7 +83,10 @@ export class EnhancedAccountBuilder {
             .setMaxValues(1);
 
         const accounts = category.accounts || [];
-        const maxAccounts = Math.min(accounts.length, 25); // Discord limit
+        // The "+N more" row below is itself one of Discord's 25 options, so an
+        // oversized category lists 24 and spends the last slot on it.
+        const hasOverflow = accounts.length > 25;
+        const maxAccounts = hasOverflow ? 24 : accounts.length;
 
         if (maxAccounts === 0) {
             // No accounts available
@@ -128,10 +131,10 @@ export class EnhancedAccountBuilder {
             }
 
             // If more than 25 accounts, add a note
-            if (accounts.length > 25) {
+            if (hasOverflow) {
                 selectMenu.addOptions(
                     new StringSelectMenuOptionBuilder()
-                        .setLabel(`+${accounts.length - 25} more accounts`)
+                        .setLabel(`+${accounts.length - maxAccounts} more accounts`)
                         .setValue("view_more")
                         .setDescription("Contact support to view all")
                         .setEmoji("📋")
@@ -180,7 +183,10 @@ export class EnhancedAccountBuilder {
                 .setMaxValues(1);
 
             const accounts = category.accounts || [];
-            const maxAccounts = Math.min(accounts.length, 25); // Discord limit per select
+            // The "+N more" row below is itself one of Discord's 25 options,
+            // so an oversized category lists 24 and spends the last slot on it.
+            const hasOverflow = accounts.length > 25;
+            const maxAccounts = hasOverflow ? 24 : accounts.length;
 
             if (maxAccounts === 0) {
                 // No accounts available
@@ -225,10 +231,10 @@ export class EnhancedAccountBuilder {
                 }
 
                 // If more than 25 accounts, add a note
-                if (accounts.length > 25) {
+                if (hasOverflow) {
                     selectMenu.addOptions(
                         new StringSelectMenuOptionBuilder()
-                            .setLabel(`+${accounts.length - 25} more accounts`)
+                            .setLabel(`+${accounts.length - maxAccounts} more accounts`)
                             .setValue("view_more")
                             .setDescription("Contact support to view all")
                             .setEmoji("📋")

@@ -359,11 +359,28 @@ export class ImprovedChannelManager {
         try {
             const components: any[] = [];
 
+            // One category that Discord rejects must not take the others in
+            // its message down with it: a single oversized category used to
+            // throw here and cost all five their dropdowns, while the publish
+            // still reported success.
             for (const category of categories) {
-                const { components: categoryComponents } =
-                    EnhancedPricingBuilder.buildCategorySelectMenu(category);
+                try {
+                    const { components: categoryComponents } =
+                        EnhancedPricingBuilder.buildCategorySelectMenu(category);
 
-                components.push(...categoryComponents);
+                    components.push(...categoryComponents);
+                } catch (error) {
+                    logger.error(
+                        `[ImprovedChannelManager] Skipping category "${category.name}" (${category.services?.length ?? 0} services): ${(error as Error)?.message || error}`
+                    );
+                }
+            }
+
+            if (components.length === 0) {
+                logger.warn(
+                    `[ImprovedChannelManager] Group ${groupIndex} has no valid categories, nothing to send`
+                );
+                return;
             }
 
             const message = await this.pricingChannel.send({

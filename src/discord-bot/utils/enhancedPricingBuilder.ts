@@ -194,7 +194,13 @@ export class EnhancedPricingBuilder {
             .setMaxValues(1);
 
         const services = category.services || [];
-        const maxServices = Math.min(services.length, 25);
+        // Discord rejects a select menu holding more than 25 options, and the
+        // "view more" row below is one of them - so a category past the limit
+        // lists 24 services and spends the last slot saying so. Filling all 25
+        // first made the 26th option throw, which took down every category
+        // sharing that message rather than just the oversized one.
+        const hasOverflow = services.length > 25;
+        const maxServices = hasOverflow ? 24 : services.length;
 
         for (let i = 0; i < maxServices; i++) {
             const service = services[i];
@@ -232,11 +238,11 @@ export class EnhancedPricingBuilder {
             selectMenu.addOptions(option);
         }
 
-        if (services.length > 25) {
+        if (hasOverflow) {
             selectMenu.addOptions(
                 new StringSelectMenuOptionBuilder()
                     .setLabel(
-                        `📋 View ${services.length - 25} more services...`
+                        `📋 View ${services.length - maxServices} more services...`
                     )
                     .setValue(`show_more_${category.id}`)
                     .setDescription("Use /services command to see all")
