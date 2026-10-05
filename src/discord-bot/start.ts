@@ -3,6 +3,7 @@
 import { config } from "dotenv";
 import { resolve } from "path";
 import express from "express";
+import { timingSafeEqual } from "crypto";
 import cors from "cors";
 import { EmbedBuilder } from "discord.js";
 import logger from "../common/loggers";
@@ -60,6 +61,7 @@ logger.info("Discord configuration validated");
 import { startBot } from "./index";
 import discordClient from "./index";
 import prisma from "../common/prisma/client";
+import { getTicketService } from "./services/ticket.service";
 
 logger.info("Discord bot startup script loaded - starting bot explicitly...");
 startBot();
@@ -518,6 +520,48 @@ app.post("/discord/notify/order-status", async (req, res) => {
         res.json({ success: true });
     } catch (error: any) {
         logger.error("[Bot API] Failed to send order status notification:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * Close a ticket's Discord channel when it was closed from the dashboard:
+ * close message, buttons disabled, transcript and ticket log, the same as a
+ * close from Discord. Requires the bot API key.
+ */
+app.post("/discord/tickets/close", async (req, res) => {
+    const expected = process.env.DISCORD_BOT_API_KEY || "";
+    const provided = String(req.get("x-api-key") || "");
+    if (
+        !expected ||
+        provided.length !== expected.length ||
+        !timingSafeEqual(Buffer.from(provided), Buffer.from(expected))
+    ) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
+
+    try {
+        if (!discordClient.isReady()) {
+            return res.status(400).json({ success: false, error: "Discord bot not connected" });
+        }
+
+        const { ticketId, closedByDiscordId, reason } = req.body || {};
+        if (!ticketId) {
+            return res.status(400).json({ success: false, error: "ticketId is required" });
+        }
+
+        // Shown as "closed by" in the channel and the ticket log; the bot
+        // stands in when the admin has no linked Discord account
+        const admin = closedByDiscordId
+            ? await discordClient.users.fetch(String(closedByDiscordId)).catch(() => null)
+            : null;
+
+        await getTicketService(discordClient).closeTicket(String(ticketId), admin || discordClient.user!, reason);
+
+        logger.info(`[Bot API] Ticket ${ticketId} closed in Discord (from dashboard)`);
+        res.json({ success: true });
+    } catch (error: any) {
+        logger.error("[Bot API] Failed to close ticket from dashboard:", error);
         res.status(500).json({ success: false, error: error.message });
     }
 });

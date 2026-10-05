@@ -95,6 +95,14 @@ import CryptoMonitorService from "./services/crypto-monitor.service";
 
     // Serve static files from CDN directory (for local development)
     app.use("/cdn", express.static(Environment.project.cdnDir));
+
+    // The bot posts every guild member ID here; the default 100kb body limit
+    // would reject it once the server passes a few thousand members.
+    app.use("/referral/sync-members", express.json({ limit: "10mb" }));
+
+    // Ticket transcripts arrive from the bot as raw-byte pieces of up to 512 KB
+    app.use(/^\/discord\/tickets\/[^/]+\/transcript$/, express.raw({ type: "application/octet-stream", limit: "2mb" }));
+
     useExpressServer(app, {
         authorizationChecker,
         classToPlainTransformOptions: {

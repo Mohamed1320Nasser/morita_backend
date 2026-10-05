@@ -20,6 +20,7 @@ import WalletService from "../wallet/wallet.service";
 import OrderRewardService from "../orderReward/order-reward.service";
 import LoyaltyTierService from "../loyalty-tier/loyalty-tier.service";
 import PayoutConfigService from "../payoutConfig/payoutConfig.service";
+import ReferralOrderRewardService from "../referral/referral-order-reward.service";
 import { withTransactionRetry, checkWalletBalanceWithLock, updateWalletBalance, deductFromWorkerWallet } from "../../common/utils/transaction.util";
 import { PAYOUT_STRUCTURE, FINANCIAL_LIMITS, isValidAmount } from "../../common/constants/security.constants";
 import { InsufficientBalanceError } from "../../common/utils/errorHandler.util";
@@ -39,7 +40,8 @@ export default class OrderService {
         private walletService: WalletService,
         private orderRewardService: OrderRewardService,
         private loyaltyTierService: LoyaltyTierService,
-        private payoutConfigService: PayoutConfigService
+        private payoutConfigService: PayoutConfigService,
+        private referralOrderRewardService: ReferralOrderRewardService
     ) {}
 
     async createOrder(data: CreateOrderDto) {
@@ -1244,6 +1246,14 @@ export default class OrderService {
             }
         }
 
+
+        // Referral order rewards: every path to/from COMPLETED goes through here.
+        // Both calls are best effort and never throw.
+        if (data.status === OrderStatus.COMPLETED && order.status !== OrderStatus.COMPLETED) {
+            await this.referralOrderRewardService.onOrderCompleted(orderId);
+        } else if (order.status === OrderStatus.COMPLETED && data.status !== OrderStatus.COMPLETED) {
+            await this.referralOrderRewardService.onOrderReversed(orderId, data.status);
+        }
 
         await this.notifyOrderStatusChange(order, data.status, data.reason);
 

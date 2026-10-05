@@ -6,6 +6,7 @@ import { ApiService } from "./services/api.service";
 import { ChannelManagerService } from "./services/channelManager.service";
 import { ImprovedChannelManager } from "./services/improvedChannelManager.service";
 import { InviteCacheService } from "./services/inviteCache.service";
+import { setEmojiLookup } from "./utils/emojiAvailability";
 import { EmbedBuilder } from "./utils/embedBuilder";
 import { discordConfig } from "./config/discord.config";
 import logger from "../common/loggers";
@@ -97,6 +98,20 @@ const loadEvents = async () => {
 };
 
 client.once(Events.ClientReady, async readyClient => {
+    // Let builders skip custom emojis the bot cannot use (would fail the whole message).
+    // Usable = from a server the bot is in, or uploaded to the bot application itself.
+    try {
+        const appEmojis: any = await readyClient.rest.get(
+            `/applications/${readyClient.application.id}/emojis` as any
+        );
+        const appEmojiIds = new Set<string>((appEmojis?.items || []).map((e: any) => e.id));
+        setEmojiLookup(emojiId => readyClient.emojis.cache.has(emojiId) || appEmojiIds.has(emojiId));
+        logger.info(`Emoji lookup ready (${readyClient.emojis.cache.size} server + ${appEmojiIds.size} application emojis)`);
+    } catch (error) {
+        // Without the application list we cannot tell, so do not block any emoji
+        logger.warn("Could not load application emojis; custom emojis will not be pre-checked", error);
+    }
+
     readyClient.user.setActivity("🎮 Morita Gaming | /help", { type: 1 });
 
     try {

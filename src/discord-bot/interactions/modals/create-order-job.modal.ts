@@ -223,7 +223,7 @@ async function createOrder(orderData: any, ticketId: string | null, jobDetails: 
     // 2. If no service_name but ticket exists, try to use ticket's service
     if (!serviceId && ticketId) {
         try {
-            const ticketResponse = await discordApiClient.get(`/tickets/${ticketId}`);
+            const ticketResponse = await discordApiClient.get(`/discord/tickets/${ticketId}`);
             const ticketData = ticketResponse.data.data || ticketResponse.data;
 
             if (ticketData?.serviceId) {

@@ -6,6 +6,7 @@ import {
     StringSelectMenuOptionBuilder,
     EmbedBuilder,
 } from "discord.js";
+import { canUseCustomEmoji } from "./emojiAvailability";
 import {
     ServiceCategory,
     Service,
@@ -45,6 +46,9 @@ export interface BuildOptions {
     page?: number; 
     itemsPerPage?: number; 
 }
+
+/** Value of the pre-selected first option that shows the category icon and name. */
+export const CATEGORY_HEADER_PREFIX = "category_header_";
 
 export class EnhancedPricingBuilder {
 
@@ -139,16 +143,27 @@ export class EnhancedPricingBuilder {
         return trimmed;
     }
 
-    private static getEmojiForPlaceholder(emoji: string | null | undefined): string {
-        if (!emoji) return "📦";
+    /**
+     * Turns an admin-entered icon into a select-option emoji. Accepts
+     * <:name:id>, <a:name:id>, name:id, a:name:id or a unicode emoji.
+     */
+    static parseOptionEmoji(
+        raw: string | null | undefined
+    ): { id: string; name: string; animated?: boolean } | string | null {
+        if (!raw) return null;
+        const trimmed = String(raw).trim();
+        if (!trimmed) return null;
 
-        const trimmed = String(emoji).trim();
-
-        const customEmojiMatch = trimmed.match(/^<?a?:?(.+?):(\d+)>?$/);
-        if (customEmojiMatch) {
-            
-            const emojiName = customEmojiMatch[1];
-            return `🎮 ${emojiName}`;
+        const custom = trimmed.match(/^<?(a)?:?([A-Za-z0-9_~]+):(\d{15,25})>?$/);
+        if (custom) {
+            if (!canUseCustomEmoji(custom[3])) {
+                logger.warn(
+                    `[EnhancedPricingBuilder] Emoji ${trimmed} is not available to the bot ` +
+                        `(add it to a server the bot is in, or to the bot application); using the default icon`
+                );
+                return null;
+            }
+            return { id: custom[3], name: custom[2], ...(custom[1] ? { animated: true } : {}) };
         }
 
         return trimmed;
@@ -185,22 +200,34 @@ export class EnhancedPricingBuilder {
         
         const content = ``;
 
-        const categoryEmojiPlaceholder = this.getEmojiForPlaceholder(category.emoji);
-
+        // A placeholder is plain text, so Discord never draws a custom
+        // <:name:id> emoji there. Instead the menu starts with a pre-selected
+        // header option carrying the category icon and name: the closed menu
+        // shows a selected option's emoji as an image. Picking the header
+        // does nothing (see the select handler).
         const selectMenu = new StringSelectMenuBuilder()
             .setCustomId(`pricing_service_select_${category.id}`)
-            .setPlaceholder(`${categoryEmojiPlaceholder} ${category.name}`)
+            .setPlaceholder(category.name.substring(0, 150))
             .setMinValues(1)
             .setMaxValues(1);
 
+        const headerLabel = category.name.length > 100 ? category.name.substring(0, 97) + "..." : category.name;
+        const header = new StringSelectMenuOptionBuilder()
+            .setLabel(headerLabel)
+            .setValue(`${CATEGORY_HEADER_PREFIX}${category.id}`)
+            .setDescription("Choose a service below")
+            .setDefault(true);
+        header.setEmoji(this.parseOptionEmoji(category.emoji) ?? "📦");
+        selectMenu.addOptions(header);
+
         const services = category.services || [];
-        // Discord rejects a select menu holding more than 25 options, and the
-        // "view more" row below is one of them - so a category past the limit
-        // lists 24 services and spends the last slot saying so. Filling all 25
-        // first made the 26th option throw, which took down every category
-        // sharing that message rather than just the oversized one.
-        const hasOverflow = services.length > 25;
-        const maxServices = hasOverflow ? 24 : services.length;
+        // Discord rejects a select menu holding more than 25 options. The
+        // header takes one slot, and a category past the limit spends the last
+        // slot on a "view more" row - so 24 services fit, or 23 plus "view
+        // more". Overfilling made the extra option throw, which took down every
+        // category sharing that message rather than just the oversized one.
+        const hasOverflow = services.length > 24;
+        const maxServices = hasOverflow ? 23 : services.length;
 
         for (let i = 0; i < maxServices; i++) {
             const service = services[i];
@@ -217,23 +244,7 @@ export class EnhancedPricingBuilder {
                 .setValue(service.id)
                 .setDescription("Click here for more information");
 
-            if (service.emoji) {
-                const trimmed = String(service.emoji).trim();
-                
-                const customEmojiMatch = trimmed.match(/^<?a?:?(.+?):(\d+)>?$/);
-                if (customEmojiMatch) {
-                    
-                    const emojiName = customEmojiMatch[1];
-                    const emojiId = customEmojiMatch[2];
-                    
-                    option.setEmoji({ id: emojiId, name: emojiName });
-                } else {
-                    
-                    option.setEmoji(trimmed);
-                }
-            } else {
-                option.setEmoji("🔹");
-            }
+            option.setEmoji(this.parseOptionEmoji(service.emoji) ?? "🔹");
 
             selectMenu.addOptions(option);
         }

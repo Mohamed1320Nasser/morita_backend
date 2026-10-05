@@ -6,8 +6,10 @@ import {
     Put,
     Param,
     Body,
+    Req,
     UseBefore,
 } from "routing-controllers";
+import { Request } from "express";
 import {
     DiscordAuthMiddleware,
     DiscordRateLimitMiddleware,
@@ -119,6 +121,26 @@ export default class DiscordTicketController {
             success: true,
             data: ticket,
         };
+    }
+
+    /**
+     * Store one piece of the HTML transcript generated when the ticket closes.
+     * Query: uploadId, part (0-based), parts. Body: raw bytes
+     * (application/octet-stream, parsed in app.ts).
+     */
+    @Post("/:id/transcript")
+    async uploadTranscript(@Param("id") id: string, @Req() req: Request) {
+        const result = await this.ticketService.saveTranscriptChunk(
+            id,
+            {
+                uploadId: String(req.query.uploadId || ""),
+                part: Number(req.query.part),
+                parts: Number(req.query.parts),
+                offset: Number(req.query.offset),
+            },
+            req.body as any
+        );
+        return { success: true, data: result };
     }
 
     /**

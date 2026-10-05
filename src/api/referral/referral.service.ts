@@ -1,10 +1,51 @@
 import { Service } from 'typedi';
+import { Prisma } from '@prisma/client';
 import prisma from '../../common/prisma/client';
 import logger from '../../common/loggers';
 import { NotFoundError, BadRequestError } from 'routing-controllers';
 import { Decimal } from '@prisma/client/runtime/library';
 import { TrackReferralDto, GiveRewardDto, GetReferralsDto } from './dtos';
 import ReferralRewardService from '../referralReward/referral-reward.service';
+import { TransactionClient } from '../../common/utils/transaction.util';
+import ReferralOrderRewardService, { ReferralOrderPayout } from './referral-order-reward.service';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Below this many referrals a single early leaver would wreck the retention
+// rate, so the retention rule only applies once there is enough history.
+const RETENTION_MIN_SAMPLE = 5;
+
+// Max referrer -> referrer hops checked for circular referrals.
+const MAX_CHAIN_DEPTH = 20;
+
+// Pending referrals evaluated per cron run.
+const PENDING_BATCH_SIZE = 200;
+
+const INELIGIBLE_REASON = 'Joined while referral rewards were disabled (not eligible)';
+
+type ReferralConfig = Awaited<ReturnType<ReferralRewardService['getConfig']>>;
+
+export interface ReferralPayout {
+  status: 'PAID';
+  kind: 'JOIN';
+  referralId: string;
+  referrerUserId: number;
+  referrerDiscordId: string;
+  referredDiscordId: string;
+  amount: number;
+  perReferralAmount: number;
+  milestoneBonus: number;
+  milestonesReached: number[];
+  qualifiedReferrals: number;
+  currencyName: string;
+  notifyDM: boolean;
+  notifyDiscord: boolean;
+}
+
+export type RewardOutcome =
+  | ReferralPayout
+  | { status: 'HELD'; referralId: string; reason: string }
+  | { status: 'NONE'; reason: string };
 
 function summariseRetention(referralCount: number, leftCount: number) {
   const activeCount = Math.max(0, referralCount - leftCount);
@@ -22,18 +63,62 @@ function scoreRisk(last24hCount: number, referralCount: number, retentionRate: n
   return 'LOW';
 }
 
+function daysSince(date: Date, now: Date = new Date()) {
+  return Math.max(0, Math.floor((now.getTime() - new Date(date).getTime()) / DAY_MS));
+}
+
+/** Days a member has stayed: frozen at leave time, live while still in the server. */
+function memberDays(r: { hasLeftServer: boolean; daysInServer: number; joinedAt: Date }) {
+  return r.hasLeftServer ? r.daysInServer : daysSince(r.joinedAt);
+}
+
+function startOfToday() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+}
+
 @Service()
 export default class ReferralService {
-  constructor(private referralRewardService: ReferralRewardService) {}
+  constructor(
+    private referralRewardService: ReferralRewardService,
+    private referralOrderRewardService: ReferralOrderRewardService
+  ) {}
+
+  // ============================================
+  // TRACKING
+  // ============================================
 
   async trackReferral(dto: TrackReferralDto) {
-    const referrer = await prisma.user.findUnique({
-      where: { discordId: dto.referrerDiscordId },
-      include: { referredBy: true },
-    });
+    // Personal invites are created by the bot, so Discord reports the bot as the
+    // inviter. The invite-code mapping is the source of truth for who owns it.
+    let referrer: { id: number; discordId: string | null; referredByUserId: number | null } | null = null;
 
-    if (!referrer) {
+    if (dto.inviteCode) {
+      const invite = await prisma.discordInvite.findUnique({
+        where: { inviteCode: dto.inviteCode },
+        include: { user: { select: { id: true, discordId: true, referredByUserId: true } } },
+      });
+      if (invite?.user) {
+        referrer = invite.user;
+      }
+    }
+
+    if (!referrer && dto.referrerDiscordId) {
+      referrer = await prisma.user.findUnique({
+        where: { discordId: dto.referrerDiscordId },
+        select: { id: true, discordId: true, referredByUserId: true },
+      });
+    }
+
+    if (!referrer || !referrer.discordId) {
       throw new NotFoundError(`Referrer not found`);
+    }
+
+    const referrerDiscordId = referrer.discordId;
+
+    if (referrerDiscordId === dto.referredDiscordId) {
+      throw new BadRequestError('Self-referral not allowed');
     }
 
     const existing = await prisma.referral.findFirst({
@@ -41,619 +126,814 @@ export default class ReferralService {
     });
 
     if (existing) {
-      return existing;
+      return { isNew: false, referrerDiscordId: existing.referrerDiscordId, referral: existing };
     }
 
-    if (referrer.referredByUserId) {
-      const referrerParent = await prisma.user.findUnique({
-        where: { id: referrer.referredByUserId },
-        select: { discordId: true },
-      });
-
-      if (referrerParent?.discordId === dto.referredDiscordId) {
-        throw new BadRequestError('Circular referral detected');
-      }
-    }
-
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const recentReferrals = await prisma.referral.count({
+    // A member who already registered before is returning, not a new referral.
+    // Temporary accounts created at ToS acceptance carry an @temp.discord email.
+    const alreadyRegistered = await prisma.user.findFirst({
       where: {
-        referrerId: referrer.id,
-        joinedAt: { gte: twentyFourHoursAgo },
+        discordId: dto.referredDiscordId,
+        NOT: { email: { endsWith: '@temp.discord' } },
       },
+      select: { id: true },
     });
 
-    if (recentReferrals >= 10) {
-      throw new BadRequestError('Rate limit exceeded: Maximum 10 referrals per 24 hours');
+    if (alreadyRegistered) {
+      throw new BadRequestError('Member is already registered; returning members are not referrals');
     }
 
-    if (dto.referrerDiscordId === dto.referredDiscordId) {
-      throw new BadRequestError('Self-referral not allowed');
+    // Walk up the referrer's chain so A -> B -> A loops of any length are refused.
+    let parentId = referrer.referredByUserId;
+    for (let depth = 0; parentId && depth < MAX_CHAIN_DEPTH; depth++) {
+      const parent: { discordId: string | null; referredByUserId: number | null } | null =
+        await prisma.user.findUnique({
+          where: { id: parentId },
+          select: { discordId: true, referredByUserId: true },
+        });
+      if (!parent) break;
+      if (parent.discordId === dto.referredDiscordId) {
+        throw new BadRequestError('Circular referral detected');
+      }
+      parentId = parent.referredByUserId;
     }
 
+    // Joins while rewards are switched off are still recorded (analytics,
+    // retention) but can never be paid, so re-enabling does not back-pay them.
+    const config = await this.referralRewardService.getConfig();
+    const rewardEligible = config.isEnabled;
+
+    // No hard cap here: every join is recorded so fraud analytics can see bursts.
+    // Payout volume is limited by maxRewardsPerDay/cooldown at reward time.
     const referral = await prisma.referral.create({
       data: {
         referrerId: referrer.id,
-        referrerDiscordId: dto.referrerDiscordId,
+        referrerDiscordId,
         referredDiscordId: dto.referredDiscordId,
         inviteCode: dto.inviteCode || null,
         rewardGiven: false,
+        rewardEligible,
+        holdReason: rewardEligible
+          ? 'Waiting for the member to complete onboarding'
+          : INELIGIBLE_REASON,
       },
     });
 
-    return referral;
+    return { isNew: true, rewardEligible, referrerDiscordId, referral };
   }
 
   async linkReferralToUser(discordId: string, userId: number) {
-      const referral = await prisma.referral.findFirst({
-        where: {
-          referredDiscordId: discordId,
-          referredUserId: null,
-        },
-      });
+    const referral = await prisma.referral.findFirst({
+      where: {
+        referredDiscordId: discordId,
+        referredUserId: null,
+      },
+    });
 
-      if (!referral) {
-        return null;
-      }
+    if (!referral) {
+      return null;
+    }
 
-      const updated = await prisma.referral.update({
-        where: { id: referral.id },
-        data: {
-          referredUserId: userId,
-          onboardedAt: new Date(),
-        },
-      });
+    const updated = await prisma.referral.update({
+      where: { id: referral.id },
+      data: {
+        referredUserId: userId,
+        onboardedAt: new Date(),
+      },
+    });
 
-      await prisma.user.update({
-        where: { id: userId },
-        data: { referredByUserId: referral.referrerId },
-      });
+    await prisma.user.update({
+      where: { id: userId },
+      data: { referredByUserId: referral.referrerId },
+    });
 
-
-      return updated;
+    return updated;
   }
 
-  async giveReferralReward(dto: GiveRewardDto) {
-      const config = await this.referralRewardService.getConfig();
+  // ============================================
+  // REWARDS
+  // ============================================
 
-      if (!config.isEnabled) {
-        return null;
+  /**
+   * Called by the bot right after onboarding. Rules that are not met yet
+   * (days in server, cooldown, daily cap...) hold the reward instead of
+   * failing; processPendingRewards pays it once they are satisfied.
+   */
+  async giveReferralReward(dto: GiveRewardDto): Promise<RewardOutcome> {
+    const referral = await prisma.referral.findFirst({
+      where: { referredDiscordId: dto.referredDiscordId, rewardGiven: false, rewardEligible: true },
+      orderBy: { joinedAt: 'desc' },
+      select: { id: true },
+    });
+
+    if (!referral) {
+      return { status: 'NONE', reason: 'No unpaid referral for this member' };
+    }
+
+    const config = await this.referralRewardService.getConfig();
+    return this.tryPayReferral(referral.id, config);
+  }
+
+  /**
+   * Re-evaluates every unpaid referral that could now be eligible.
+   * Run periodically by the bot; returns the payouts so it can notify.
+   */
+  async processPendingRewards() {
+    const config = await this.referralRewardService.getConfig();
+
+    if (!config.isEnabled) {
+      return { enabled: false, checked: 0, paid: [] as Array<ReferralPayout | ReferralOrderPayout>, held: 0 };
+    }
+
+    const joinedBefore = new Date(Date.now() - config.minimumDaysInServer * DAY_MS);
+
+    const candidates = await prisma.referral.findMany({
+      where: {
+        rewardGiven: false,
+        rewardEligible: true,
+        hasLeftServer: false,
+        joinedAt: { lte: joinedBefore },
+        ...(config.requireOnboarding && { onboardedAt: { not: null } }),
+      },
+      orderBy: { joinedAt: 'asc' },
+      take: PENDING_BATCH_SIZE,
+      select: { id: true },
+    });
+
+    const paid: Array<ReferralPayout | ReferralOrderPayout> = [];
+    let held = 0;
+
+    for (const { id } of candidates) {
+      try {
+        const outcome = await this.tryPayReferral(id, config);
+        if (outcome.status === 'PAID') paid.push(outcome);
+        else if (outcome.status === 'HELD') held++;
+      } catch (error: any) {
+        logger.error(`[Referral] Failed to process pending referral ${id}: ${error?.message || error}`);
       }
+    }
 
-      const referral = await prisma.referral.findFirst({
+    if (candidates.length > 0) {
+      logger.info(
+        `[Referral] Pending rewards: checked ${candidates.length}, paid ${paid.length}, held ${held}`
+      );
+    }
+
+    // Order rewards whose hold period has ended
+    try {
+      paid.push(...(await this.referralOrderRewardService.processPending(config)));
+    } catch (error: any) {
+      logger.error(`[Referral] Failed to process order rewards: ${error?.message || error}`);
+    }
+
+    return { enabled: true, checked: candidates.length, paid, held };
+  }
+
+  /** Returns why the referral cannot be paid yet, or null when it can. */
+  private async findHoldReason(
+    tx: TransactionClient,
+    referral: {
+      referrerId: number;
+      joinedAt: Date;
+      onboardedAt: Date | null;
+      hasLeftServer: boolean;
+      rewardEligible: boolean;
+    },
+    config: ReferralConfig,
+    now: Date
+  ): Promise<string | null> {
+    if (!referral.rewardEligible) {
+      return INELIGIBLE_REASON;
+    }
+
+    if (!config.isEnabled) {
+      return 'Referral rewards are disabled';
+    }
+
+    if (referral.hasLeftServer) {
+      return 'Member left the server';
+    }
+
+    if (config.requireOnboarding && !referral.onboardedAt) {
+      return 'Waiting for the member to complete onboarding';
+    }
+
+    if (config.minimumDaysInServer > 0) {
+      const days = daysSince(referral.joinedAt, now);
+      if (days < config.minimumDaysInServer) {
+        return `Member has been in the server ${days}/${config.minimumDaysInServer} days`;
+      }
+    }
+
+    if (config.minimumRetentionRate > 0) {
+      const [referralCount, leftCount] = await Promise.all([
+        tx.referral.count({ where: { referrerId: referral.referrerId } }),
+        tx.referral.count({ where: { referrerId: referral.referrerId, hasLeftServer: true } }),
+      ]);
+
+      if (referralCount >= RETENTION_MIN_SAMPLE) {
+        const { retentionRate } = summariseRetention(referralCount, leftCount);
+        if (retentionRate < config.minimumRetentionRate) {
+          return `Referrer retention ${retentionRate.toFixed(0)}% is below ${config.minimumRetentionRate}%`;
+        }
+      }
+    }
+
+    if (config.cooldownMinutes > 0) {
+      const lastRewarded = await tx.referral.findFirst({
+        where: { referrerId: referral.referrerId, rewardGiven: true, rewardGivenAt: { not: null } },
+        orderBy: { rewardGivenAt: 'desc' },
+        select: { rewardGivenAt: true },
+      });
+
+      if (lastRewarded?.rewardGivenAt) {
+        const minutesSince = (now.getTime() - lastRewarded.rewardGivenAt.getTime()) / 60000;
+        if (minutesSince < config.cooldownMinutes) {
+          return `Referrer cooldown: ${Math.ceil(config.cooldownMinutes - minutesSince)} minute(s) left`;
+        }
+      }
+    }
+
+    if (config.maxRewardsPerDay > 0) {
+      const rewardsToday = await tx.referral.count({
         where: {
-          referredDiscordId: dto.referredDiscordId,
-          rewardGiven: false,
-        },
-        include: {
-          referrer: {
-            include: { wallet: true },
-          },
+          referrerId: referral.referrerId,
+          rewardGiven: true,
+          rewardGivenAt: { gte: startOfToday() },
         },
       });
 
-      if (!referral) {
-        return null;
+      if (rewardsToday >= config.maxRewardsPerDay) {
+        return `Referrer reached the daily limit (${config.maxRewardsPerDay})`;
       }
+    }
 
-      if (config.requireOnboarding && !referral.onboardedAt) {
-        logger.info(
-          `[Referral] Reward held for ${dto.referredDiscordId}: onboarding not complete`
-        );
-        return null;
-      }
+    return null;
+  }
 
-      if (config.minimumDaysInServer > 0) {
-        const joinedAt = new Date(referral.joinedAt).getTime();
-        const daysInServer = Math.floor((Date.now() - joinedAt) / (24 * 60 * 60 * 1000));
+  /**
+   * Pays one referral if every rule passes. Everything — eligibility checks,
+   * per-referral amount, milestone claims, wallet credit and ledger entry —
+   * happens in one transaction holding a lock on the referrer, so concurrent
+   * calls cannot double-pay, exceed the daily cap, or burn a milestone.
+   */
+  private async tryPayReferral(referralId: string, config: ReferralConfig): Promise<RewardOutcome> {
+    const head = await prisma.referral.findUnique({
+      where: { id: referralId },
+      select: { referrerId: true },
+    });
 
-        if (referral.hasLeftServer || daysInServer < config.minimumDaysInServer) {
-          logger.info(
-            `[Referral] Reward held for ${dto.referredDiscordId}: ` +
-              `${daysInServer}/${config.minimumDaysInServer} days in server` +
-              (referral.hasLeftServer ? ' (has left)' : '')
-          );
-          return null;
-        }
-      }
+    if (!head) {
+      return { status: 'NONE', reason: 'Referral not found' };
+    }
 
-      if (config.cooldownMinutes > 0) {
-        const lastRewarded = await prisma.referral.findFirst({
-          where: {
-            referrerId: referral.referrerId,
-            rewardGiven: true,
-            rewardGivenAt: { not: null },
-          },
-          orderBy: { rewardGivenAt: 'desc' },
-          select: { rewardGivenAt: true },
-        });
+    const now = new Date();
 
-        if (lastRewarded?.rewardGivenAt) {
-          const minutesSince =
-            (Date.now() - new Date(lastRewarded.rewardGivenAt).getTime()) / (60 * 1000);
+    const outcome = await prisma.$transaction(
+      async (tx): Promise<RewardOutcome> => {
+        // Serialise all payouts for this referrer.
+        await tx.$queryRaw`SELECT id FROM \`User\` WHERE id = ${head.referrerId} FOR UPDATE`;
 
-          if (minutesSince < config.cooldownMinutes) {
-            throw new BadRequestError(
-              `Referral cooldown active. Try again in ` +
-                `${Math.ceil(config.cooldownMinutes - minutesSince)} minute(s).`
-            );
-          }
-        }
-      }
+        const referral = await tx.referral.findUnique({ where: { id: referralId } });
 
-      if (config.minimumRetentionRate > 0) {
-        const [referralCount, leftCount] = await Promise.all([
-          prisma.referral.count({ where: { referrerId: referral.referrerId } }),
-          prisma.referral.count({
-            where: { referrerId: referral.referrerId, hasLeftServer: true },
-          }),
-        ]);
-
-        // Only meaningful once there is enough history to judge; below that a
-        // single early leaver would block an honest referrer forever.
-        if (referralCount >= 5) {
-          const { retentionRate } = summariseRetention(referralCount, leftCount);
-
-          if (retentionRate < config.minimumRetentionRate) {
-            logger.info(
-              `[Referral] Reward held for referrer ${referral.referrerId}: ` +
-                `retention ${retentionRate.toFixed(0)}% below ${config.minimumRetentionRate}%`
-            );
-            throw new BadRequestError(
-              `Referral retention rate is ${retentionRate.toFixed(0)}%, below the required ` +
-                `${config.minimumRetentionRate}%.`
-            );
-          }
-        }
-      }
-
-      const rewardAmount = dto.amount || await this.referralRewardService.calculateRewardAmount(referral.referrerId);
-
-      if (rewardAmount <= 0) {
-        return null;
-      }
-
-      if (config.maxRewardsPerDay > 0) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const rewardsToday = await prisma.referral.count({
-          where: {
-            referrerId: referral.referrerId,
-            rewardGiven: true,
-            rewardGivenAt: { gte: today },
-          },
-        });
-
-        if (rewardsToday >= config.maxRewardsPerDay) {
-          throw new BadRequestError(`Daily reward limit reached (${config.maxRewardsPerDay} per day)`);
-        }
-      }
-
-      if (!referral.referredUserId) {
-        return null;
-      }
-
-      const result = await prisma.$transaction(async (tx) => {
-        const claimed = await tx.referral.updateMany({
-          where: { id: referral.id, rewardGiven: false },
-          data: {
-            rewardGiven: true,
-            rewardAmount: new Decimal(rewardAmount),
-            rewardGivenAt: new Date(),
-          },
-        });
-
-        if (claimed.count === 0) {
-          return null;
+        if (!referral || referral.rewardGiven) {
+          return { status: 'NONE', reason: 'Referral already rewarded' };
         }
 
-        let wallet = await tx.wallet.findUnique({
-          where: { userId: referral.referrerId },
-        });
+        const holdReason = await this.findHoldReason(tx, referral, config, now);
 
-        if (!wallet) {
-          wallet = await tx.wallet.create({
-            data: {
-              userId: referral.referrerId,
-              walletType: 'CUSTOMER',
-              balance: 0,
-              pendingBalance: 0,
-              currency: 'USD',
-            },
+        if (holdReason) {
+          await tx.referral.update({
+            where: { id: referral.id },
+            data: { holdReason, lastCheckedAt: now },
           });
+          return { status: 'HELD', referralId: referral.id, reason: holdReason };
         }
 
-        await tx.wallet.update({
-          where: { id: wallet.id },
+        const mode = config.rewardMode || 'PER_REFERRAL';
+
+        const perReferralAmount =
+          (mode === 'PER_REFERRAL' || mode === 'HYBRID') && config.perReferralEnabled
+            ? Number(config.perReferralAmount)
+            : 0;
+
+        // Mark the referral as qualified first so the milestone count below
+        // includes it. In MILESTONE mode it qualifies with a 0 per-referral amount.
+        await tx.referral.update({
+          where: { id: referral.id },
           data: {
-            balance: {
-              increment: rewardAmount,
-            },
+            rewardGiven: true,
+            rewardGivenAt: now,
+            holdReason: null,
+            lastCheckedAt: now,
           },
+        });
+
+        let milestoneBonus = 0;
+        const milestonesReached: number[] = [];
+
+        const qualifiedReferrals = await tx.referral.count({
+          where: {
+            referrerId: referral.referrerId,
+            rewardGiven: true,
+            ...(config.countOnlyActive && { hasLeftServer: false }),
+          },
+        });
+
+        if ((mode === 'MILESTONE' || mode === 'HYBRID') && config.milestonesEnabled) {
+          for (const milestone of config.milestones) {
+            if (milestone.count > qualifiedReferrals) break;
+
+            const claimed = await tx.referralMilestone.findUnique({
+              where: { userId_milestone: { userId: referral.referrerId, milestone: milestone.count } },
+            });
+
+            if (!claimed) {
+              await tx.referralMilestone.create({
+                data: {
+                  userId: referral.referrerId,
+                  milestone: milestone.count,
+                  reward: new Decimal(milestone.reward),
+                },
+              });
+              milestoneBonus += milestone.reward;
+              milestonesReached.push(milestone.count);
+            }
+          }
+        }
+
+        const amount = Number((perReferralAmount + milestoneBonus).toFixed(2));
+
+        await tx.referral.update({
+          where: { id: referral.id },
+          data: { rewardAmount: new Decimal(amount) },
         });
 
         await tx.user.update({
           where: { id: referral.referrerId },
           data: {
-            referralRewards: {
-              increment: rewardAmount,
-            },
-            totalReferrals: {
-              increment: 1,
-            },
+            totalReferrals: { increment: 1 },
+            ...(amount > 0 && { referralRewards: { increment: amount } }),
           },
         });
 
-        await tx.referralReward.create({
-          data: {
-            referralId: referral.id,
-            referrerId: referral.referrerId,
-            referredUserId: referral.referredUserId!,
-            amount: new Decimal(rewardAmount),
-            reason: 'Referral completed onboarding',
-          },
-        });
+        if (amount > 0) {
+          let wallet = await tx.wallet.findUnique({ where: { userId: referral.referrerId } });
 
-        return await tx.referral.findUniqueOrThrow({ where: { id: referral.id } });
-      });
-
-      if (!result) {
-        return null;
-      }
-
-      return {
-        referralId: result.id,
-        referrerUserId: referral.referrerId,
-        referrerDiscordId: referral.referrerDiscordId,
-        amount: rewardAmount,
-      };
-  }
-
-  async getUserReferralStats(discordId?: string, userId?: number) {
-      if (!discordId && !userId) {
-        throw new BadRequestError('Either discordId or userId must be provided');
-      }
-
-      const user = await prisma.user.findFirst({
-        where: discordId ? { discordId } : { id: userId },
-        include: {
-          referrals: {
-            orderBy: { joinedAt: 'desc' },
-            take: 10,
-            include: {
-              referredUser: {
-                select: {
-                  id: true,
-                  discordUsername: true,
-                  discordDisplayName: true,
-                },
+          if (!wallet) {
+            wallet = await tx.wallet.create({
+              data: {
+                userId: referral.referrerId,
+                walletType: 'CUSTOMER',
+                balance: 0,
+                pendingBalance: 0,
+                currency: 'USD',
               },
+            });
+          }
+
+          const balanceBefore = new Decimal(wallet.balance);
+          const balanceAfter = balanceBefore.plus(amount);
+
+          await tx.wallet.update({
+            where: { id: wallet.id },
+            data: { balance: { increment: amount } },
+          });
+
+          const parts: string[] = [];
+          if (perReferralAmount > 0) parts.push(`referral ${perReferralAmount}`);
+          if (milestoneBonus > 0) parts.push(`milestone ${milestonesReached.join(', ')} bonus ${milestoneBonus}`);
+
+          await tx.walletTransaction.create({
+            data: {
+              walletId: wallet.id,
+              type: 'REFERRAL_REWARD',
+              amount: new Decimal(amount),
+              balanceBefore,
+              balanceAfter,
+              status: 'COMPLETED',
+              reference: `referral-${referral.id}`,
+              notes: `Referral reward for ${referral.referredDiscordId}: ${parts.join(' + ')} ${config.currencyName}`,
+              createdById: referral.referrerId,
             },
-          },
-        },
-      });
+          });
 
-      if (!user) {
-        throw new NotFoundError('User not found');
-      }
-
-      const pendingReferrals = await prisma.referral.count({
-        where: {
-          referrerId: user.id,
-          rewardGiven: false,
-          onboardedAt: null,
-        },
-      });
-
-      const successfulReferrals = await prisma.referral.count({
-        where: {
-          referrerId: user.id,
-          rewardGiven: true,
-        },
-      });
-
-      const leftCount = await prisma.referral.count({
-        where: {
-          referrerId: user.id,
-          hasLeftServer: true,
-        },
-      });
-
-      return {
-        userId: user.id,
-        discordId: user.discordId,
-        discordUsername: user.discordUsername,
-        totalReferrals: user.totalReferrals,
-        successfulReferrals,
-        pendingReferrals,
-        leftCount,
-        totalRewards: user.referralRewards.toNumber(),
-        recentReferrals: user.referrals.map((r) => ({
-          id: r.id,
-          referredDiscordId: r.referredDiscordId,
-          referredUser: r.referredUser,
-          joinedAt: r.joinedAt,
-          onboardedAt: r.onboardedAt,
-          rewardGiven: r.rewardGiven,
-          rewardAmount: r.rewardAmount?.toNumber() || 0,
-          hasLeftServer: r.hasLeftServer,
-          daysInServer: r.daysInServer,
-        })),
-      };
-  }
-
-  async getLeaderboard(limit: number = 10, sortBy: string = 'total') {
-      const topReferrers = await prisma.user.findMany({
-        where: {
-          totalReferrals: { gt: 0 },
-        },
-        orderBy: { totalReferrals: 'desc' },
-        take: limit * 2,
-        select: {
-          id: true,
-          discordId: true,
-          discordUsername: true,
-          discordDisplayName: true,
-          totalReferrals: true,
-          referralRewards: true,
-          referrals: {
-            select: {
-              hasLeftServer: true,
-              daysInServer: true,
+          await tx.referralReward.create({
+            data: {
+              referralId: referral.id,
+              referrerId: referral.referrerId,
+              referredUserId: referral.referredUserId,
+              amount: new Decimal(amount),
+              reason:
+                milestonesReached.length > 0
+                  ? `Referral qualified + milestone ${milestonesReached.join(', ')}`
+                  : 'Referral qualified',
             },
-          },
-        },
-      });
-
-      const usersWithRetention = topReferrers.map((user) => {
-        const total = user.totalReferrals;
-        const leftCount = user.referrals.filter((r) => r.hasLeftServer).length;
-        const activeCount = total - leftCount;
-        const retentionRate = total > 0 ? (activeCount / total) * 100 : 0;
+          });
+        }
 
         return {
-          userId: user.id,
-          discordId: user.discordId,
-          discordUsername: user.discordUsername,
-          discordDisplayName: user.discordDisplayName,
-          totalReferrals: total,
-          activeCount,
-          leftCount,
-          retentionRate,
-          totalRewards: user.referralRewards.toNumber(),
+          status: 'PAID',
+          kind: 'JOIN',
+          referralId: referral.id,
+          referrerUserId: referral.referrerId,
+          referrerDiscordId: referral.referrerDiscordId,
+          referredDiscordId: referral.referredDiscordId,
+          amount,
+          perReferralAmount,
+          milestoneBonus,
+          milestonesReached,
+          qualifiedReferrals,
+          currencyName: config.currencyName,
+          notifyDM: config.notifyDM,
+          notifyDiscord: config.notifyDiscord,
         };
-      });
+      },
+      { timeout: 15000 }
+    );
 
-      if (sortBy === 'active') {
-        usersWithRetention.sort((a, b) => b.activeCount - a.activeCount);
-      } else if (sortBy === 'retention') {
-        usersWithRetention.sort((a, b) => b.retentionRate - a.retentionRate);
-      } else if (sortBy === 'left') {
-        usersWithRetention.sort((a, b) => b.leftCount - a.leftCount);
-      }
+    if (outcome.status === 'PAID') {
+      logger.info(
+        `[Referral] Paid ${outcome.amount} to referrer ${outcome.referrerUserId} for ${outcome.referredDiscordId}` +
+          (outcome.milestonesReached.length ? ` (milestones ${outcome.milestonesReached.join(', ')})` : '')
+      );
+    } else if (outcome.status === 'HELD') {
+      logger.info(`[Referral] Reward held for referral ${referralId}: ${outcome.reason}`);
+    }
 
-      return usersWithRetention.slice(0, limit).map((user, index) => ({
-        ...user,
-        rank: index + 1,
-      }));
+    return outcome;
   }
 
-  async getAllReferrals(dto: GetReferralsDto) {
-      const page = dto.page || 1;
-      const limit = dto.limit || 20;
-      const skip = (page - 1) * limit;
+  // ============================================
+  // STATS
+  // ============================================
 
-      const where: any = {};
+  async getUserReferralStats(discordId?: string, userId?: number) {
+    if (!discordId && !userId) {
+      throw new BadRequestError('Either discordId or userId must be provided');
+    }
 
-      // Handle status filter (takes precedence over individual boolean filters)
-      if (dto.status && dto.status !== 'all') {
-        switch (dto.status) {
-          case 'rewarded':
-            where.rewardGiven = true;
-            break;
-          case 'pending':
-            where.rewardGiven = false;
-            where.onboardedAt = { not: null };
-            break;
-          case 'not_onboarded':
-            where.onboardedAt = null;
-            break;
-        }
-      } else {
-        // Fallback to individual boolean filters if status not provided
-        if (dto.rewardGiven !== undefined) {
-          where.rewardGiven = dto.rewardGiven;
-        }
-
-        if (dto.onboarded !== undefined) {
-          where.onboardedAt = dto.onboarded ? { not: null } : null;
-        }
-      }
-
-      const [referrals, total] = await Promise.all([
-        prisma.referral.findMany({
-          where,
-          skip,
-          take: limit,
+    const user = await prisma.user.findFirst({
+      where: discordId ? { discordId } : { id: userId },
+      include: {
+        referrals: {
           orderBy: { joinedAt: 'desc' },
+          take: 10,
           include: {
-            referrer: {
-              select: {
-                id: true,
-                discordUsername: true,
-                discordDisplayName: true,
-                email: true,
-              },
-            },
             referredUser: {
               select: {
                 id: true,
                 discordUsername: true,
                 discordDisplayName: true,
-                email: true,
               },
             },
           },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundError('User not found');
+    }
+
+    const [totalReferrals, successfulReferrals, pendingReferrals, notOnboardedReferrals, leftCount] =
+      await Promise.all([
+        prisma.referral.count({ where: { referrerId: user.id } }),
+        prisma.referral.count({ where: { referrerId: user.id, rewardGiven: true } }),
+        // Same meaning as the dashboard: onboarded, still here, not paid yet
+        prisma.referral.count({
+          where: {
+            referrerId: user.id,
+            rewardGiven: false,
+            rewardEligible: true,
+            onboardedAt: { not: null },
+            hasLeftServer: false,
+          },
         }),
-        prisma.referral.count({ where }),
+        prisma.referral.count({
+          where: { referrerId: user.id, onboardedAt: null, hasLeftServer: false },
+        }),
+        prisma.referral.count({ where: { referrerId: user.id, hasLeftServer: true } }),
       ]);
 
-      return {
-        data: referrals,
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit),
-        },
-      };
+    const { activeCount, retentionRate } = summariseRetention(totalReferrals, leftCount);
+    const nextMilestone = await this.getNextMilestone(user.id);
+
+    return {
+      userId: user.id,
+      discordId: user.discordId,
+      discordUsername: user.discordUsername,
+      totalReferrals,
+      successfulReferrals,
+      pendingReferrals,
+      notOnboardedReferrals,
+      leftCount,
+      activeCount,
+      retentionRate,
+      totalRewards: user.referralRewards.toNumber(),
+      nextMilestone,
+      recentReferrals: user.referrals.map((r) => ({
+        id: r.id,
+        referredDiscordId: r.referredDiscordId,
+        referredUser: r.referredUser,
+        joinedAt: r.joinedAt,
+        onboardedAt: r.onboardedAt,
+        rewardGiven: r.rewardGiven,
+        rewardAmount: r.rewardAmount?.toNumber() || 0,
+        rewardEligible: r.rewardEligible,
+        holdReason: r.holdReason,
+        hasLeftServer: r.hasLeftServer,
+        daysInServer: memberDays(r),
+      })),
+    };
   }
 
+  /**
+   * Next unclaimed milestone and progress toward it, counted exactly as
+   * tryPayReferral counts it. Null when milestones are not active.
+   */
+  private async getNextMilestone(referrerId: number) {
+    const config = await this.referralRewardService.getConfig();
+    const active =
+      config.isEnabled &&
+      (config.rewardMode === 'MILESTONE' || config.rewardMode === 'HYBRID') &&
+      config.milestonesEnabled &&
+      config.milestones.length > 0;
 
-  async getFraudAnalytics() {
-      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    if (!active) return null;
 
-      const suspiciousUsers = await prisma.user.findMany({
-        where: {
-          totalReferrals: { gt: 0 },
-          referrals: {
-            some: {
-              joinedAt: { gte: twentyFourHoursAgo },
-            },
+    const [progress, claimed] = await Promise.all([
+      prisma.referral.count({
+        where: { referrerId, rewardGiven: true, ...(config.countOnlyActive && { hasLeftServer: false }) },
+      }),
+      prisma.referralMilestone.findMany({ where: { userId: referrerId }, select: { milestone: true } }),
+    ]);
+
+    const claimedCounts = new Set(claimed.map((c) => c.milestone));
+    const next = config.milestones.find((m) => !claimedCounts.has(m.count));
+
+    if (!next) return null;
+
+    return {
+      count: next.count,
+      reward: next.reward,
+      progress,
+      remaining: Math.max(0, next.count - progress),
+      currencyName: config.currencyName,
+    };
+  }
+
+  async getLeaderboard(limit: number = 10, sortBy: string = 'total') {
+    const topReferrers = await prisma.user.findMany({
+      where: { referrals: { some: {} } },
+      orderBy: { referrals: { _count: 'desc' } },
+      // Over-fetch so the alternative sorts have something to reorder
+      take: limit * 3,
+      select: {
+        id: true,
+        discordId: true,
+        discordUsername: true,
+        discordDisplayName: true,
+        referralRewards: true,
+        referrals: {
+          select: {
+            hasLeftServer: true,
+            rewardGiven: true,
           },
         },
-        select: {
-          id: true,
-          discordId: true,
-          discordUsername: true,
-          discordDisplayName: true,
-          totalReferrals: true,
-          referralRewards: true,
-          referrals: {
-            where: { joinedAt: { gte: twentyFourHoursAgo } },
-            select: {
-              id: true,
-              referredDiscordId: true,
-              joinedAt: true,
-              rewardGiven: true,
-            },
-          },
-        },
-        orderBy: { totalReferrals: 'desc' },
-        take: 20,
-      });
+      },
+    });
 
-      const usersWithRates = await Promise.all(suspiciousUsers.map(async (user) => {
-        const last24hCount = user.referrals.length;
-
-        const [referralCount, leftCount] = await Promise.all([
-          prisma.referral.count({ where: { referrerId: user.id } }),
-          prisma.referral.count({
-            where: {
-              referrerId: user.id,
-              hasLeftServer: true,
-            },
-          }),
-        ]);
-
-        const { activeCount, retentionRate } = summariseRetention(referralCount, leftCount);
-        const riskLevel = scoreRisk(last24hCount, referralCount, retentionRate);
-
-        return {
-          userId: user.id,
-          discordId: user.discordId,
-          discordUsername: user.discordUsername,
-          discordDisplayName: user.discordDisplayName,
-          totalReferrals: referralCount,
-          rewardedReferrals: user.totalReferrals,
-          activeCount,
-          leftCount,
-          retentionRate,
-          totalRewards: user.referralRewards.toNumber(),
-          last24hReferrals: last24hCount,
-          riskLevel,
-        };
-      }));
-
-      const allTopReferrers = await prisma.user.findMany({
-        where: {
-          totalReferrals: { gt: 0 },
-        },
-        select: {
-          id: true,
-          discordId: true,
-          discordUsername: true,
-          discordDisplayName: true,
-          totalReferrals: true,
-          referralRewards: true,
-        },
-        orderBy: { totalReferrals: 'desc' },
-        take: 10,
-      });
-
-      const topReferrersWithRetention = await Promise.all(allTopReferrers.map(async (user) => {
-        const [referralCount, leftCount, last24hCount] = await Promise.all([
-          prisma.referral.count({ where: { referrerId: user.id } }),
-          prisma.referral.count({
-            where: {
-              referrerId: user.id,
-              hasLeftServer: true,
-            },
-          }),
-          prisma.referral.count({
-            where: {
-              referrerId: user.id,
-              joinedAt: { gte: twentyFourHoursAgo },
-            },
-          }),
-        ]);
-
-        const { activeCount, retentionRate } = summariseRetention(referralCount, leftCount);
-        const riskLevel = scoreRisk(last24hCount, referralCount, retentionRate);
-
-        return {
-          userId: user.id,
-          discordId: user.discordId,
-          discordUsername: user.discordUsername,
-          discordDisplayName: user.discordDisplayName,
-          totalReferrals: referralCount,
-          rewardedReferrals: user.totalReferrals,
-          activeCount,
-          leftCount,
-          retentionRate,
-          totalRewards: user.referralRewards.toNumber(),
-          last24hReferrals: last24hCount,
-          riskLevel,
-        };
-      }));
-
-      const [
-        totalReferrals,
-        pendingReferrals,
-        completedReferrals,
-        last24hReferrals,
-        last7dReferrals,
-      ] = await Promise.all([
-        prisma.referral.count(),
-        prisma.referral.count({ where: { rewardGiven: false, onboardedAt: null } }),
-        prisma.referral.count({ where: { rewardGiven: true } }),
-        prisma.referral.count({ where: { joinedAt: { gte: twentyFourHoursAgo } } }),
-        prisma.referral.count({ where: { joinedAt: { gte: sevenDaysAgo } } }),
-      ]);
+    const usersWithRetention = topReferrers.map((user) => {
+      const total = user.referrals.length;
+      const leftCount = user.referrals.filter((r) => r.hasLeftServer).length;
+      const { activeCount, retentionRate } = summariseRetention(total, leftCount);
 
       return {
-        overview: {
-          totalReferrals,
-          pendingReferrals,
-          completedReferrals,
-          last24hReferrals,
-          last7dReferrals,
-        },
-        suspiciousUsers: usersWithRates.filter((u) => u.riskLevel !== 'LOW'),
-        topReferrers: topReferrersWithRetention,
+        userId: user.id,
+        discordId: user.discordId,
+        discordUsername: user.discordUsername,
+        discordDisplayName: user.discordDisplayName,
+        totalReferrals: total,
+        rewardedReferrals: user.referrals.filter((r) => r.rewardGiven).length,
+        activeCount,
+        leftCount,
+        retentionRate,
+        totalRewards: user.referralRewards.toNumber(),
       };
+    });
+
+    if (sortBy === 'active') {
+      usersWithRetention.sort((a, b) => b.activeCount - a.activeCount);
+    } else if (sortBy === 'retention') {
+      usersWithRetention.sort((a, b) => b.retentionRate - a.retentionRate);
+    } else if (sortBy === 'left') {
+      usersWithRetention.sort((a, b) => b.leftCount - a.leftCount);
+    }
+
+    return usersWithRetention.slice(0, limit).map((user, index) => ({
+      ...user,
+      rank: index + 1,
+    }));
+  }
+
+  async getAllReferrals(dto: GetReferralsDto) {
+    const page = dto.page || 1;
+    const limit = dto.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.ReferralWhereInput = {};
+
+    // Status filter takes precedence over the individual boolean filters
+    if (dto.status && dto.status !== 'all') {
+      switch (dto.status) {
+        case 'rewarded':
+          where.rewardGiven = true;
+          break;
+        case 'pending':
+          where.rewardGiven = false;
+          where.rewardEligible = true;
+          where.onboardedAt = { not: null };
+          where.hasLeftServer = false;
+          break;
+        case 'ineligible':
+          where.rewardEligible = false;
+          break;
+        case 'not_onboarded':
+          where.onboardedAt = null;
+          break;
+        case 'left':
+          where.hasLeftServer = true;
+          break;
+      }
+    } else {
+      if (dto.rewardGiven !== undefined) {
+        where.rewardGiven = dto.rewardGiven;
+      }
+
+      if (dto.onboarded !== undefined) {
+        where.onboardedAt = dto.onboarded ? { not: null } : null;
+      }
+    }
+
+    const search = dto.search?.trim();
+    if (search) {
+      where.OR = [
+        { referrerDiscordId: { contains: search } },
+        { referredDiscordId: { contains: search } },
+        { inviteCode: { contains: search } },
+        { referrer: { discordUsername: { contains: search } } },
+        { referrer: { discordDisplayName: { contains: search } } },
+        { referredUser: { discordUsername: { contains: search } } },
+        { referredUser: { discordDisplayName: { contains: search } } },
+      ];
+    }
+
+    const [referrals, total] = await Promise.all([
+      prisma.referral.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { joinedAt: 'desc' },
+        include: {
+          referrer: {
+            select: {
+              id: true,
+              discordUsername: true,
+              discordDisplayName: true,
+              email: true,
+            },
+          },
+          referredUser: {
+            select: {
+              id: true,
+              discordUsername: true,
+              discordDisplayName: true,
+              email: true,
+            },
+          },
+        },
+      }),
+      prisma.referral.count({ where }),
+    ]);
+
+    return {
+      data: referrals.map((r) => ({ ...r, daysInServer: memberDays(r) })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async getFraudAnalytics() {
+    const twentyFourHoursAgo = new Date(Date.now() - DAY_MS);
+    const sevenDaysAgo = new Date(Date.now() - 7 * DAY_MS);
+
+    const describe = async (
+      user: {
+        id: number;
+        discordId: string | null;
+        discordUsername: string | null;
+        discordDisplayName: string | null;
+        totalReferrals: number;
+        referralRewards: Decimal;
+      },
+      knownLast24h?: number
+    ) => {
+      const [referralCount, leftCount, last24hCount] = await Promise.all([
+        prisma.referral.count({ where: { referrerId: user.id } }),
+        prisma.referral.count({ where: { referrerId: user.id, hasLeftServer: true } }),
+        knownLast24h !== undefined
+          ? Promise.resolve(knownLast24h)
+          : prisma.referral.count({ where: { referrerId: user.id, joinedAt: { gte: twentyFourHoursAgo } } }),
+      ]);
+
+      const { activeCount, retentionRate } = summariseRetention(referralCount, leftCount);
+
+      return {
+        userId: user.id,
+        discordId: user.discordId,
+        discordUsername: user.discordUsername,
+        discordDisplayName: user.discordDisplayName,
+        totalReferrals: referralCount,
+        rewardedReferrals: user.totalReferrals,
+        activeCount,
+        leftCount,
+        retentionRate,
+        totalRewards: user.referralRewards.toNumber(),
+        last24hReferrals: last24hCount,
+        riskLevel: scoreRisk(last24hCount, referralCount, retentionRate),
+      };
+    };
+
+    const userSelect = {
+      id: true,
+      discordId: true,
+      discordUsername: true,
+      discordDisplayName: true,
+      totalReferrals: true,
+      referralRewards: true,
+    } as const;
+
+    // Recent bursts, regardless of whether anything has been paid yet
+    const recentReferrers = await prisma.user.findMany({
+      where: { referrals: { some: { joinedAt: { gte: twentyFourHoursAgo } } } },
+      select: {
+        ...userSelect,
+        _count: { select: { referrals: { where: { joinedAt: { gte: twentyFourHoursAgo } } } } },
+      },
+      orderBy: { referrals: { _count: 'desc' } },
+      take: 20,
+    });
+
+    const allTopReferrers = await prisma.user.findMany({
+      where: { referrals: { some: {} } },
+      select: userSelect,
+      orderBy: { referrals: { _count: 'desc' } },
+      take: 10,
+    });
+
+    const [usersWithRates, topReferrersWithRetention] = await Promise.all([
+      Promise.all(recentReferrers.map((u) => describe(u, u._count.referrals))),
+      Promise.all(allTopReferrers.map((u) => describe(u))),
+    ]);
+
+    const [
+      totalReferrals,
+      pendingReferrals,
+      notOnboardedReferrals,
+      completedReferrals,
+      leftReferrals,
+      last24hReferrals,
+      last7dReferrals,
+    ] = await Promise.all([
+      prisma.referral.count(),
+      prisma.referral.count({
+        where: { rewardGiven: false, rewardEligible: true, onboardedAt: { not: null }, hasLeftServer: false },
+      }),
+      prisma.referral.count({ where: { onboardedAt: null } }),
+      prisma.referral.count({ where: { rewardGiven: true } }),
+      prisma.referral.count({ where: { hasLeftServer: true } }),
+      prisma.referral.count({ where: { joinedAt: { gte: twentyFourHoursAgo } } }),
+      prisma.referral.count({ where: { joinedAt: { gte: sevenDaysAgo } } }),
+    ]);
+
+    return {
+      overview: {
+        totalReferrals,
+        pendingReferrals,
+        notOnboardedReferrals,
+        completedReferrals,
+        leftReferrals,
+        last24hReferrals,
+        last7dReferrals,
+      },
+      suspiciousUsers: usersWithRates.filter((u) => u.riskLevel !== 'LOW'),
+      topReferrers: topReferrersWithRetention,
+    };
   }
 
   async getReferralNetwork(userId: number, filter?: string) {
@@ -696,15 +976,9 @@ export default class ReferralService {
         throw new NotFoundError('User not found');
       }
 
-      const leftCount = await prisma.referral.count({
-        where: {
-          referrerId: user.id,
-          hasLeftServer: true,
-        },
-      });
-
-      const activeCount = user.totalReferrals - leftCount;
-      const retentionRate = user.totalReferrals > 0 ? (activeCount / user.totalReferrals) * 100 : 0;
+      const totalCount = user.referrals.length;
+      const leftCount = user.referrals.filter((r) => r.hasLeftServer).length;
+      const { activeCount, retentionRate } = summariseRetention(totalCount, leftCount);
 
       let allReferrals = user.referrals.map((ref) => ({
         id: ref.id,
@@ -712,9 +986,12 @@ export default class ReferralService {
         referredDiscordId: ref.referredDiscordId,
         referredUser: ref.referredUser,
         rewardGiven: ref.rewardGiven,
+        rewardAmount: ref.rewardAmount?.toNumber() || 0,
+        rewardEligible: ref.rewardEligible,
+        holdReason: ref.holdReason,
         onboardedAt: ref.onboardedAt,
         hasLeftServer: ref.hasLeftServer,
-        daysInServer: ref.daysInServer,
+        daysInServer: memberDays(ref),
         theirReferrals: ref.referredUser?.referrals || [],
       }));
 
@@ -728,7 +1005,7 @@ export default class ReferralService {
             case 'rewarded':
               return ref.rewardGiven;
             case 'pending':
-              return !ref.rewardGiven && ref.onboardedAt !== null;
+              return !ref.rewardGiven && ref.rewardEligible && ref.onboardedAt !== null && !ref.hasLeftServer;
             case 'not_onboarded':
               return ref.onboardedAt === null;
             default:
@@ -737,12 +1014,13 @@ export default class ReferralService {
         });
       }
 
-      const network = {
+      return {
         user: {
           id: user.id,
           discordUsername: user.discordUsername,
           discordDisplayName: user.discordDisplayName,
-          totalReferrals: user.totalReferrals,
+          totalReferrals: totalCount,
+          rewardedReferrals: user.totalReferrals,
           totalRewards: user.referralRewards.toNumber(),
           activeCount,
           leftCount,
@@ -751,10 +1029,8 @@ export default class ReferralService {
         referredBy: user.referredBy,
         directReferrals: allReferrals,
         filteredCount: allReferrals.length,
-        totalCount: user.referrals.length,
+        totalCount,
       };
-
-      return network;
     } catch (error) {
       logger.error('[Referral Service] Error getting referral network:', error);
       throw error;
@@ -957,147 +1233,165 @@ export default class ReferralService {
     }
   }
 
+  async deactivateInvite(inviteCode: string) {
+    const result = await prisma.discordInvite.updateMany({
+      where: { inviteCode, isActive: true },
+      data: { isActive: false, lastSyncedAt: new Date() },
+    });
+
+    if (result.count > 0) {
+      logger.info(`[Referral] Deactivated invite ${inviteCode}`);
+    }
+
+    return { deactivated: result.count };
+  }
+
   // ============================================
   // MEMBER STATUS TRACKING
   // ============================================
 
   async markMemberLeft(discordId: string, leaveType: string) {
-    try {
-      const leftAt = new Date();
+    const leftAt = new Date();
 
-      // Find all referrals where this user is the referred person
-      const referrals = await prisma.referral.findMany({
-        where: {
-          referredDiscordId: discordId,
-          hasLeftServer: false
-        },
-      });
+    const referrals = await prisma.referral.findMany({
+      where: {
+        referredDiscordId: discordId,
+        hasLeftServer: false,
+      },
+    });
 
-      if (referrals.length === 0) {
-        throw new NotFoundError('No active referral found for this user');
-      }
-
-      // Calculate days in server
-      const results = await Promise.all(
-        referrals.map(async (referral) => {
-          const joinedAt = referral.joinedAt;
-          const daysInServer = Math.floor(
-            (leftAt.getTime() - joinedAt.getTime()) / (1000 * 60 * 60 * 24)
-          );
-
-          return prisma.referral.update({
-            where: { id: referral.id },
-            data: {
-              hasLeftServer: true,
-              leftServerAt: leftAt,
-              daysInServer,
-            },
-          });
-        })
-      );
-
-      logger.info(
-        `[Referral] Marked ${results.length} referral(s) as left for ${discordId} (stayed ${results[0]?.daysInServer} days)`
-      );
-
-      return results;
-    } catch (error) {
-      logger.error('[Referral] Error marking member as left:', error);
-      throw error;
+    if (referrals.length === 0) {
+      throw new NotFoundError('No active referral found for this user');
     }
+
+    const results = await prisma.$transaction(
+      referrals.map((referral) =>
+        prisma.referral.update({
+          where: { id: referral.id },
+          data: {
+            hasLeftServer: true,
+            leftServerAt: leftAt,
+            daysInServer: daysSince(referral.joinedAt, leftAt),
+            ...(!referral.rewardGiven && referral.rewardEligible && { holdReason: 'Member left the server' }),
+          },
+        })
+      )
+    );
+
+    logger.info(
+      `[Referral] Marked ${results.length} referral(s) as left for ${discordId} ` +
+        `(${leaveType}, stayed ${results[0]?.daysInServer} days)`
+    );
+
+    return results;
   }
 
   async markMemberRejoined(discordId: string) {
-    try {
-      // Find referrals where user previously left
-      const referrals = await prisma.referral.findMany({
-        where: {
-          referredDiscordId: discordId,
-          hasLeftServer: true,
-        },
-      });
+    const referrals = await prisma.referral.findMany({
+      where: {
+        referredDiscordId: discordId,
+        hasLeftServer: true,
+      },
+    });
 
-      if (referrals.length === 0) {
-        logger.debug(`[Referral] No previous leave record found for ${discordId}`);
-        return null;
-      }
-
-      // Mark as active again
-      const results = await Promise.all(
-        referrals.map((referral) =>
-          prisma.referral.update({
-            where: { id: referral.id },
-            data: {
-              hasLeftServer: false,
-              leftServerAt: null,
-              lastSeenAt: new Date(),
-            },
-          })
-        )
-      );
-
-      logger.info(`[Referral] Marked ${results.length} referral(s) as rejoined for ${discordId}`);
-
-      return results;
-    } catch (error) {
-      logger.error('[Referral] Error marking member as rejoined:', error);
-      throw error;
+    if (referrals.length === 0) {
+      logger.debug(`[Referral] No previous leave record found for ${discordId}`);
+      return null;
     }
+
+    const results = await prisma.$transaction(
+      referrals.map((referral) => this.rejoinUpdate(referral))
+    );
+
+    logger.info(`[Referral] Marked ${results.length} referral(s) as rejoined for ${discordId}`);
+
+    return results;
+  }
+
+  /**
+   * Reactivates a referral. For an unpaid one the days-in-server clock
+   * restarts, otherwise "join, leave, come back a week later" would satisfy
+   * minimumDaysInServer without the member ever staying.
+   */
+  private rejoinUpdate(referral: { id: string; rewardGiven: boolean; rewardEligible: boolean }) {
+    const now = new Date();
+    return prisma.referral.update({
+      where: { id: referral.id },
+      data: {
+        hasLeftServer: false,
+        leftServerAt: null,
+        lastSeenAt: now,
+        ...(!referral.rewardGiven && {
+          joinedAt: now,
+          daysInServer: 0,
+          ...(referral.rewardEligible && { holdReason: 'Member rejoined; days-in-server count restarted' }),
+        }),
+      },
+    });
   }
 
   async syncAllMemberStatus(guildMembers: Array<{ id: string }>) {
-    try {
-      logger.info('[Referral] Starting member status sync...');
-
-      const memberIds = new Set(guildMembers.map((m) => m.id));
-
-      // Get all referrals that are marked as active
-      const activeReferrals = await prisma.referral.findMany({
-        where: { hasLeftServer: false },
-      });
-
-      let leftCount = 0;
-      const now = new Date();
-
-      // Check each active referral
-      for (const referral of activeReferrals) {
-        // If member is not in guild anymore, mark as left
-        if (!memberIds.has(referral.referredDiscordId)) {
-          const daysInServer = Math.floor(
-            (now.getTime() - referral.joinedAt.getTime()) / (1000 * 60 * 60 * 24)
-          );
-
-          await prisma.referral.update({
-            where: { id: referral.id },
-            data: {
-              hasLeftServer: true,
-              leftServerAt: now,
-              daysInServer,
-            },
-          });
-
-          leftCount++;
-        } else {
-          // Update last seen
-          await prisma.referral.update({
-            where: { id: referral.id },
-            data: { lastSeenAt: now },
-          });
-        }
-      }
-
-      logger.info(
-        `[Referral] ✅ Sync complete: ${leftCount} members marked as left, ${activeReferrals.length - leftCount} still active`
-      );
-
-      return {
-        totalChecked: activeReferrals.length,
-        markedAsLeft: leftCount,
-        stillActive: activeReferrals.length - leftCount,
-      };
-    } catch (error) {
-      logger.error('[Referral] Error syncing member status:', error);
-      throw error;
+    if (!Array.isArray(guildMembers) || guildMembers.length === 0) {
+      // An empty list would mark every referral as left; that is never a real guild.
+      throw new BadRequestError('guildMembers must be a non-empty list');
     }
+
+    logger.info('[Referral] Starting member status sync...');
+
+    const memberIds = new Set(guildMembers.map((m) => m.id));
+    const now = new Date();
+
+    const referrals = await prisma.referral.findMany({
+      select: {
+        id: true,
+        referredDiscordId: true,
+        hasLeftServer: true,
+        rewardGiven: true,
+        rewardEligible: true,
+        joinedAt: true,
+      },
+    });
+
+    const toMarkLeft = referrals.filter((r) => !r.hasLeftServer && !memberIds.has(r.referredDiscordId));
+    const toRejoin = referrals.filter((r) => r.hasLeftServer && memberIds.has(r.referredDiscordId));
+    const stillActiveIds = referrals
+      .filter((r) => !r.hasLeftServer && memberIds.has(r.referredDiscordId))
+      .map((r) => r.id);
+
+    for (const referral of toMarkLeft) {
+      await prisma.referral.update({
+        where: { id: referral.id },
+        data: {
+          hasLeftServer: true,
+          leftServerAt: now,
+          daysInServer: daysSince(referral.joinedAt, now),
+          ...(!referral.rewardGiven && referral.rewardEligible && { holdReason: 'Member left the server' }),
+        },
+      });
+    }
+
+    for (const referral of toRejoin) {
+      await this.rejoinUpdate(referral);
+    }
+
+    // lastSeenAt is the same for everyone still here, so batch it
+    for (let i = 0; i < stillActiveIds.length; i += 1000) {
+      await prisma.referral.updateMany({
+        where: { id: { in: stillActiveIds.slice(i, i + 1000) } },
+        data: { lastSeenAt: now },
+      });
+    }
+
+    logger.info(
+      `[Referral] Sync complete: ${toMarkLeft.length} marked as left, ${toRejoin.length} rejoined, ` +
+        `${stillActiveIds.length} still active`
+    );
+
+    return {
+      totalChecked: referrals.length,
+      markedAsLeft: toMarkLeft.length,
+      rejoined: toRejoin.length,
+      stillActive: stillActiveIds.length,
+    };
   }
 }
