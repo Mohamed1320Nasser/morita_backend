@@ -10,6 +10,10 @@ export namespace Environment {
         export const logsDir: string =
             process.env.LOGS_DIR || path.join(__dirname, "../../../logs/");
         export const cdnLink: string = process.env.CDN_LINK || "http://localhost:3000/cdn";
+        // Ticket transcripts can hold credentials and payment details, so they
+        // live outside the public CDN folder and are only served to admins.
+        export const transcriptsDir: string =
+            process.env.TRANSCRIPTS_DIR || path.join(__dirname, "../../../transcripts/");
     }
 
     export namespace Server {

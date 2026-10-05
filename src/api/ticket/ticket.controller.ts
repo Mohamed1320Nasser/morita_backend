@@ -6,7 +6,11 @@ import {
     Param,
     Body,
     QueryParams,
+    Authorized,
+    CurrentUser,
 } from "routing-controllers";
+import { TicketStatus } from "@prisma/client";
+import API from "../../common/config/api.types";
 import { Service } from "typedi";
 import TicketService from "./ticket.service";
 import {
@@ -17,8 +21,11 @@ import {
     AssignSupportDto,
 } from "./dtos";
 
-// Admin API - requires authentication
+// Admin API: every route requires an admin login. Tickets hold customer
+// conversations, delivered credentials and payment details. (The bot uses
+// the API-key protected /discord/tickets routes instead.)
 @JsonController("/tickets")
+@Authorized(API.Role.admin)
 @Service()
 export default class TicketController {
     constructor(private ticketService: TicketService) {}
@@ -87,9 +94,17 @@ export default class TicketController {
     @Patch("/:id/status")
     async updateTicketStatus(
         @Param("id") id: string,
-        @Body() data: UpdateTicketStatusDto
+        @Body() data: UpdateTicketStatusDto,
+        @CurrentUser() admin: API.User
     ) {
         const ticket = await this.ticketService.updateStatus(id, data);
+
+        // Ending a ticket from the dashboard must also end it in Discord
+        if (data.status === TicketStatus.CLOSED || data.status === TicketStatus.CANCELLED) {
+            const label = data.status === TicketStatus.CANCELLED ? "Cancelled" : "Closed";
+            await this.ticketService.closeInDiscord(id, admin?.id, data.reason || `${label} from the dashboard`);
+        }
+
         return {
             success: true,
             data: ticket,
@@ -111,13 +126,26 @@ export default class TicketController {
     @Post("/:id/close")
     async closeTicket(
         @Param("id") id: string,
-        @Body() data: { reason?: string }
+        @Body() data: { reason?: string },
+        @CurrentUser() admin: API.User
     ) {
         const ticket = await this.ticketService.close(id, data.reason);
+        await this.ticketService.closeInDiscord(id, admin?.id, data.reason || "Closed from the dashboard");
         return {
             success: true,
             data: ticket,
         };
+    }
+
+    /**
+     * Saved HTML transcript of a closed ticket (Admin only).
+     * Can contain delivered credentials, hence the role check.
+     */
+    @Get("/:id/transcript")
+    @Authorized(API.Role.admin)
+    async getTicketTranscript(@Param("id") id: string) {
+        const transcript = await this.ticketService.getTranscript(id);
+        return { success: true, data: transcript };
     }
 
     @Get("/:id/messages")

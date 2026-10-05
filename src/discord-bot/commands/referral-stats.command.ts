@@ -6,6 +6,7 @@ import {
 } from "discord.js";
 import { discordApiClient } from "../clients/DiscordApiClient";
 import { discordConfig } from "../config/discord.config";
+import { unwrapApiData } from "../utils/apiResponse.util";
 import logger from "../../common/loggers";
 
 const SORT_EMOJIS: Record<string, string> = {
@@ -55,17 +56,21 @@ export default {
         const sortBy = interaction.options.getString("sort") || "total";
 
         if (targetUser) {
-            const response = await discordApiClient.get(`/referral/stats/discord/${targetUser.id}`);
-            const stats = response.data;
+            let stats: any = null;
+            try {
+                stats = unwrapApiData(await discordApiClient.get(`/referral/stats/discord/${targetUser.id}`));
+            } catch (error: any) {
+                logger.warn(`[Referral Stats] Failed to fetch stats for ${targetUser.id}: ${error?.message}`);
+            }
 
             if (!stats) {
                 return interaction.editReply({ content: "❌ No referral data found for this user" });
             }
 
             const totalReferrals = stats.totalReferrals || 0;
-            const activeCount = totalReferrals - (stats.leftCount || 0);
+            const activeCount = stats.activeCount ?? Math.max(0, totalReferrals - (stats.leftCount || 0));
             const leftCount = stats.leftCount || 0;
-            const retentionRate = totalReferrals > 0 ? ((activeCount / totalReferrals) * 100).toFixed(1) : "0.0";
+            const retentionRate = totalReferrals > 0 ? Number(stats.retentionRate ?? 0).toFixed(1) : "0.0";
             const totalRewards = (stats.totalRewards || 0).toFixed(2);
 
             const description =
@@ -81,7 +86,9 @@ export default {
                 `**💰 Rewards Summary**\n` +
                 `\`\`\`ansi\n` +
                 `\u001b[1;36mTotal Earned:        $${totalRewards.padStart(9)}\u001b[0m\n` +
-                `\u001b[36mSuccessful:          ${(stats.successfulReferrals || 0).toString().padStart(10)}\u001b[0m\n` +
+                `\u001b[36mRewarded:            ${(stats.successfulReferrals || 0).toString().padStart(10)}\u001b[0m\n` +
+                `Awaiting Reward:     ${(stats.pendingReferrals || 0).toString().padStart(10)}\n` +
+                `Not Onboarded:       ${(stats.notOnboardedReferrals || 0).toString().padStart(10)}\n` +
                 `\`\`\``;
 
             const embed = new EmbedBuilder()
@@ -120,8 +127,15 @@ export default {
 
             return interaction.editReply({ embeds: [embed.toJSON() as any] });
         } else {
-            const response = await discordApiClient.get(`/referral/leaderboard?sortBy=${sortBy}&limit=10`);
-            const leaderboard = response.data;
+            let leaderboard: any[] = [];
+            try {
+                leaderboard = unwrapApiData<any[]>(
+                    await discordApiClient.get(`/referral/leaderboard?sortBy=${sortBy}&limit=10`)
+                ) || [];
+            } catch (error: any) {
+                logger.warn(`[Referral Stats] Failed to fetch leaderboard: ${error?.message}`);
+                return interaction.editReply({ content: "❌ Could not load the referral leaderboard" });
+            }
 
             if (!leaderboard || leaderboard.length === 0) {
                 return interaction.editReply({ content: "❌ No referral data available" });

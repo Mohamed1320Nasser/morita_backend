@@ -1,7 +1,72 @@
-import { SlashCommandBuilder, EmbedBuilder, ChatInputCommandInteraction, PermissionFlagsBits } from "discord.js";
-import axios from "axios";
-import { discordConfig } from "../config/discord.config";
+import { SlashCommandBuilder, EmbedBuilder, ChatInputCommandInteraction, PermissionFlagsBits, Guild } from "discord.js";
+import { discordApiClient } from "../clients/DiscordApiClient";
+import { unwrapApiData } from "../utils/apiResponse.util";
+import {
+    fetchReferralConfig,
+    perReferralReward,
+    describeRequirement,
+    describeOrderReward,
+    formatMoney,
+} from "../services/referralNotifier.service";
 import logger from "../../common/loggers";
+
+/**
+ * Returns the member's personal invite link. The bot creates the invite, so
+ * Discord lists the bot as its inviter; the code -> member mapping is stored
+ * in the backend, which is what attributes joins to the right referrer.
+ */
+async function getPersonalInvite(interaction: ChatInputCommandInteraction, guild: Guild): Promise<string> {
+    const discordId = interaction.user.id;
+
+    // 1. Existing mapping, if the invite still exists in Discord
+    const existing = unwrapApiData<any>(
+        await discordApiClient.post("/referral/invite/get-or-create", { discordId, guildId: guild.id })
+    );
+
+    if (existing?.inviteCode) {
+        const liveInvites = await guild.invites.fetch();
+        if (liveInvites.has(existing.inviteCode)) {
+            return existing.inviteUrl || `https://discord.gg/${existing.inviteCode}`;
+        }
+        // Deleted or expired in Discord: retire it and hand out a new one
+        await discordApiClient.post("/referral/invite/deactivate", { inviteCode: existing.inviteCode });
+    }
+
+    // 2. Create a new one
+    const channel =
+        guild.channels.cache.find(ch => ch.isTextBased() && (ch.name === "general" || ch.name === "welcome")) ||
+        guild.channels.cache.find(ch => ch.isTextBased());
+
+    if (!channel || !("createInvite" in channel)) {
+        throw new Error("No suitable channel found for invites");
+    }
+
+    const botMember = await guild.members.fetch(interaction.client.user!.id);
+    if (!botMember.permissions.has(PermissionFlagsBits.CreateInstantInvite)) {
+        throw new Error("Bot missing CREATE_INSTANT_INVITE permission");
+    }
+
+    const discordInvite = await channel.createInvite({
+        maxAge: 0,
+        maxUses: 0,
+        unique: true,
+        reason: `Personal referral invite for ${interaction.user.tag}`,
+    });
+
+    // Snapshot it at 0 uses so the first join through it is detected
+    interaction.client.inviteCache?.addInvite(guild.id, discordInvite);
+
+    await discordApiClient.post("/referral/invite/create", {
+        inviteCode: discordInvite.code,
+        inviteUrl: discordInvite.url,
+        discordId,
+        channelId: discordInvite.channelId,
+        uses: discordInvite.uses || 0,
+    });
+
+    logger.info(`[Referral Command] ✅ Created personal invite ${discordInvite.code} for ${interaction.user.tag}`);
+    return discordInvite.url;
+}
 
 export default {
     data: new SlashCommandBuilder()
@@ -10,167 +75,106 @@ export default {
 
     async execute(interaction: ChatInputCommandInteraction) {
         try {
-            // Defer immediately to prevent timeout
             await interaction.deferReply({ ephemeral: true });
 
             const discordId = interaction.user.id;
 
-            // Fetch user's referral stats from API
-            let stats;
+            let stats: any;
             try {
-                const statsResponse = await axios.get(`${discordConfig.apiBaseUrl}/referral/stats/discord/${discordId}`);
-                stats = statsResponse.data;
-                logger.info(`[Referral Command] Stats received for ${interaction.user.tag}:`, JSON.stringify(stats));
+                stats = unwrapApiData(await discordApiClient.get(`/referral/stats/discord/${discordId}`));
             } catch (statsError: any) {
                 logger.error(`[Referral Command] Failed to fetch stats:`, statsError.message);
                 return interaction.editReply({
-                    content: "❌ Could not fetch stats. Complete onboarding first!",
+                    content: statsError?.response?.status === 404
+                        ? "❌ Complete onboarding first to get your referral link!"
+                        : "❌ Could not fetch your referral stats. Please try again later.",
                 });
             }
 
-            // Fetch referral reward configuration to show current reward amount
-            let rewardConfig;
-            try {
-                const configResponse = await axios.get(`${discordConfig.apiBaseUrl}/referral-reward/config`);
-                rewardConfig = configResponse.data;
-            } catch (configError: any) {
-                logger.warn(`[Referral Command] Could not fetch reward config:`, configError.message);
-                rewardConfig = { rewardAmount: 5, currencyName: "$", isEnabled: true };
-            }
+            const config = await fetchReferralConfig();
+            const currency = config?.currencyName || "$";
 
-            // Get user's personal invite link (or create one)
             let inviteUrl: string | null = null;
             let inviteErrorMessage: string | null = null;
 
             try {
-                if (!interaction.client.inviteCache) {
-                    throw new Error("Invite cache not initialized");
-                }
-
-                // Check if user already has an active invite
-                const userInvites = interaction.client.inviteCache.getUserInvites(
-                    interaction.guild?.id || "",
-                    discordId
-                );
-
-                if (userInvites.length > 0) {
-                    // Use existing invite
-                    const invite = userInvites[0];
-                    inviteUrl = `https://discord.gg/${invite.code}`;
-                    logger.info(`[Referral Command] Using existing invite: ${invite.code}`);
-                } else {
-                    // Create new invite
-                    if (!interaction.guild) {
-                        throw new Error("Guild not found");
-                    }
-
-                    // Find suitable channel (general or first text channel)
-                    const channel = interaction.guild.channels.cache.find(
-                        ch => ch.isTextBased() && (ch.name === 'general' || ch.name === 'welcome')
-                    ) || interaction.guild.channels.cache.find(ch => ch.isTextBased());
-
-                    if (!channel) {
-                        inviteErrorMessage = "No suitable channel found";
-                        logger.error(`[Referral Command] ${inviteErrorMessage}`);
-                    } else if (!('createInvite' in channel)) {
-                        inviteErrorMessage = "Channel does not support invites";
-                        logger.error(`[Referral Command] ${inviteErrorMessage}`);
-                    } else {
-                        // Check if bot has permission to create invites
-                        const botMember = await interaction.guild.members.fetch(interaction.client.user!.id);
-                        if (!botMember.permissions.has(PermissionFlagsBits.CreateInstantInvite)) {
-                            inviteErrorMessage = "Bot missing CREATE_INSTANT_INVITE permission";
-                            logger.error(`[Referral Command] ${inviteErrorMessage}`);
-                        } else {
-                            const discordInvite = await channel.createInvite({
-                                maxAge: 0, // Never expires
-                                maxUses: 0, // Unlimited uses
-                                unique: true, // Create a new unique invite
-                                reason: `Personal referral invite for ${interaction.user.tag}`
-                            });
-
-                            inviteUrl = discordInvite.url;
-
-                            // Update invite cache
-                            await interaction.client.inviteCache.cacheGuildInvites(interaction.guild);
-
-                            logger.info(`[Referral Command] ✅ Created new invite: ${discordInvite.code}`);
-                        }
-                    }
-                }
+                if (!interaction.guild) throw new Error("Guild not found");
+                inviteUrl = await getPersonalInvite(interaction, interaction.guild);
             } catch (inviteError: any) {
                 logger.error(`[Referral Command] Error getting invite:`, inviteError.message);
-                if (inviteError.message?.includes('permission')) {
-                    inviteErrorMessage = "Bot missing permissions";
-                } else {
-                    inviteErrorMessage = "Error creating invite";
+                inviteErrorMessage = inviteError.message?.toLowerCase().includes("permission")
+                    ? "Bot missing permissions"
+                    : "Error creating invite";
+            }
+
+            let description: string;
+            if (!config || !config.isEnabled) {
+                description = `Share your **personal invite link** to invite friends! (Rewards currently disabled)`;
+            } else {
+                const reward = perReferralReward(config);
+                const requirement = describeRequirement(config, "the member");
+                // Computed by the backend with the same count the payout uses
+                const nextMilestone = stats.nextMilestone;
+
+                description = reward !== null
+                    ? `Share your **personal invite link** and earn **${formatMoney(currency, reward)}** for each person who joins with it once ${requirement}.`
+                    : `Share your **personal invite link** and earn milestone bonuses. A referral counts once ${requirement}.`;
+
+                const orderText = describeOrderReward(config);
+                if (orderText) {
+                    description += `\n🛒 Order bonus: **${orderText.main}** from people you refer\n_${orderText.details}_`;
+                }
+
+                if (nextMilestone) {
+                    description +=
+                        `\n🎯 Next milestone: **${nextMilestone.count}** referrals → **${formatMoney(currency, nextMilestone.reward)}** bonus ` +
+                        `(${nextMilestone.progress}/${nextMilestone.count}, ${nextMilestone.remaining} to go)`;
                 }
             }
 
-            // Build embed with stats and invite link
             const embed = new EmbedBuilder()
                 .setColor(0xfca311)
                 .setTitle("🎁 Your Referral Stats")
-                .setDescription(
-                    rewardConfig.isEnabled
-                        ? `Share your **personal invite link** and earn **${rewardConfig.currencyName}${rewardConfig.rewardAmount}** for each person who completes onboarding!`
-                        : `Share your **personal invite link** to invite friends! (Rewards currently disabled)`
-                )
+                .setDescription(description)
                 .addFields(
-                    {
-                        name: "📊 Total Referrals",
-                        value: (stats.totalReferrals || 0).toString(),
-                        inline: true,
-                    },
-                    {
-                        name: "✅ Successful",
-                        value: (stats.successfulReferrals || 0).toString(),
-                        inline: true,
-                    },
-                    {
-                        name: "⏳ Pending",
-                        value: (stats.pendingReferrals || 0).toString(),
-                        inline: true,
-                    },
-                    {
-                        name: "💰 Rewards Earned",
-                        value: `$${(stats.totalRewards || 0).toFixed(2)}`,
-                        inline: false,
-                    },
+                    { name: "📊 Total Referrals", value: String(stats.totalReferrals || 0), inline: true },
+                    { name: "✅ Rewarded", value: String(stats.successfulReferrals || 0), inline: true },
+                    { name: "⏳ Awaiting Reward", value: String(stats.pendingReferrals || 0), inline: true },
+                    { name: "📝 Not Onboarded", value: String(stats.notOnboardedReferrals || 0), inline: true },
+                    { name: "🚪 Left Server", value: String(stats.leftCount || 0), inline: true },
+                    { name: "💰 Rewards Earned", value: formatMoney(currency, stats.totalRewards || 0), inline: true },
                     {
                         name: "🔗 Your Personal Invite Link",
-                        value: inviteUrl || (inviteErrorMessage ? `❌ ${inviteErrorMessage}` : "Could not generate invite"),
+                        value: inviteUrl || `❌ ${inviteErrorMessage || "Could not generate invite"}`,
                         inline: false,
                     }
                 )
-                .setFooter({ text: "Share your link to start earning!" })
+                .setFooter({ text: "Only joins through your personal link count as your referrals" })
                 .setTimestamp();
 
-            // Add recent referrals section
-            if (stats.recentReferrals && stats.recentReferrals.length > 0) {
+            if (stats.recentReferrals?.length > 0) {
                 const recentList = stats.recentReferrals
                     .slice(0, 5)
-                    .map((r: any, i: number) => {
-                        const status = r.rewardGiven ? "✅" : r.onboardedAt ? "⏳" : "❌";
-                        const name = r.referredUser?.discordUsername || r.referredDiscordId;
-                        return `${status} ${name}`;
+                    .map((r: any) => {
+                        const name = r.referredUser?.discordUsername || `<@${r.referredDiscordId}>`;
+                        if (r.rewardGiven) return `✅ ${name}`;
+                        if (r.rewardEligible === false) return `➖ ${name} — joined while rewards were off`;
+                        if (r.hasLeftServer) return `🚪 ${name} — left the server`;
+                        if (!r.onboardedAt) return `❌ ${name} — not onboarded yet`;
+                        return `⏳ ${name}${r.holdReason ? ` — ${r.holdReason}` : ""}`;
                     })
                     .join("\n");
 
-                embed.addFields({
-                    name: "🆕 Recent (✅ Rewarded, ⏳ Pending, ❌ Not Onboarded)",
-                    value: recentList,
-                });
+                embed.addFields({ name: "🆕 Recent Referrals", value: recentList.substring(0, 1024) });
             }
 
             await interaction.editReply({ embeds: [embed.toJSON() as any] });
-
         } catch (error: any) {
             logger.error("[Referral Command] Fatal error:", error.message);
 
-            const errorMessage = error.message?.includes('Unknown interaction')
+            const errorMessage = error.message?.includes("Unknown interaction")
                 ? "❌ Command timed out. Please try again."
-                : `❌ Error: ${error.message || 'Unknown error'}`;
+                : `❌ Error: ${error.message || "Unknown error"}`;
 
             try {
                 await interaction.editReply({ content: errorMessage });

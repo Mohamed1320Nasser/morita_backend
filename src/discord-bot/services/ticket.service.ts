@@ -18,6 +18,8 @@ import { onboardingConfig } from "../config/onboarding.config";
 import { botApiHeaders } from "../config/apiAuth";
 import { ApiService } from "./api.service";
 import logger from "../../common/loggers";
+import { logTicketOpened, logTicketClosed } from "./ticketLog.service";
+import { createTicketTranscript } from "./ticketTranscript.service";
 import { applyBrandThumbnail, applyCalculatorBranding } from "../utils/priceEmbed";
 import axios, { AxiosInstance } from "axios";
 import { getTicketChannelMover } from "./ticket-channel-mover.service";
@@ -172,6 +174,13 @@ export class TicketService {
                 `Created ticket channel ${channelName} for user ${user.tag}`
             );
 
+            void logTicketOpened(this.client, {
+                channelId: channel.id,
+                user,
+                ticketNumber,
+                typeLabel: ticket.category?.name || "General",
+            });
+
             return {
                 channel,
                 ticket: { ...ticket, channelId: channel.id },
@@ -276,6 +285,13 @@ export class TicketService {
             logger.info(
                 `[TicketService] Created ${ticketType} ticket #${ticketNumber} for ${user.tag}`
             );
+
+            void logTicketOpened(this.client, {
+                channelId: channel.id,
+                user,
+                ticketNumber,
+                typeLabel: this.getTicketTypeLabel(ticketType),
+            });
 
             return {
                 channel,
@@ -404,6 +420,18 @@ export class TicketService {
             logger.info(
                 `[TicketService] Created account purchase ticket #${ticketNumber} for ${user.tag} - Account: ${accountData.name}`
             );
+
+            void logTicketOpened(this.client, {
+                channelId: channel.id,
+                user,
+                ticketNumber,
+                typeLabel: "Account Purchase",
+                extraFields: [{
+                    name: "Account",
+                    value: `${accountData.name} \`$${Number(accountData.price || 0).toFixed(2)}\`` +
+                        (reservationSuccess ? "" : " ⚠️ reservation failed"),
+                }],
+            });
 
             return {
                 channel,
@@ -1399,6 +1427,21 @@ export class TicketService {
 
             await channel.send({ embeds: [closeEmbed.toJSON() as any] });
 
+            // Transcript + log run in the background: exporting a long chat with
+            // images can take a while, and the channel exists for days before
+            // it is archived, so nothing is lost by not waiting.
+            void (async () => {
+                const transcript = await createTicketTranscript(channel, ticket);
+                await logTicketClosed(this.client, {
+                    channelId: channel.id,
+                    ticketNumber: ticket.ticketNumber,
+                    customerDiscordId: ticket.customerDiscordId,
+                    closedBy: closedByUser,
+                    reason,
+                    transcript,
+                });
+            })().catch(error => logger.error(`[CloseTicket] Transcript/log failed: ${error?.message || error}`));
+
             await this.disableTicketButtons(channel);
 
             const wantsReview = this.shouldAskForReview(ticket);
@@ -1496,6 +1539,14 @@ export class TicketService {
                     const timeSinceLastActivity = now - lastActivityTime;
 
                     if (timeSinceLastActivity >= archiveThreshold) {
+                        // Last chance to keep the chat: deleting the channel destroys it.
+                        // Covers tickets closed before transcripts existed and any whose
+                        // transcript failed at close time. If it cannot be saved, keep
+                        // the channel and try again on the next run.
+                        if (!(await this.ensureTranscriptBeforeDelete(channel as TextChannel))) {
+                            continue;
+                        }
+
                         logger.info(
                             `[ArchiveClosedTickets] Archiving ${channel.name} (last activity: ${Math.floor(timeSinceLastActivity / (60 * 60 * 1000))}h ago)`
                         );
@@ -1533,6 +1584,43 @@ export class TicketService {
             logger.error("Error fetching ticket:", error);
             return null;
         }
+    }
+
+    /**
+     * True when the channel may be deleted: its transcript is already saved,
+     * was saved just now, or there is no ticket record to save it against.
+     */
+    private async ensureTranscriptBeforeDelete(channel: TextChannel): Promise<boolean> {
+        // Not getTicketByChannelId: it returns null on any error, and an API
+        // outage must keep the channel rather than delete it unbacked-up
+        let ticket: any;
+        try {
+            const response = await this.apiClient.get(`/discord/tickets/channel/${channel.id}`);
+            const body = response.data?.data ?? response.data;
+            ticket = body?.data ?? body;
+        } catch (error: any) {
+            if (error?.response?.status === 404) {
+                logger.warn(`[ArchiveClosedTickets] No ticket record for ${channel.name}; deleting without a transcript`);
+                return true;
+            }
+            logger.warn(`[ArchiveClosedTickets] Keeping ${channel.name}: could not check its transcript (${error?.message})`);
+            return false;
+        }
+
+        if (!ticket?.id) {
+            logger.warn(`[ArchiveClosedTickets] No ticket record for ${channel.name}; deleting without a transcript`);
+            return true;
+        }
+        if (ticket.transcriptFile) return true;
+
+        const transcript = await createTicketTranscript(channel, ticket);
+        if (transcript?.stored) {
+            logger.info(`[ArchiveClosedTickets] Saved missing transcript for ${channel.name} before deleting it`);
+            return true;
+        }
+
+        logger.warn(`[ArchiveClosedTickets] Keeping ${channel.name}: its transcript could not be saved yet`);
+        return false;
     }
 
     async getTicketByChannelId(channelId: string): Promise<any> {

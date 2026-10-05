@@ -131,10 +131,18 @@ export class MessagePersistenceService {
                             return true;
                         }
 
+                        // An icon change alone must republish too
+
+                        const emojiKey = (e: any) => (e ? `${e.id || ""}|${e.name || ""}|${e.animated ? 1 : 0}` : "");
+
+                        
+
                         for (let k = 0; k < oldOptions.length; k++) {
                             if (oldOptions[k].label !== newOptions[k].label ||
                                 oldOptions[k].value !== newOptions[k].value ||
-                                oldOptions[k].description !== newOptions[k].description) {
+                                oldOptions[k].description !== newOptions[k].description ||
+                                emojiKey(oldOptions[k].emoji) !== emojiKey(newOptions[k].emoji) ||
+                                Boolean(oldOptions[k].default) !== Boolean(newOptions[k].default)) {
                                 logger.debug("[MessagePersistence] Select menu option changed");
                                 return true;
                             }

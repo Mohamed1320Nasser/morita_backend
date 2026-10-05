@@ -97,6 +97,8 @@ model User {
   referralRewardsGiven      ReferralReward[]       @relation("referrerRewards")
   referralRewardsReceived   ReferralReward[]       @relation("referredRewards")
   referralMilestones        ReferralMilestone[]    @relation("userMilestones")
+  referralOrderRewardsEarned    ReferralOrderReward[] @relation("referralOrderRewardsEarned")
+  referralOrderRewardsGenerated ReferralOrderReward[] @relation("referralOrderRewardsGenerated")
   usersReferredBy           User[]                 @relation("referredByUser")
   discordInvites            DiscordInvite[]        @relation("userDiscordInvites")
   expensesCreated           OperationalExpense[]   @relation("expenseCreator")
@@ -531,6 +533,7 @@ model Order {
   issues             OrderIssue[]
   workerFeedback     WorkerFeedback[] @relation("orderWorkerFeedback")
   orderRewardClaim   OrderRewardClaim?    @relation("orderRewardClaim")
+  referralOrderReward ReferralOrderReward? @relation("orderReferralReward")
   accountData        OrderAccountData?
 
   @@index([customerId])
@@ -638,6 +641,8 @@ enum WalletTransactionType {
   WORKER_DEPOSIT
   DAILY_REWARD
   ORDER_REWARD
+  REFERRAL_REWARD
+  REFERRAL_ORDER_REWARD
 }
 
 enum RewardGrantType {
@@ -758,6 +763,9 @@ model Ticket {
   createdAt         DateTime     @default(now()) @db.DateTime(0)
   updatedAt         DateTime     @default(now()) @updatedAt @db.DateTime(0)
   closedAt          DateTime?    @db.DateTime(0)
+  // HTML transcript saved at close (private storage, served to admins only)
+  transcriptFile      String?    @db.VarChar(255)
+  transcriptCreatedAt DateTime?  @db.DateTime(0)
 
   // Service Request Measurement KPI
   convertedToOrder Boolean   @default(false)
@@ -1175,6 +1183,18 @@ model ReferralRewardConfig {
   notifyDiscord        Boolean  @default(true)
   notifyDM             Boolean  @default(true)
 
+  // Order rewards: referrer earns when the referred customer's orders complete.
+  // Independent of the join-reward mode above; isEnabled still switches everything off.
+  orderRewardEnabled       Boolean         @default(false)
+  orderRewardType          OrderRewardType @default(PERCENTAGE)
+  orderRewardValue         Decimal         @default(5.00) @db.Decimal(18, 2) // % of order value, or fixed amount
+  orderRewardMaxPerOrder   Decimal         @default(20.00) @db.Decimal(18, 2) // 0 = no cap
+  orderRewardMinOrderValue Decimal         @default(10.00) @db.Decimal(18, 2)
+  orderRewardOrderCount    Int             @default(1) // reward the customer's first N completed orders
+  orderRewardWindowDays    Int             @default(0) // only orders within N days of the referral; 0 = no limit
+  orderRewardHoldDays      Int             @default(7) // wait before paying so refunds/disputes can cancel it
+  orderRewardLifetimeCap   Decimal         @default(50.00) @db.Decimal(18, 2) // per referred customer; 0 = no cap
+
   currencyName         String   @default("$")
   createdAt            DateTime @default(now()) @db.DateTime(0)
   updatedAt            DateTime @default(now()) @updatedAt @db.DateTime(0)
@@ -1483,6 +1503,11 @@ model Referral {
   rewardGiven        Boolean   @default(false)
   rewardAmount       Decimal?  @db.Decimal(18, 8)
   rewardGivenAt      DateTime? @db.DateTime(0)
+  // false when the member joined while referral rewards were disabled: never paid, even after re-enabling
+  rewardEligible     Boolean   @default(true)
+  // Why an unpaid referral is still waiting (e.g. "3/7 days in server"); cleared once paid
+  holdReason         String?   @db.VarChar(255)
+  lastCheckedAt      DateTime? @db.DateTime(0)
 
   // Member Status Tracking
   hasLeftServer      Boolean   @default(false)
@@ -1495,6 +1520,7 @@ model Referral {
   referrer         User             @relation("referrerReferrals", fields: [referrerId], references: [id])
   referredUser     User?            @relation("referredUserReferrals", fields: [referredUserId], references: [id])
   rewards          ReferralReward[] @relation("referralRewards")
+  orderRewards     ReferralOrderReward[] @relation("referralOrderRewards")
 
   @@index([referrerId])
   @@index([referredUserId])
@@ -1503,20 +1529,21 @@ model Referral {
   @@index([joinedAt])
   @@index([createdAt])
   @@index([hasLeftServer])
+  @@index([rewardGiven, rewardEligible, hasLeftServer])
 }
 
 model ReferralReward {
   id             String   @id @default(uuid())
   referralId     String
   referrerId     Int      @db.UnsignedInt
-  referredUserId Int      @db.UnsignedInt
+  referredUserId Int?     @db.UnsignedInt // null when paid before the invited member registered (requireOnboarding off)
   amount         Decimal  @db.Decimal(18, 8)
   reason         String?
   createdAt      DateTime @default(now()) @db.DateTime(0)
 
   referral     Referral @relation("referralRewards", fields: [referralId], references: [id])
   referrer     User     @relation("referrerRewards", fields: [referrerId], references: [id])
-  referredUser User     @relation("referredRewards", fields: [referredUserId], references: [id])
+  referredUser User?    @relation("referredRewards", fields: [referredUserId], references: [id])
 
   @@index([referralId])
   @@index([referrerId])
@@ -1539,7 +1566,45 @@ model ReferralMilestone {
   @@index([claimedAt])
 }
 
-// Discord Invite Tracking - Maps invite codes to users for referral tracking (DEPRECATED - kept for historical data)
+enum ReferralOrderRewardStatus {
+  PENDING   // order completed; waiting out the hold period
+  PAID
+  CANCELLED // order disputed/refunded during the hold, or cancelled by an admin
+}
+
+// Reward to a referrer for an order placed by the customer they referred. One per order.
+model ReferralOrderReward {
+  id             String                    @id @default(uuid())
+  referralId     String
+  referrerId     Int                       @db.UnsignedInt
+  referredUserId Int                       @db.UnsignedInt
+  orderId        String                    @unique
+  orderValue     Decimal                   @db.Decimal(18, 8) // order value when it completed
+  rewardType     OrderRewardType           // snapshot of the config used
+  rewardValue    Decimal                   @db.Decimal(18, 2) // % or fixed amount used
+  amount         Decimal                   @db.Decimal(18, 2)
+  status         ReferralOrderRewardStatus @default(PENDING)
+  eligibleAt     DateTime                  @db.DateTime(0) // completion + hold days
+  paidAt         DateTime?                 @db.DateTime(0)
+  cancelledAt    DateTime?                 @db.DateTime(0)
+  cancelReason   String?                   @db.VarChar(255)
+  createdAt      DateTime                  @default(now()) @db.DateTime(0)
+  updatedAt      DateTime                  @default(now()) @updatedAt @db.DateTime(0)
+
+  referral     Referral @relation("referralOrderRewards", fields: [referralId], references: [id])
+  referrer     User     @relation("referralOrderRewardsEarned", fields: [referrerId], references: [id])
+  referredUser User     @relation("referralOrderRewardsGenerated", fields: [referredUserId], references: [id])
+  order        Order    @relation("orderReferralReward", fields: [orderId], references: [id])
+
+  @@index([status, eligibleAt])
+  @@index([referralId])
+  @@index([referrerId])
+  @@index([referredUserId])
+  @@index([createdAt])
+}
+
+// Discord Invite Tracking - Maps personal invite codes (created by the bot for /referral) to the member who owns them.
+// The bot is the Discord-side inviter of those invites, so this table is the only way to know who referred whom.
 model DiscordInvite {
   id           String   @id @default(uuid())
   inviteCode   String   @unique // Discord invite code (e.g., "yn7VFA8E")

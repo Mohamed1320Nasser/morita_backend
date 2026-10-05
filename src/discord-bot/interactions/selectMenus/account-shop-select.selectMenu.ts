@@ -1,8 +1,5 @@
-import {
-    StringSelectMenuInteraction,
-    ActionRowBuilder,
-    StringSelectMenuBuilder,
-} from "discord.js";
+import { StringSelectMenuInteraction } from "discord.js";
+import { rebuildSelectMenusWithoutDefaults } from "../../utils/selectMenuReset";
 import logger from "../../../common/loggers";
 import { ApiService } from "../../services/api.service";
 import { discordConfig } from "../../config/discord.config";
@@ -25,53 +22,17 @@ function isInteractionExpiredError(error: unknown): boolean {
 }
 
 /**
- * Rebuild dropdown components without default selection (clears checkmark)
+ * Clears the user's checkmark on the shared shop dropdowns. If the menus cannot
+ * be rebuilt, the message is acknowledged without changes: writing back a
+ * shorter component list would delete the dropdowns for every customer.
  */
-function rebuildComponentsWithoutDefaults(
-    messageComponents: any[]
-): ActionRowBuilder<StringSelectMenuBuilder>[] {
-    const newRows: ActionRowBuilder<StringSelectMenuBuilder>[] = [];
-
-    for (const row of messageComponents) {
-        const components = row.components || [];
-
-        for (const component of components) {
-            const isSelectMenu = component.type === 3 ||
-                component.data?.type === 3 ||
-                component.customId?.startsWith('account_shop_select_');
-
-            if (isSelectMenu) {
-                try {
-                    const clonedMenu = StringSelectMenuBuilder.from(component);
-
-                    const currentOptions = clonedMenu.options || [];
-                    const newOptions = currentOptions.map((opt: any) => {
-                        const optData = opt.data || opt;
-                        return {
-                            label: optData.label,
-                            value: optData.value,
-                            description: optData.description,
-                            emoji: optData.emoji,
-                            default: false // Clear the checkmark
-                        };
-                    });
-
-                    clonedMenu.setOptions(newOptions);
-
-                    newRows.push(
-                        new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(clonedMenu)
-                    );
-                } catch (menuError) {
-                    logger.error(
-                        `[AccountShopSelect] Error cloning menu:`,
-                        menuError instanceof Error ? menuError.message : menuError
-                    );
-                }
-            }
-        }
+async function resetShopMenus(interaction: StringSelectMenuInteraction): Promise<void> {
+    const rows = rebuildSelectMenusWithoutDefaults(interaction.message.components as any);
+    if (rows) {
+        await interaction.update({ components: rows as any });
+    } else {
+        await interaction.deferUpdate();
     }
-
-    return newRows;
 }
 
 /**
@@ -96,14 +57,7 @@ export async function handleAccountShopSelect(
 
         // Handle special cases - need to reset dropdown first
         if (accountId === "none" || accountId === "view_more") {
-            // Rebuild components to clear checkmark
-            const rebuiltComponents = rebuildComponentsWithoutDefaults(
-                interaction.message.components as any
-            );
-
-            await interaction.update({
-                components: rebuiltComponents as any
-            });
+            await resetShopMenus(interaction);
 
             const message = accountId === "none"
                 ? "❌ No accounts are available in this category. Please check back later."
@@ -124,13 +78,7 @@ export async function handleAccountShopSelect(
                 `[AccountShopSelect] Rebuilding components for message ${interaction.message.id}`
             );
 
-            const rebuiltComponents = rebuildComponentsWithoutDefaults(
-                interaction.message.components as any
-            );
-
-            await interaction.update({
-                components: rebuiltComponents as any
-            });
+            await resetShopMenus(interaction);
 
             logger.debug("[AccountShopSelect] Update successful, checkmark cleared");
         } catch (updateError) {

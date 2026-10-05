@@ -1,9 +1,9 @@
-import { Events, GuildMember, TextChannel, EmbedBuilder } from "discord.js";
+import { Events, GuildMember } from "discord.js";
 import { OnboardingManagerService } from "../services/onboardingManager.service";
-import { discordConfig } from "../config/discord.config";
 import { discordApiClient } from "../clients/DiscordApiClient";
 import logger from "../../common/loggers";
-import { applyBrandThumbnail, applyCalculatorBranding } from "../utils/priceEmbed";
+import { unwrapApiData } from "../utils/apiResponse.util";
+import { notifyReferralJoined } from "../services/referralNotifier.service";
 
 export default {
     name: Events.GuildMemberAdd,
@@ -14,86 +14,57 @@ export default {
             logger.info(`[MemberAdd] 👋 New member joined: ${member.user.tag} (${member.id})`);
 
             // ========================================
-            // PROFESSIONAL INVITE-BASED REFERRAL TRACKING
+            // INVITE-BASED REFERRAL TRACKING
             // ========================================
             if (member.client.inviteCache) {
-                // Run referral tracking asynchronously without blocking user experience
+                // Runs detached so the member's onboarding is never delayed by it
                 Promise.resolve().then(async () => {
                     try {
-                        logger.info(`[Referral] 🔍 Detecting which invite was used...`);
-
-                        // Use invite cache to detect which invite was used
                         const usedInvite = await member.client.inviteCache!.detectUsedInvite(member.guild);
 
-                        if (usedInvite && usedInvite.inviterId) {
-                            logger.info(
-                                `[Referral] ✅ Invite detected: ` +
-                                `Code=${usedInvite.code}, ` +
-                                `Inviter=${usedInvite.inviterTag} (${usedInvite.inviterId}), ` +
-                                `New Member=${member.user.tag} (${member.id})`
-                            );
-
-                            // Track referral in database
-                            try {
-                                await discordApiClient.post('/referral/track', {
-                                    referrerDiscordId: usedInvite.inviterId,
-                                    referredDiscordId: member.id,
-                                    inviteCode: usedInvite.code,
-                                });
-                                logger.info(`[Referral] ✅ Tracked referral in database`);
-                            } catch (trackError: any) {
-                                logger.error(`[Referral] Failed to track referral in database:`, trackError.message);
-                            }
-
-                            // Send notification to referral channel (if configured)
-                            const referralChannelId = process.env.DISCORD_REFERRAL_CHANNEL_ID;
-                            if (referralChannelId) {
-                                try {
-                                    const channel = member.guild.channels.cache.get(referralChannelId) as TextChannel;
-                                    if (channel) {
-                                        const referrer = await member.guild.members.fetch(usedInvite.inviterId).catch(() => null);
-
-                                        const embed = new EmbedBuilder()
-                                            .setColor(0xfca311)
-                                            .setTitle("🎉 New Referral!")
-                                            .setDescription(
-                                                `${referrer ? `<@${usedInvite.inviterId}>` : usedInvite.inviterTag} referred ${member}`
-                                            )
-                                            .addFields(
-                                                { name: "Referrer", value: usedInvite.inviterTag || "Unknown", inline: true },
-                                                { name: "New Member", value: member.user.tag, inline: true },
-                                                { name: "Invite Code", value: `\`${usedInvite.code}\``, inline: true }
-                                            )
-                                            .setFooter({ text: `They'll earn $5 when ${member.user.username} completes onboarding` })
-                                            .setTimestamp();
-
-                                        applyBrandThumbnail(embed);
-                                        applyCalculatorBranding(embed);
-
-                                        await channel.send({ embeds: [embed.toJSON() as any] });
-                                        logger.info(`[Referral] ✅ Posted notification to referral channel`);
-                                    }
-                                } catch (channelError: any) {
-                                    logger.error(`[Referral] Failed to post to referral channel:`, channelError.message);
-                                }
-                            }
-
-                            // Send DM to referrer
-                            try {
-                                const referrer = await member.guild.members.fetch(usedInvite.inviterId).catch(() => null);
-                                if (referrer) {
-                                    await referrer.send(
-                                        `🎁 **${member.user.tag}** joined using your invite link! ` +
-                                        `Once they complete onboarding, you'll earn **$5**.`
-                                    );
-                                    logger.info(`[Referral] ✅ Sent DM to referrer`);
-                                }
-                            } catch (dmError) {
-                                logger.warn(`[Referral] Could not DM referrer ${usedInvite.inviterTag}`);
-                            }
-                        } else {
+                        if (!usedInvite) {
                             logger.info(`[Referral] ℹ️ No invite detected for ${member.user.tag} - organic join or vanity URL`);
+                            return;
                         }
+
+                        // The backend resolves the real owner from the invite code: personal
+                        // links are created by the bot, so Discord reports the bot as inviter.
+                        let tracked: { isNew: boolean; rewardEligible?: boolean; referrerDiscordId: string } | null = null;
+                        try {
+                            const response = await discordApiClient.post('/referral/track', {
+                                referrerDiscordId: usedInvite.inviterId || undefined,
+                                referredDiscordId: member.id,
+                                inviteCode: usedInvite.code,
+                            });
+                            tracked = unwrapApiData(response);
+                        } catch (trackError: any) {
+                            const status = trackError?.response?.status;
+                            const reason = trackError?.response?.data?.msg || trackError.message;
+                            // 400/404 are expected refusals: unknown referrer, self-referral, returning member
+                            if (status === 400 || status === 404) {
+                                logger.info(`[Referral] Join via ${usedInvite.code} not tracked: ${reason}`);
+                            } else {
+                                logger.error(`[Referral] Failed to track referral in database: ${reason}`);
+                            }
+                            return;
+                        }
+
+                        if (!tracked?.isNew) {
+                            logger.info(`[Referral] ${member.user.tag} already has a referral on record; not announcing again`);
+                            return;
+                        }
+
+                        logger.info(`[Referral] ✅ Tracked ${tracked.referrerDiscordId} → ${member.id} via ${usedInvite.code}`);
+
+                        // Joined while rewards were off: recorded, but nothing to announce or promise
+                        if (tracked.rewardEligible === false) return;
+
+                        await notifyReferralJoined(member.client, {
+                            referrerDiscordId: tracked.referrerDiscordId,
+                            memberId: member.id,
+                            memberTag: member.user.tag,
+                            inviteCode: usedInvite.code,
+                        });
                     } catch (refError: any) {
                         logger.error(`[Referral] Failed to track referral:`, refError.message);
                     }

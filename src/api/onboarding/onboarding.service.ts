@@ -359,9 +359,16 @@ export default class OnboardingService {
             throw error;
         }
 
-        this.referralService.linkReferralToUser(data.discordId, user.id)
-            .then(() => logger.info(`[Onboarding] Referral linked for ${data.discordUsername}`))
-            .catch((error: any) => logger.debug(`[Onboarding] No referral to link: ${error.message}`));
+        // Awaited so the bot's /referral/reward call (sent after this returns)
+        // sees the referral as onboarded. A failure here must not fail registration.
+        try {
+            const linked = await this.referralService.linkReferralToUser(data.discordId, user.id);
+            if (linked) {
+                logger.info(`[Onboarding] Referral linked for ${data.discordUsername}`);
+            }
+        } catch (error: any) {
+            logger.error(`[Onboarding] Failed to link referral for ${data.discordUsername}: ${error?.message}`);
+        }
 
         return user;
     }

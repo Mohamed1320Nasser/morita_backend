@@ -494,7 +494,8 @@ export default class UserService {
                 orderRewardClaims: {
                     orderBy: { claimedAt: 'desc' }
                 },
-                referralRewardsReceived: {
+                // Rewards this user earned as the referrer
+                referralRewardsGiven: {
                     orderBy: { createdAt: 'desc' }
                 }
             }
@@ -572,7 +573,7 @@ export default class UserService {
         const transactions = wallet?.transactions || [];
 
         const totalDeposits = transactions
-            .filter((t: any) => ['DEPOSIT', 'EARNING', 'DAILY_REWARD', 'ORDER_REWARD'].includes(t.type))
+            .filter((t: any) => ['DEPOSIT', 'EARNING', 'DAILY_REWARD', 'ORDER_REWARD', 'REFERRAL_REWARD', 'REFERRAL_ORDER_REWARD'].includes(t.type))
             .reduce((sum: number, t: any) => sum + parseFloat(t.amount.toString()), 0);
 
         const totalWithdrawals = transactions
@@ -628,7 +629,7 @@ export default class UserService {
     private buildRewardsSummary(user: any) {
         const dailyRewardClaims = user.dailyRewardClaims || [];
         const orderRewardClaims = user.orderRewardClaims || [];
-        const referralRewards = user.referralRewardsReceived || [];
+        const referralRewards = user.referralRewardsGiven || [];
 
         const totalDailyRewards = dailyRewardClaims.reduce(
             (sum: number, claim: any) => sum + parseFloat(claim.amount.toString()),
@@ -673,7 +674,7 @@ export default class UserService {
                 totalEarned: parseFloat(totalReferralRewards.toFixed(2)),
                 recentRewards: referralRewards.slice(0, 5).map((reward: any) => ({
                     amount: parseFloat(reward.amount.toString()),
-                    type: reward.rewardType,
+                    reason: reward.reason,
                     createdAt: reward.createdAt
                 }))
             }
@@ -683,11 +684,9 @@ export default class UserService {
     private buildReferralsSummary(user: any) {
         const referrals = user.referrals || [];
         const referredBy = user.referredUsers?.[0];
-        const referralRewards = user.referralRewardsReceived || [];
+        const referralRewards = user.referralRewardsGiven || [];
 
-        const activeReferrals = referrals.filter(
-            (ref: any) => ref.memberRetentionDays && ref.memberRetentionDays > 7
-        );
+        const activeReferrals = referrals.filter((ref: any) => !ref.hasLeftServer);
 
         const totalRewards = referralRewards.reduce(
             (sum: number, reward: any) => sum + parseFloat(reward.amount.toString()),
@@ -710,9 +709,12 @@ export default class UserService {
                     userId: ref.referredUser.id,
                     username: ref.referredUser.username,
                     discordUsername: ref.referredUser.discordUsername,
-                    joinedAt: ref.createdAt,
+                    joinedAt: ref.joinedAt,
                     rewardGiven: ref.rewardGiven,
-                    memberRetentionDays: ref.memberRetentionDays
+                    hasLeftServer: ref.hasLeftServer,
+                    daysInServer: ref.hasLeftServer
+                        ? ref.daysInServer
+                        : Math.floor((Date.now() - new Date(ref.joinedAt).getTime()) / 86400000)
                 }))
         };
     }
