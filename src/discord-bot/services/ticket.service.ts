@@ -64,6 +64,18 @@ export interface WelcomeMessageSettings {
     footerText?: string;
 }
 
+// Closed channels with no ticket record in this bot's database, already warned about
+const unknownClosedChannels = new Set<string>();
+
+function logUnknownChannelOnce(channel: TextChannel) {
+    if (unknownClosedChannels.has(channel.id)) return;
+    unknownClosedChannels.add(channel.id);
+    logger.warn(
+        `[ArchiveClosedTickets] Keeping ${channel.name}: no ticket record in this bot's database ` +
+            `(another environment sharing the server, or an old ticket). Delete it by hand if it is not needed.`
+    );
+}
+
 export class TicketService {
     private client: Client;
     private apiClient: AxiosInstance;
@@ -1587,8 +1599,8 @@ export class TicketService {
     }
 
     /**
-     * True when the channel may be deleted: its transcript is already saved,
-     * was saved just now, or there is no ticket record to save it against.
+     * True when the channel may be deleted: its transcript is already saved or
+     * was saved just now. Channels this bot has no ticket record for are kept.
      */
     private async ensureTranscriptBeforeDelete(channel: TextChannel): Promise<boolean> {
         // Not getTicketByChannelId: it returns null on any error, and an API
@@ -1600,16 +1612,19 @@ export class TicketService {
             ticket = body?.data ?? body;
         } catch (error: any) {
             if (error?.response?.status === 404) {
-                logger.warn(`[ArchiveClosedTickets] No ticket record for ${channel.name}; deleting without a transcript`);
-                return true;
+                logUnknownChannelOnce(channel);
+                return false;
             }
             logger.warn(`[ArchiveClosedTickets] Keeping ${channel.name}: could not check its transcript (${error?.message})`);
             return false;
         }
 
+        // Not in this bot's database: another environment (e.g. a dev bot
+        // sharing the server) owns it, or it predates ticket records. Never
+        // delete a chat we cannot back up; leave it for its owner or a human.
         if (!ticket?.id) {
-            logger.warn(`[ArchiveClosedTickets] No ticket record for ${channel.name}; deleting without a transcript`);
-            return true;
+            logUnknownChannelOnce(channel);
+            return false;
         }
         if (ticket.transcriptFile) return true;
 
