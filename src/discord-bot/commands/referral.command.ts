@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder, ChatInputCommandInteraction, PermissionFlagsBits, Guild } from "discord.js";
+import { SlashCommandBuilder, EmbedBuilder, ChatInputCommandInteraction } from "discord.js";
 import { discordApiClient } from "../clients/DiscordApiClient";
 import { unwrapApiData } from "../utils/apiResponse.util";
 import {
@@ -8,65 +8,8 @@ import {
     describeOrderReward,
     formatMoney,
 } from "../services/referralNotifier.service";
+import { getOrCreatePersonalInvite } from "../services/personalInvite.service";
 import logger from "../../common/loggers";
-
-/**
- * Returns the member's personal invite link. The bot creates the invite, so
- * Discord lists the bot as its inviter; the code -> member mapping is stored
- * in the backend, which is what attributes joins to the right referrer.
- */
-async function getPersonalInvite(interaction: ChatInputCommandInteraction, guild: Guild): Promise<string> {
-    const discordId = interaction.user.id;
-
-    // 1. Existing mapping, if the invite still exists in Discord
-    const existing = unwrapApiData<any>(
-        await discordApiClient.post("/referral/invite/get-or-create", { discordId, guildId: guild.id })
-    );
-
-    if (existing?.inviteCode) {
-        const liveInvites = await guild.invites.fetch();
-        if (liveInvites.has(existing.inviteCode)) {
-            return existing.inviteUrl || `https://discord.gg/${existing.inviteCode}`;
-        }
-        // Deleted or expired in Discord: retire it and hand out a new one
-        await discordApiClient.post("/referral/invite/deactivate", { inviteCode: existing.inviteCode });
-    }
-
-    // 2. Create a new one
-    const channel =
-        guild.channels.cache.find(ch => ch.isTextBased() && (ch.name === "general" || ch.name === "welcome")) ||
-        guild.channels.cache.find(ch => ch.isTextBased());
-
-    if (!channel || !("createInvite" in channel)) {
-        throw new Error("No suitable channel found for invites");
-    }
-
-    const botMember = await guild.members.fetch(interaction.client.user!.id);
-    if (!botMember.permissions.has(PermissionFlagsBits.CreateInstantInvite)) {
-        throw new Error("Bot missing CREATE_INSTANT_INVITE permission");
-    }
-
-    const discordInvite = await channel.createInvite({
-        maxAge: 0,
-        maxUses: 0,
-        unique: true,
-        reason: `Personal referral invite for ${interaction.user.tag}`,
-    });
-
-    // Snapshot it at 0 uses so the first join through it is detected
-    interaction.client.inviteCache?.addInvite(guild.id, discordInvite);
-
-    await discordApiClient.post("/referral/invite/create", {
-        inviteCode: discordInvite.code,
-        inviteUrl: discordInvite.url,
-        discordId,
-        channelId: discordInvite.channelId,
-        uses: discordInvite.uses || 0,
-    });
-
-    logger.info(`[Referral Command] ✅ Created personal invite ${discordInvite.code} for ${interaction.user.tag}`);
-    return discordInvite.url;
-}
 
 export default {
     data: new SlashCommandBuilder()
@@ -99,7 +42,9 @@ export default {
 
             try {
                 if (!interaction.guild) throw new Error("Guild not found");
-                inviteUrl = await getPersonalInvite(interaction, interaction.guild);
+                inviteUrl = (
+                    await getOrCreatePersonalInvite(interaction.client, interaction.guild, discordId, interaction.user.tag)
+                ).inviteUrl;
             } catch (inviteError: any) {
                 logger.error(`[Referral Command] Error getting invite:`, inviteError.message);
                 inviteErrorMessage = inviteError.message?.toLowerCase().includes("permission")

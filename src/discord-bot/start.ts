@@ -62,6 +62,7 @@ import { startBot } from "./index";
 import discordClient from "./index";
 import prisma from "../common/prisma/client";
 import { getTicketService } from "./services/ticket.service";
+import { getOrCreatePersonalInvite } from "./services/personalInvite.service";
 
 logger.info("Discord bot startup script loaded - starting bot explicitly...");
 startBot();
@@ -529,14 +530,57 @@ app.post("/discord/notify/order-status", async (req, res) => {
  * close message, buttons disabled, transcript and ticket log, the same as a
  * close from Discord. Requires the bot API key.
  */
-app.post("/discord/tickets/close", async (req, res) => {
+/** True when the request carries the bot API key (constant-time compare). */
+function hasBotApiKey(req: express.Request): boolean {
     const expected = process.env.DISCORD_BOT_API_KEY || "";
     const provided = String(req.get("x-api-key") || "");
-    if (
-        !expected ||
-        provided.length !== expected.length ||
-        !timingSafeEqual(Buffer.from(provided), Buffer.from(expected))
-    ) {
+    return (
+        !!expected &&
+        provided.length === expected.length &&
+        timingSafeEqual(Buffer.from(provided), Buffer.from(expected))
+    );
+}
+
+/**
+ * Gets (or creates) a member's personal referral invite for the dashboard, so
+ * an admin can send a user their link. Same invite as /referral gives them.
+ * Requires the bot API key.
+ */
+app.post("/discord/referral/invite", async (req, res) => {
+    if (!hasBotApiKey(req)) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
+
+    try {
+        if (!discordClient.isReady()) {
+            return res.status(400).json({ success: false, error: "Discord bot not connected" });
+        }
+
+        const discordId = String(req.body?.discordId || "");
+        if (!/^\d{5,25}$/.test(discordId)) {
+            return res.status(400).json({ success: false, error: "A valid discordId is required" });
+        }
+
+        const guild = discordClient.guilds.cache.get(discordConfig.guildId);
+        if (!guild) {
+            return res.status(400).json({ success: false, error: "Discord server not found" });
+        }
+
+        const invite = await getOrCreatePersonalInvite(discordClient, guild, discordId);
+        res.json({ success: true, data: invite });
+    } catch (error: any) {
+        const status = error?.response?.status === 404 ? 404 : 500;
+        const message =
+            status === 404
+                ? "This user has not completed onboarding, so they cannot have a referral link yet"
+                : error?.message || "Could not create the invite";
+        logger.error(`[Bot API] Failed to get referral invite: ${message}`);
+        res.status(status).json({ success: false, error: message });
+    }
+});
+
+app.post("/discord/tickets/close", async (req, res) => {
+    if (!hasBotApiKey(req)) {
         return res.status(401).json({ success: false, error: "Unauthorized" });
     }
 

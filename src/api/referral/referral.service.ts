@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import prisma from '../../common/prisma/client';
 import logger from '../../common/loggers';
 import { NotFoundError, BadRequestError } from 'routing-controllers';
+import axios from 'axios';
 import { Decimal } from '@prisma/client/runtime/library';
 import { TrackReferralDto, GiveRewardDto, GetReferralsDto } from './dtos';
 import ReferralRewardService from '../referralReward/referral-reward.service';
@@ -1235,6 +1236,68 @@ export default class ReferralService {
     } catch (error) {
       logger.error(`[Referral] Error listing invites:`, error);
       throw error;
+    }
+  }
+
+  // ============================================
+  // ADMIN: A USER'S PERSONAL LINK
+  // ============================================
+
+  private async findInviteOwner(userId: number) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, discordId: true, email: true },
+    });
+    if (!user) throw new NotFoundError('User not found');
+    return user;
+  }
+
+  /** The user's current link as stored; does not create one or check Discord. */
+  async getUserInviteForAdmin(userId: number) {
+    const user = await this.findInviteOwner(userId);
+
+    const invite = await prisma.discordInvite.findFirst({
+      where: { userId: user.id, isActive: true },
+      orderBy: { createdAt: 'desc' },
+      select: { inviteCode: true, inviteUrl: true, uses: true, createdAt: true },
+    });
+
+    return {
+      hasDiscord: !!user.discordId,
+      onboarded: !!user.discordId && !user.email.endsWith('@temp.discord'),
+      invite,
+    };
+  }
+
+  /**
+   * Asks the bot for the user's personal link, creating it in Discord if they
+   * have none (or theirs was deleted). Same link /referral would give them.
+   */
+  async createUserInviteForAdmin(userId: number) {
+    const user = await this.findInviteOwner(userId);
+
+    if (!user.discordId) {
+      throw new BadRequestError('This user has no linked Discord account');
+    }
+    if (user.email.endsWith('@temp.discord')) {
+      throw new BadRequestError('This user has not completed onboarding yet');
+    }
+
+    const botApiUrl = process.env.BOT_API_URL || 'http://localhost:3002';
+    try {
+      const response = await axios.post(
+        `${botApiUrl}/discord/referral/invite`,
+        { discordId: user.discordId },
+        { timeout: 20000, headers: { 'X-API-Key': process.env.DISCORD_BOT_API_KEY || '' } }
+      );
+      const invite = response.data?.data;
+      if (!invite?.inviteUrl) throw new Error('The bot returned no link');
+      logger.info(`[Referral] Admin fetched referral link for user ${user.id} (created: ${invite.created})`);
+      return invite as { inviteUrl: string; inviteCode: string; created: boolean };
+    } catch (error: any) {
+      const message = error?.response?.data?.error || error?.message || 'Bot unavailable';
+      logger.warn(`[Referral] Could not get referral link for user ${user.id}: ${message}`);
+      throw new BadRequestError(`Could not get the link from the Discord bot: ${message}`);
     }
   }
 

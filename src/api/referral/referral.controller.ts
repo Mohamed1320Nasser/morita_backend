@@ -117,6 +117,22 @@ export default class ReferralController {
     return await this.referralService.getReferralNetwork(userId, query.filter);
   }
 
+  /** A user's personal referral link as stored (does not create one). */
+  @Get('/admin/invite/:userId')
+  @Authorized(API.Role.admin)
+  @HttpCode(200)
+  async getUserInvite(@Param('userId') userId: number) {
+    return await this.referralService.getUserInviteForAdmin(userId);
+  }
+
+  /** Gets the user's link through the bot, creating it if needed, so an admin can send it to them. */
+  @Post('/admin/invite/:userId')
+  @Authorized(API.Role.admin)
+  @HttpCode(200)
+  async createUserInvite(@Param('userId') userId: number) {
+    return await this.referralService.createUserInviteForAdmin(userId);
+  }
+
   // ---- Bot-only endpoints below: all require the bot API key ----
 
   @Post('/invite/get-or-create')
