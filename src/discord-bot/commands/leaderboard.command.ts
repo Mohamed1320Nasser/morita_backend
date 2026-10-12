@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, EmbedBuilder, ChatInputCommandInteraction } from "discord.js";
 import { discordApiClient } from "../clients/DiscordApiClient";
 import { unwrapApiData } from "../utils/apiResponse.util";
+import { fetchReferralConfig, formatMoney } from "../services/referralNotifier.service";
 import logger from "../../common/loggers";
 
 export default {
@@ -23,11 +24,13 @@ export default {
                 });
             }
 
+            const currency = (await fetchReferralConfig())?.currencyName || "$";
+
             const leaderboardText = leaderboard
                 .map((user: any) => {
                     const medal = user.rank === 1 ? "🥇" : user.rank === 2 ? "🥈" : user.rank === 3 ? "🥉" : `${user.rank}.`;
                     const name = user.discordUsername || user.discordDisplayName || `User ${user.userId}`;
-                    return `${medal} **${name}** - ${user.totalReferrals} referrals ($${Number(user.totalRewards || 0).toFixed(2)})`;
+                    return `${medal} **${name}** - ${user.totalReferrals} referrals (${formatMoney(currency, user.totalRewards)})`;
                 })
                 .join("\n");
 

@@ -255,7 +255,9 @@ export default class ReferralService {
         joinedAt: { lte: joinedBefore },
         ...(config.requireOnboarding && { onboardedAt: { not: null } }),
       },
-      orderBy: { joinedAt: 'asc' },
+      // Least recently checked first (never-checked sort first in MySQL), so
+      // referrals stuck on a long hold cannot fill every batch and starve the rest.
+      orderBy: [{ lastCheckedAt: 'asc' }, { joinedAt: 'asc' }],
       take: PENDING_BATCH_SIZE,
       select: { id: true },
     });
@@ -760,7 +762,10 @@ export default class ReferralService {
           where.rewardEligible = false;
           break;
         case 'not_onboarded':
+          // Same rows the list badges as "Not Onboarded"
           where.onboardedAt = null;
+          where.rewardEligible = true;
+          where.hasLeftServer = false;
           break;
         case 'left':
           where.hasLeftServer = true;
@@ -1007,7 +1012,7 @@ export default class ReferralService {
             case 'pending':
               return !ref.rewardGiven && ref.rewardEligible && ref.onboardedAt !== null && !ref.hasLeftServer;
             case 'not_onboarded':
-              return ref.onboardedAt === null;
+              return ref.onboardedAt === null && ref.rewardEligible && !ref.hasLeftServer;
             default:
               return true;
           }

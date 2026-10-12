@@ -108,7 +108,10 @@ export default {
             }
 
             let description: string;
-            if (!config || !config.isEnabled) {
+            if (!config) {
+                // Settings could not be loaded; do not claim rewards are off
+                description = `Share your **personal invite link** to invite friends!`;
+            } else if (!config.isEnabled) {
                 description = `Share your **personal invite link** to invite friends! (Rewards currently disabled)`;
             } else {
                 const reward = perReferralReward(config);
@@ -149,7 +152,7 @@ export default {
                         inline: false,
                     }
                 )
-                .setFooter({ text: "Only joins through your personal link count as your referrals" })
+                .setFooter({ text: "Share this link: people who join through it count as your referrals" })
                 .setTimestamp();
 
             if (stats.recentReferrals?.length > 0) {

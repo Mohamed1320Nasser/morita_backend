@@ -144,32 +144,40 @@ export default class ReferralOrderRewardService {
       });
       if (earlierCompleted >= config.orderRewardOrderCount) return null;
 
-      let alreadyEarned = 0;
-      if (config.orderRewardLifetimeCap > 0) {
-        const earned = await prisma.referralOrderReward.aggregate({
-          where: { referralId: referral.id, status: { in: ['PENDING', 'PAID'] } },
-          _sum: { amount: true },
-        });
-        alreadyEarned = Number(earned._sum.amount || 0);
-      }
-
-      const amount = calculateOrderReward(config, orderValue, alreadyEarned);
-      if (amount < 0.01) return null;
-
       try {
-        const reward = await prisma.referralOrderReward.create({
-          data: {
-            referralId: referral.id,
-            referrerId: referral.referrerId,
-            referredUserId: order.customerId,
-            orderId: order.id,
-            orderValue: new Decimal(orderValue),
-            rewardType: config.orderRewardType,
-            rewardValue: new Decimal(config.orderRewardValue),
-            amount: new Decimal(amount),
-            eligibleAt,
-          },
+        // Locking the referral serialises two orders completing at once, so
+        // both cannot read the same "earned so far" and pass the lifetime cap.
+        const reward = await prisma.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT id FROM \`Referral\` WHERE id = ${referral.id} FOR UPDATE`;
+
+          let alreadyEarned = 0;
+          if (config.orderRewardLifetimeCap > 0) {
+            const earned = await tx.referralOrderReward.aggregate({
+              where: { referralId: referral.id, status: { in: ['PENDING', 'PAID'] } },
+              _sum: { amount: true },
+            });
+            alreadyEarned = Number(earned._sum.amount || 0);
+          }
+
+          const amount = calculateOrderReward(config, orderValue, alreadyEarned);
+          if (amount < 0.01) return null;
+
+          return tx.referralOrderReward.create({
+            data: {
+              referralId: referral.id,
+              referrerId: referral.referrerId,
+              referredUserId: order.customerId,
+              orderId: order.id,
+              orderValue: new Decimal(orderValue),
+              rewardType: config.orderRewardType,
+              rewardValue: new Decimal(config.orderRewardValue),
+              amount: new Decimal(amount),
+              eligibleAt,
+            },
+          });
         });
+        if (!reward) return null;
+        const amount = Number(reward.amount);
 
         logger.info(
           `[ReferralOrder] Order #${order.orderNumber}: ${amount} pending for referrer ${referral.referrerId} ` +
@@ -429,13 +437,19 @@ export default class ReferralOrderRewardService {
       throw new BadRequestError(`Only pending rewards can be cancelled (this one is ${reward.status})`);
     }
 
-    return prisma.referralOrderReward.update({
-      where: { id },
+    // Conditional on PENDING: the cron may pay it between the read above and here
+    const result = await prisma.referralOrderReward.updateMany({
+      where: { id, status: 'PENDING' },
       data: {
         status: 'CANCELLED',
         cancelledAt: new Date(),
         cancelReason: (reason?.trim() || 'Cancelled by admin').slice(0, 255),
       },
     });
+    if (result.count === 0) {
+      throw new BadRequestError('This reward was just paid or cancelled; refresh the list');
+    }
+
+    return prisma.referralOrderReward.findUnique({ where: { id } });
   }
 }
