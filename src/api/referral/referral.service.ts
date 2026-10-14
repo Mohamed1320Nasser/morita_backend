@@ -26,6 +26,26 @@ const INELIGIBLE_REASON = 'Joined while referral rewards were disabled (not elig
 
 type ReferralConfig = Awaited<ReturnType<ReferralRewardService['getConfig']>>;
 
+// Placeholder emails given to accounts that did not supply one: at ToS
+// acceptance, on onboarding without an EMAIL question, and on ticket creation.
+const PLACEHOLDER_EMAIL_SUFFIXES = ['@temp.discord', '@discord.morita.local'];
+
+/**
+ * Whether this account finished registration. The email can't tell: members
+ * who complete onboarding keep a placeholder email when the questionnaire has
+ * no EMAIL question. A completed onboarding session is the source of truth;
+ * a real email covers accounts that registered outside Discord onboarding.
+ */
+async function isRegisteredMember(user: { discordId: string | null; email: string }): Promise<boolean> {
+  if (!PLACEHOLDER_EMAIL_SUFFIXES.some((suffix) => user.email.endsWith(suffix))) return true;
+  if (!user.discordId) return false;
+  const session = await prisma.onboardingSession.findUnique({
+    where: { discordId: user.discordId },
+    select: { registeredInDb: true },
+  });
+  return !!session?.registeredInDb;
+}
+
 export interface ReferralPayout {
   status: 'PAID';
   kind: 'JOIN';
@@ -131,16 +151,12 @@ export default class ReferralService {
     }
 
     // A member who already registered before is returning, not a new referral.
-    // Temporary accounts created at ToS acceptance carry an @temp.discord email.
-    const alreadyRegistered = await prisma.user.findFirst({
-      where: {
-        discordId: dto.referredDiscordId,
-        NOT: { email: { endsWith: '@temp.discord' } },
-      },
-      select: { id: true },
+    const existingAccount = await prisma.user.findUnique({
+      where: { discordId: dto.referredDiscordId },
+      select: { discordId: true, email: true },
     });
 
-    if (alreadyRegistered) {
+    if (existingAccount && (await isRegisteredMember(existingAccount))) {
       throw new BadRequestError('Member is already registered; returning members are not referrals');
     }
 
@@ -1060,7 +1076,7 @@ export default class ReferralService {
         }
       });
 
-      if (!user) {
+      if (!user || !(await isRegisteredMember(user))) {
         throw new NotFoundError('User not found. Complete onboarding first!');
       }
 
@@ -1264,7 +1280,7 @@ export default class ReferralService {
 
     return {
       hasDiscord: !!user.discordId,
-      onboarded: !!user.discordId && !user.email.endsWith('@temp.discord'),
+      onboarded: !!user.discordId && (await isRegisteredMember(user)),
       invite,
     };
   }
@@ -1279,7 +1295,7 @@ export default class ReferralService {
     if (!user.discordId) {
       throw new BadRequestError('This user has no linked Discord account');
     }
-    if (user.email.endsWith('@temp.discord')) {
+    if (!(await isRegisteredMember(user))) {
       throw new BadRequestError('This user has not completed onboarding yet');
     }
 

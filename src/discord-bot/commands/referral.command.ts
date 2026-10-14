@@ -47,9 +47,11 @@ export default {
                 ).inviteUrl;
             } catch (inviteError: any) {
                 logger.error(`[Referral Command] Error getting invite:`, inviteError.message);
-                inviteErrorMessage = inviteError.message?.toLowerCase().includes("permission")
-                    ? "Bot missing permissions"
-                    : "Error creating invite";
+                inviteErrorMessage = inviteError?.response?.status === 404
+                    ? "Complete onboarding first to get your link"
+                    : inviteError.message?.toLowerCase().includes("permission")
+                        ? "Bot missing permissions"
+                        : "Error creating invite";
             }
 
             let description: string;
