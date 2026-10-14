@@ -6,6 +6,12 @@ import { botHttp } from "../clients/botHttp";
 import { unwrapApiData } from "../utils/apiResponse.util";
 import { notifyReferralPayout, ReferralPayout } from "./referralNotifier.service";
 
+const PLACEHOLDER_EMAIL_SUFFIXES = ["@temp.discord", "@discord.morita.local"];
+
+function hasPlaceholderEmail(email?: string | null): boolean {
+    return !email || PLACEHOLDER_EMAIL_SUFFIXES.some(suffix => email.endsWith(suffix));
+}
+
 export class OnboardingManagerService {
     private client: Client;
 
@@ -43,7 +49,10 @@ export class OnboardingManagerService {
                 const existingUserResponse = await botHttp.get(`${discordConfig.apiBaseUrl}/discord/users/discord/${member.id}`);
                 const existingUser = existingUserResponse.data.data;
 
-                if (existingUser) {
+                // Accepting the ToS (or opening a ticket) already creates a placeholder
+                // account, so only a real email means "registered". Placeholder accounts
+                // must go through /onboarding/register, which links their referral.
+                if (existingUser && !hasPlaceholderEmail(existingUser.email)) {
                     logger.warn(`[Onboarding] User ${member.user.username} (${member.id}) already registered, skipping duplicate registration`);
 
                     const customerRole = member.guild.roles.cache.get(onboardingConfig.customerRoleId);
