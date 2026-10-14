@@ -21,11 +21,16 @@ import OrderRewardService from "../orderReward/order-reward.service";
 import LoyaltyTierService from "../loyalty-tier/loyalty-tier.service";
 import PayoutConfigService from "../payoutConfig/payoutConfig.service";
 import ReferralOrderRewardService from "../referral/referral-order-reward.service";
-import { withTransactionRetry, checkWalletBalanceWithLock, updateWalletBalance, deductFromWorkerWallet } from "../../common/utils/transaction.util";
+import { withTransactionRetry, checkWalletBalanceWithLock, updateWalletBalance, deductFromWorkerWallet, releaseWorkerDeposit } from "../../common/utils/transaction.util";
 import { PAYOUT_STRUCTURE, FINANCIAL_LIMITS, isValidAmount } from "../../common/constants/security.constants";
 import { InsufficientBalanceError } from "../../common/utils/errorHandler.util";
 import { OrderStatus as PrismaOrderStatus } from "@prisma/client";
 import axios from "axios";
+
+/** e.g. "Returned 15.00 to deposit, 5.00 to balance" */
+function depositReturnNote(release: { toBalance: number; toDeposit: number }): string {
+    return `Returned ${release.toDeposit.toFixed(2)} to deposit, ${release.toBalance.toFixed(2)} to balance`;
+}
 
 const MAX_SERVICES_PER_ORDER = 10;
 
@@ -182,9 +187,6 @@ export default class OrderService {
                         const workerBalance = typeof workerWallet.balance === 'object'
                             ? parseFloat(workerWallet.balance.toString())
                             : workerWallet.balance;
-                        const workerPendingBalance = typeof workerWallet.pendingBalance === 'object'
-                            ? parseFloat(workerWallet.pendingBalance.toString())
-                            : workerWallet.pendingBalance;
 
                         throw new InsufficientBalanceError(
                             requiredDeposit.toNumber(),
@@ -192,7 +194,7 @@ export default class OrderService {
                             'worker',
                             {
                                 deposit: workerDeposit,
-                                balance: workerBalance - workerPendingBalance
+                                balance: workerBalance
                             }
                         );
                     }
@@ -213,6 +215,8 @@ export default class OrderService {
                         amount: requiredDeposit.neg(),
                         balanceBefore,
                         balanceAfter,
+                        depositBefore: deduction.depositBefore,
+                        depositAfter: deduction.depositAfter,
                         currency: workerWallet.currency,
                         status: "PENDING" as const,
                         notes: deduction.fromDeposit > 0
@@ -868,11 +872,11 @@ export default class OrderService {
                         },
                     });
                 } else {
-                    await updateWalletBalance(
+                    const release = await releaseWorkerDeposit(
                         tx,
                         oldWorkerWallet.id,
-                        deposit.toNumber(),
-                        -deposit.toNumber()
+                        order.id,
+                        deposit.toNumber()
                     );
 
                     await tx.walletTransaction.create({
@@ -881,12 +885,14 @@ export default class OrderService {
                             orderId: order.id,
                             type: "RELEASE",
                             amount: deposit,
-                            balanceBefore,
-                            balanceAfter: balanceBefore.plus(deposit),
+                            balanceBefore: release.balanceBefore,
+                            balanceAfter: release.balanceAfter,
+                            depositBefore: release.depositBefore,
+                            depositAfter: release.depositAfter,
                             currency: oldWorkerWallet.currency,
                             status: "COMPLETED",
                             reference: `Order #${order.orderNumber} - Deposit returned on replacement`,
-                            notes: data.reason,
+                            notes: `${depositReturnNote(release)}. ${data.reason}`,
                             createdById: data.replacedById,
                         },
                     });
@@ -927,10 +933,12 @@ export default class OrderService {
                         amount: deposit.neg(),
                         balanceBefore,
                         balanceAfter: balanceBefore - deduction.fromBalance,
+                        depositBefore: deduction.depositBefore,
+                        depositAfter: deduction.depositAfter,
                         currency: newWorkerWallet.currency,
                         status: "PENDING",
                         reference: `Order #${order.orderNumber} - Worker deposit locked on replacement`,
-                        notes: `Took over from previous worker. ${data.reason}`,
+                        notes: `Took over from previous worker (${deduction.fromBalance.toFixed(2)} from balance, ${deduction.fromDeposit.toFixed(2)} from deposit). ${data.reason}`,
                         createdById: data.replacedById,
                     },
                 });
@@ -1072,9 +1080,6 @@ export default class OrderService {
                 const workerBalance = typeof balanceCheck.wallet.balance === 'object'
                     ? parseFloat(balanceCheck.wallet.balance.toString())
                     : balanceCheck.wallet.balance;
-                const workerPendingBalance = typeof balanceCheck.wallet.pendingBalance === 'object'
-                    ? parseFloat(balanceCheck.wallet.pendingBalance.toString())
-                    : balanceCheck.wallet.pendingBalance;
 
                 throw new InsufficientBalanceError(
                     requiredDeposit.toNumber(),
@@ -1082,7 +1087,7 @@ export default class OrderService {
                     'worker',
                     {
                         deposit: workerDeposit,
-                        balance: workerBalance - workerPendingBalance
+                        balance: workerBalance
                     }
                 );
             }
@@ -1105,6 +1110,8 @@ export default class OrderService {
                     amount: requiredDeposit.neg(),
                     balanceBefore,
                     balanceAfter,
+                    depositBefore: deduction.depositBefore,
+                    depositAfter: deduction.depositAfter,
                     currency: workerWallet.currency,
                     status: "PENDING",
                     reference: `Order #${order.orderNumber} - Worker deposit locked`,
@@ -1641,11 +1648,11 @@ export default class OrderService {
                 },
             });
 
-            await updateWalletBalance(
+            const release = await releaseWorkerDeposit(
                 tx,
                 workerWallet.id,
-                depositAmount.toNumber(),
-                -depositAmount.toNumber()
+                order.id,
+                depositAmount.toNumber()
             );
 
             await tx.walletTransaction.create({
@@ -1654,11 +1661,13 @@ export default class OrderService {
                     orderId: order.id,
                     type: "RELEASE",
                     amount: depositAmount,
-                    balanceBefore: workerWallet.balance,
-                    balanceAfter: new Decimal(workerWallet.balance).add(depositAmount).toNumber(),
+                    balanceBefore: release.balanceBefore,
+                    balanceAfter: release.balanceAfter,
+                    depositBefore: release.depositBefore,
+                    depositAfter: release.depositAfter,
                     status: "COMPLETED",
                     reference: `Order #${order.orderNumber} - Security deposit returned`,
-                    notes: `Job completed successfully`,
+                    notes: `Job completed successfully. ${depositReturnNote(release)}`,
                     createdById: order.workerId!,
                 },
             });
@@ -1676,8 +1685,8 @@ export default class OrderService {
                     orderId: order.id,
                     type: "EARNING",
                     amount: workerPayout,
-                    balanceBefore: new Decimal(workerWallet.balance).add(depositAmount).toNumber(),
-                    balanceAfter: new Decimal(workerWallet.balance).add(depositAmount).add(workerPayout).toNumber(),
+                    balanceBefore: release.balanceAfter,
+                    balanceAfter: new Decimal(release.balanceAfter).add(workerPayout).toNumber(),
                     status: "COMPLETED",
                     reference: `Order #${order.orderNumber} - Payment (80%)`,
                     notes: `Worker earnings`,
@@ -1814,17 +1823,11 @@ export default class OrderService {
             }
 
             if (workerWallet && workerDeposit.greaterThan(0)) {
-                const walletBefore = await tx.wallet.findUnique({
-                    where: { id: workerWallet.id },
-                    select: { balance: true },
-                });
-                const balanceBefore = new Decimal(walletBefore!.balance.toString());
-
-                await updateWalletBalance(
+                const release = await releaseWorkerDeposit(
                     tx,
                     workerWallet.id,
-                    workerDeposit.toNumber(),
-                    -workerDeposit.toNumber()
+                    order.id,
+                    workerDeposit.toNumber()
                 );
 
                 await tx.walletTransaction.create({
@@ -1833,12 +1836,14 @@ export default class OrderService {
                         orderId: order.id,
                         type: "RELEASE",
                         amount: workerDeposit,
-                        balanceBefore,
-                        balanceAfter: balanceBefore.plus(workerDeposit),
+                        balanceBefore: release.balanceBefore,
+                        balanceAfter: release.balanceAfter,
+                        depositBefore: release.depositBefore,
+                        depositAfter: release.depositAfter,
                         currency: workerWallet.currency,
                         status: "COMPLETED",
                         reference: `Order #${order.orderNumber} cancelled - Security deposit returned`,
-                        notes: data.cancellationReason,
+                        notes: `${depositReturnNote(release)}. ${data.cancellationReason}`,
                         createdById: data.cancelledById,
                     },
                 });
