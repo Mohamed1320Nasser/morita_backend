@@ -1,9 +1,11 @@
 import { IsString, IsOptional, IsNotEmpty } from 'class-validator';
 
 export class TrackReferralDto {
+  // Discord-side inviter. For bot-created personal invites this is the bot,
+  // so the backend resolves the real owner from inviteCode first.
   @IsString()
-  @IsNotEmpty()
-  referrerDiscordId: string;
+  @IsOptional()
+  referrerDiscordId?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -11,5 +13,5 @@ export class TrackReferralDto {
 
   @IsString()
   @IsOptional()
-  inviteCode?: string; // Discord invite code
+  inviteCode?: string;
 }

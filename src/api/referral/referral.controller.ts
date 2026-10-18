@@ -21,7 +21,6 @@ import {
   GetNetworkDto,
 } from './dtos';
 import API from '../../common/config/api.types';
-import logger from '../../common/loggers';
 
 @JsonController('/referral')
 @Service()
@@ -45,30 +44,28 @@ export default class ReferralController {
     return await this.referralService.linkReferralToUser(discordId, userId);
   }
 
+  /**
+   * Called by the bot right after onboarding. Returns { status: PAID | HELD | NONE, ... };
+   * a HELD reward is paid later by /process-pending.
+   */
   @Post('/reward')
   @HttpCode(200)
   @UseBefore(DiscordAuthMiddleware)
   async giveReward(@Body() dto: GiveRewardDto) {
-    const result = await this.referralService.giveReferralReward(dto);
+    return await this.referralService.giveReferralReward(dto);
+  }
 
-    // If no referral exists (organic join), return a success response with null data
-    if (result === null) {
-      return {
-        success: true,
-        message: 'No referral found - user joined organically',
-        data: null,
-      };
-    }
-
-    return {
-      success: true,
-      message: 'Referral reward given successfully',
-      data: result,
-    };
+  /** Bot cron: pays every held referral that has become eligible. */
+  @Post('/process-pending')
+  @HttpCode(200)
+  @UseBefore(DiscordAuthMiddleware)
+  async processPending() {
+    return await this.referralService.processPendingRewards();
   }
 
   @Get('/stats/discord/:discordId')
   @HttpCode(200)
+  @UseBefore(DiscordAuthMiddleware)
   async getStatsByDiscordId(@Param('discordId') discordId: string) {
     return await this.referralService.getUserReferralStats(discordId);
   }
@@ -83,7 +80,7 @@ export default class ReferralController {
 
   @Get('/leaderboard')
   @HttpCode(200)
-  async getLeaderboard(@QueryParams() query: GetLeaderboardDto & { sortBy?: string }) {
+  async getLeaderboard(@QueryParams() query: GetLeaderboardDto) {
     const limit = query.limit || 10;
     const sortBy = query.sortBy || 'total';
     return await this.referralService.getLeaderboard(limit, sortBy);
@@ -120,53 +117,84 @@ export default class ReferralController {
     return await this.referralService.getReferralNetwork(userId, query.filter);
   }
 
+  /** A user's personal referral link as stored (does not create one). */
+  @Get('/admin/invite/:userId')
+  @Authorized(API.Role.admin)
+  @HttpCode(200)
+  async getUserInvite(@Param('userId') userId: number) {
+    return await this.referralService.getUserInviteForAdmin(userId);
+  }
+
+  /** Gets the user's link through the bot, creating it if needed, so an admin can send it to them. */
+  @Post('/admin/invite/:userId')
+  @Authorized(API.Role.admin)
+  @HttpCode(200)
+  async createUserInvite(@Param('userId') userId: number) {
+    return await this.referralService.createUserInviteForAdmin(userId);
+  }
+
+  // ---- Bot-only endpoints below: all require the bot API key ----
+
   @Post('/invite/get-or-create')
   @HttpCode(200)
+  @UseBefore(DiscordAuthMiddleware)
   async getOrCreateInvite(@Body() body: { discordId: string; guildId: string }) {
-    const result = await this.referralService.getOrCreateInvite(body.discordId, body.guildId);
-    logger.info(`[Referral Controller] getOrCreateInvite returning:`, result);
-    return result;
+    return await this.referralService.getOrCreateInvite(body.discordId, body.guildId);
   }
 
   @Post('/invite/sync')
   @HttpCode(200)
+  @UseBefore(DiscordAuthMiddleware)
   async syncInvites(@Body() body: { guildId: string }) {
     return await this.referralService.syncDiscordInvites(body.guildId);
   }
 
   @Post('/invite/create')
   @HttpCode(200)
+  @UseBefore(DiscordAuthMiddleware)
   async createInvite(@Body() body: { inviteCode: string; inviteUrl: string; discordId: string; channelId?: string; uses?: number }) {
     return await this.referralService.createInviteRecord(body);
   }
 
+  @Post('/invite/deactivate')
+  @HttpCode(200)
+  @UseBefore(DiscordAuthMiddleware)
+  async deactivateInvite(@Body() body: { inviteCode: string }) {
+    return await this.referralService.deactivateInvite(body.inviteCode);
+  }
+
   @Get('/invite/list')
   @HttpCode(200)
-  async listInvites(@QueryParams() query: { guildId?: string }) {
+  @UseBefore(DiscordAuthMiddleware)
+  async listInvites() {
     return await this.referralService.listInvites();
   }
 
   @Post('/invite/update-usage')
   @HttpCode(200)
+  @UseBefore(DiscordAuthMiddleware)
   async updateInviteUsage(@Body() body: { inviteCode: string; uses: number }) {
     return await this.referralService.updateInviteUsage(body.inviteCode, body.uses);
   }
 
   @Post('/member-left')
   @HttpCode(200)
+  @UseBefore(DiscordAuthMiddleware)
   async memberLeft(@Body() body: { discordId: string; leftAt: string; leaveType: string }) {
     return await this.referralService.markMemberLeft(body.discordId, body.leaveType);
   }
 
   @Post('/member-rejoined')
   @HttpCode(200)
+  @UseBefore(DiscordAuthMiddleware)
   async memberRejoined(@Body() body: { discordId: string; rejoinedAt: string }) {
     return await this.referralService.markMemberRejoined(body.discordId);
   }
 
   @Post('/sync-members')
   @HttpCode(200)
+  @UseBefore(DiscordAuthMiddleware)
   async syncMembers(@Body() body: { guildMembers: Array<{ id: string }> }) {
-    return await this.referralService.syncAllMemberStatus(body.guildMembers);
+    return await this.referralService.syncAllMemberStatus(body?.guildMembers);
   }
 }

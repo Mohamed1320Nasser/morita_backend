@@ -3,6 +3,14 @@ import { onboardingConfig } from "../config/onboarding.config";
 import { discordConfig } from "../config/discord.config";
 import logger from "../../common/loggers";
 import { botHttp } from "../clients/botHttp";
+import { unwrapApiData } from "../utils/apiResponse.util";
+import { notifyReferralPayout, ReferralPayout } from "./referralNotifier.service";
+
+const PLACEHOLDER_EMAIL_SUFFIXES = ["@temp.discord", "@discord.morita.local"];
+
+function hasPlaceholderEmail(email?: string | null): boolean {
+    return !email || PLACEHOLDER_EMAIL_SUFFIXES.some(suffix => email.endsWith(suffix));
+}
 
 export class OnboardingManagerService {
     private client: Client;
@@ -41,7 +49,10 @@ export class OnboardingManagerService {
                 const existingUserResponse = await botHttp.get(`${discordConfig.apiBaseUrl}/discord/users/discord/${member.id}`);
                 const existingUser = existingUserResponse.data.data;
 
-                if (existingUser) {
+                // Accepting the ToS (or opening a ticket) already creates a placeholder
+                // account, so only a real email means "registered". Placeholder accounts
+                // must go through /onboarding/register, which links their referral.
+                if (existingUser && !hasPlaceholderEmail(existingUser.email)) {
                     logger.warn(`[Onboarding] User ${member.user.username} (${member.id}) already registered, skipping duplicate registration`);
 
                     const customerRole = member.guild.roles.cache.get(onboardingConfig.customerRoleId);
@@ -96,19 +107,21 @@ export class OnboardingManagerService {
 
             await botHttp.post(`${discordConfig.apiBaseUrl}/onboarding/sessions/${member.id}/complete`);
 
+            // Usually HELD here (minimum days in server); the pending-reward cron pays it later.
             try {
                 const rewardResponse = await botHttp.post(`${discordConfig.apiBaseUrl}/referral/reward`, {
                     referredDiscordId: member.id
                 });
+                const outcome = unwrapApiData<any>(rewardResponse.data);
 
-                if (rewardResponse.data?.data) {
-                    const amount = rewardResponse.data.data.amount || 0;
-                    logger.info(`[Onboarding] Reward sent: $${amount}`);
+                if (outcome?.status === "PAID") {
+                    logger.info(`[Onboarding] Referral reward paid: ${outcome.amount}`);
+                    await notifyReferralPayout(this.client, outcome as ReferralPayout);
+                } else if (outcome?.status === "HELD") {
+                    logger.info(`[Onboarding] Referral reward held: ${outcome.reason}`);
                 }
             } catch (refError: any) {
-                if (refError.response?.status !== 404 && !refError.message?.includes('not found')) {
-                    logger.error(`[Onboarding] Reward failed:`, refError.message);
-                }
+                logger.error(`[Onboarding] Referral reward check failed:`, refError?.response?.data?.msg || refError.message);
             }
 
             if (onboardingConfig.generalChannelId) {

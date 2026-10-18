@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, EmbedBuilder, ChatInputCommandInteraction } from "discord.js";
-import axios from "axios";
-import { discordConfig } from "../config/discord.config";
+import { discordApiClient } from "../clients/DiscordApiClient";
+import { unwrapApiData } from "../utils/apiResponse.util";
+import { fetchReferralConfig, formatMoney } from "../services/referralNotifier.service";
 import logger from "../../common/loggers";
 
 export default {
@@ -13,20 +14,23 @@ export default {
             await interaction.deferReply();
 
             // Fetch leaderboard from API
-            const response = await axios.get(`${discordConfig.apiBaseUrl}/referral/leaderboard?limit=10`);
-            const leaderboard = response.data;
+            const leaderboard = unwrapApiData<any[]>(
+                await discordApiClient.get(`/referral/leaderboard?limit=10`)
+            ) || [];
 
-            if (leaderboard.length === 0) {
+            if (!Array.isArray(leaderboard) || leaderboard.length === 0) {
                 return interaction.editReply({
                     content: "📊 No referrals yet! Be the first!",
                 });
             }
 
+            const currency = (await fetchReferralConfig())?.currencyName || "$";
+
             const leaderboardText = leaderboard
                 .map((user: any) => {
                     const medal = user.rank === 1 ? "🥇" : user.rank === 2 ? "🥈" : user.rank === 3 ? "🥉" : `${user.rank}.`;
                     const name = user.discordUsername || user.discordDisplayName || `User ${user.userId}`;
-                    return `${medal} **${name}** - ${user.totalReferrals} referrals ($${user.totalRewards.toFixed(2)})`;
+                    return `${medal} **${name}** - ${user.totalReferrals} referrals (${formatMoney(currency, user.totalRewards)})`;
                 })
                 .join("\n");
 

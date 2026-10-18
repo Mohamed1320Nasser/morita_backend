@@ -7,7 +7,8 @@ import {
     APIActionRowComponent,
     APIMessageActionRowComponent
 } from "discord.js";
-import { EnhancedPricingBuilder } from "../../utils/enhancedPricingBuilder";
+import { EnhancedPricingBuilder, CATEGORY_HEADER_PREFIX } from "../../utils/enhancedPricingBuilder";
+import { rebuildSelectMenusWithoutDefaults } from "../../utils/selectMenuReset";
 import { getTotalGroups } from "../../utils/pricingPagination";
 import { ApiService } from "../../services/api.service";
 import { discordConfig } from "../../config/discord.config";
@@ -28,54 +29,21 @@ function isInteractionExpiredError(error: unknown): boolean {
     return INTERACTION_EXPIRED_ERRORS.some(err => message.includes(err));
 }
 
-function rebuildComponentsWithoutDefaults(
-    messageComponents: any[]
-): ActionRowBuilder<StringSelectMenuBuilder>[] {
-    const newRows: ActionRowBuilder<StringSelectMenuBuilder>[] = [];
-
-    for (const row of messageComponents) {
-        
-        const components = row.components || [];
-
-        for (const component of components) {
-            
-            const isSelectMenu = component.type === 3 ||
-                component.data?.type === 3 ||
-                component.customId?.startsWith('pricing_service_select_');
-
-            if (isSelectMenu) {
-                try {
-                    
-                    const clonedMenu = StringSelectMenuBuilder.from(component);
-
-                    const currentOptions = clonedMenu.options || [];
-                    const newOptions = currentOptions.map((opt: any) => {
-                        const optData = opt.data || opt;
-                        return {
-                            label: optData.label,
-                            value: optData.value,
-                            description: optData.description,
-                            emoji: optData.emoji,
-                            default: false 
-                        };
-                    });
-
-                    clonedMenu.setOptions(newOptions);
-
-                    newRows.push(
-                        new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(clonedMenu)
-                    );
-                } catch (menuError) {
-                    logger.error(
-                        `[rebuildComponents] Error cloning menu:`,
-                        menuError instanceof Error ? menuError.message : menuError
-                    );
-                }
-            }
-        }
+/**
+ * Clears the user's checkmark but keeps each category header selected, so the
+ * closed menu still shows its icon and name. If the menus cannot be rebuilt
+ * the message is left as it is rather than losing dropdowns.
+ */
+async function resetPricingMenus(interaction: StringSelectMenuInteraction): Promise<void> {
+    const rows = rebuildSelectMenusWithoutDefaults(
+        interaction.message.components as any,
+        value => value.startsWith(CATEGORY_HEADER_PREFIX)
+    );
+    if (rows) {
+        await interaction.update({ components: rows as any });
+    } else {
+        await interaction.deferUpdate();
     }
-
-    return newRows;
 }
 
 export async function handleImprovedPricingServiceSelect(
@@ -96,14 +64,15 @@ export async function handleImprovedPricingServiceSelect(
         );
         const serviceId = interaction.values[0];
 
+        // The header only displays the category; picking it is a no-op
+        if (serviceId.startsWith(CATEGORY_HEADER_PREFIX)) {
+            await resetPricingMenus(interaction).catch(() => {});
+            return;
+        }
+
         if (serviceId.startsWith("show_more_")) {
             
-            const rebuiltComponents = rebuildComponentsWithoutDefaults(
-                interaction.message.components as any
-            );
-            await interaction.update({
-                components: rebuiltComponents as any
-            });
+            await resetPricingMenus(interaction);
 
             await interaction.followUp({
                 content:
@@ -121,17 +90,7 @@ export async function handleImprovedPricingServiceSelect(
                 `[PricingServiceSelect] Rebuilding components for message ${interaction.message.id}`
             );
 
-            const rebuiltComponents = rebuildComponentsWithoutDefaults(
-                interaction.message.components as any
-            );
-
-            logger.debug(
-                `[PricingServiceSelect] Rebuilt ${rebuiltComponents.length} component rows`
-            );
-
-            await interaction.update({
-                components: rebuiltComponents as any
-            });
+            await resetPricingMenus(interaction);
 
             logger.debug(
                 `[PricingServiceSelect] Update successful, checkmark cleared`

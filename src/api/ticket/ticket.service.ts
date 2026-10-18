@@ -11,6 +11,11 @@ import {
 import { NotFoundError, BadRequestError } from "routing-controllers";
 import { TicketStatus, TicketType } from "@prisma/client";
 import logger from "../../common/loggers";
+import axios from "axios";
+import fs from "fs";
+import path from "path";
+import { randomUUID } from "crypto";
+import { Environment } from "../../common/config/environment";
 
 @Service()
 export default class TicketService {
@@ -591,6 +596,139 @@ export default class TicketService {
             status: TicketStatus.CLOSED,
             reason,
         });
+    }
+
+    /**
+     * Asks the bot to close the ticket's Discord channel the same way a close
+     * from Discord does (close message, buttons disabled, transcript, ticket
+     * log). Used when a ticket is closed from the dashboard, which otherwise
+     * only changed the database and left the channel open.
+     *
+     * Best effort: the ticket is already closed in the database, so a bot
+     * outage is logged rather than failing the request.
+     */
+    async closeInDiscord(ticketId: string, adminUserId?: number, reason?: string) {
+        try {
+            const admin = adminUserId
+                ? await prisma.user.findUnique({ where: { id: adminUserId }, select: { discordId: true } })
+                : null;
+
+            const botApiUrl = process.env.BOT_API_URL || "http://localhost:3002";
+            await axios.post(
+                `${botApiUrl}/discord/tickets/close`,
+                { ticketId, closedByDiscordId: admin?.discordId || null, reason },
+                { timeout: 15000, headers: { "X-API-Key": process.env.DISCORD_BOT_API_KEY || "" } }
+            );
+        } catch (error: any) {
+            logger.warn(
+                `[TicketService] Ticket ${ticketId} closed in the database but not in Discord: ` +
+                    `${error?.response?.data?.error || error?.message}`
+            );
+        }
+    }
+
+    // ============================================
+    // TRANSCRIPTS
+    // ============================================
+
+    /**
+     * Stores the HTML transcript the bot generates when a ticket closes.
+     *
+     * The bot uploads it in pieces (each well under nginx's default 1 MB body
+     * limit) as raw bytes; pieces are appended to a temporary file and the
+     * last one finalises it. Kept in a private folder (not the public CDN)
+     * under a random name; a ticket closed again replaces its old transcript.
+     */
+    async saveTranscriptChunk(
+        id: string,
+        params: { uploadId: string; part: number; parts: number; offset: number },
+        chunk: Buffer
+    ) {
+        const { uploadId, part, parts, offset } = params;
+
+        if (!/^[0-9a-f-]{36}$/i.test(uploadId || "")) throw new BadRequestError("Invalid uploadId");
+        if (!Number.isInteger(parts) || parts < 1 || parts > 200) throw new BadRequestError("Invalid parts");
+        if (!Number.isInteger(part) || part < 0 || part >= parts) throw new BadRequestError("Invalid part");
+        if (!Number.isInteger(offset) || offset < 0) throw new BadRequestError("Invalid offset");
+        if (!Buffer.isBuffer(chunk) || chunk.length === 0) throw new BadRequestError("Empty transcript chunk");
+
+        const ticket = await prisma.ticket.findUnique({
+            where: { id },
+            select: { id: true, ticketNumber: true, transcriptFile: true },
+        });
+        if (!ticket) throw new NotFoundError("Ticket not found");
+
+        const dir = path.resolve(Environment.project.transcriptsDir);
+        const partialDir = path.join(dir, ".partial");
+        await fs.promises.mkdir(partialDir, { recursive: true });
+        const partialPath = path.join(partialDir, `${ticket.id}-${uploadId}.part`);
+
+        // `offset` is where this piece starts. A retried piece that already
+        // landed (reply lost) is skipped instead of appended twice, and a gap
+        // is refused, so the assembled file is always byte-for-byte correct.
+        if (part === 0 && offset === 0) {
+            await this.removeStalePartials(partialDir);
+            await fs.promises.writeFile(partialPath, chunk);
+        } else {
+            const current = await fs.promises.stat(partialPath).then(st => st.size).catch(() => -1);
+            if (current === -1) throw new BadRequestError("Upload not started or expired");
+
+            if (current === offset) {
+                await fs.promises.appendFile(partialPath, chunk);
+            } else if (current !== offset + chunk.length) {
+                throw new BadRequestError(`Transcript piece out of order (have ${current} bytes, piece starts at ${offset})`);
+            }
+        }
+
+        if (part < parts - 1) {
+            return { complete: false, received: part + 1, parts };
+        }
+
+        const fileName = `ticket-${String(ticket.ticketNumber).padStart(4, "0")}-${randomUUID()}.html`;
+        await fs.promises.rename(partialPath, path.join(dir, fileName));
+        const { size } = await fs.promises.stat(path.join(dir, fileName));
+
+        await prisma.ticket.update({
+            where: { id },
+            data: { transcriptFile: fileName, transcriptCreatedAt: new Date() },
+        });
+
+        if (ticket.transcriptFile && ticket.transcriptFile !== fileName) {
+            await fs.promises.unlink(path.join(dir, path.basename(ticket.transcriptFile))).catch(() => {});
+        }
+
+        logger.info(`[TicketService] Saved transcript for ticket #${ticket.ticketNumber} (${Math.round(size / 1024)} KB, ${parts} part(s))`);
+        return { complete: true, transcriptFile: fileName, size };
+    }
+
+    /** Uploads abandoned midway (bot restart, network error) are dropped after an hour. */
+    private async removeStalePartials(partialDir: string) {
+        const cutoff = Date.now() - 60 * 60 * 1000;
+        const entries = await fs.promises.readdir(partialDir).catch(() => [] as string[]);
+        for (const entry of entries) {
+            const full = path.join(partialDir, entry);
+            const stat = await fs.promises.stat(full).catch(() => null);
+            if (stat && stat.mtimeMs < cutoff) await fs.promises.unlink(full).catch(() => {});
+        }
+    }
+
+    async getTranscript(id: string) {
+        const ticket = await prisma.ticket.findUnique({
+            where: { id },
+            select: { ticketNumber: true, transcriptFile: true },
+        });
+        if (!ticket) throw new NotFoundError("Ticket not found");
+        if (!ticket.transcriptFile) throw new NotFoundError("No transcript saved for this ticket");
+
+        // basename(): the stored value is only ever a file name, never a path
+        const filePath = path.join(path.resolve(Environment.project.transcriptsDir), path.basename(ticket.transcriptFile));
+
+        try {
+            const html = await fs.promises.readFile(filePath, "utf8");
+            return { html, fileName: `ticket-${String(ticket.ticketNumber).padStart(4, "0")}.html` };
+        } catch {
+            throw new NotFoundError("Transcript file is missing from storage");
+        }
     }
 
     /**

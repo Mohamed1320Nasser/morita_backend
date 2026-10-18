@@ -54,6 +54,12 @@ const steps: Step[] = [
         run: () => prisma.transaction.deleteMany({}),
     },
     {
+        // References Order and Referral, so it must go before both
+        label: "ReferralOrderReward",
+        count: () => prisma.referralOrderReward.count(),
+        run: () => prisma.referralOrderReward.deleteMany({}),
+    },
+    {
         label: "Order",
         count: () => prisma.order.count(),
         run: () => prisma.order.deleteMany({}),

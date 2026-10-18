@@ -179,22 +179,20 @@ export async function checkWalletBalanceWithLock(
     const balance = typeof wallet.balance === 'object'
         ? parseFloat(wallet.balance.toString())
         : wallet.balance;
-    const pendingBalance = typeof wallet.pendingBalance === 'object'
-        ? parseFloat(wallet.pendingBalance.toString())
-        : wallet.pendingBalance;
     const deposit = typeof wallet.deposit === 'object'
         ? parseFloat(wallet.deposit.toString())
         : wallet.deposit;
 
+    // pendingBalance only mirrors money already taken out of balance/deposit
+    // for open orders, so subtracting it again would count every lock twice.
     let availableAmount: number;
 
     if (walletType === 'worker') {
-        // Worker: Check deposit + available balance (total eligibility for job claiming)
-        const availableBalance = balance - pendingBalance;
-        availableAmount = deposit + availableBalance;
+        // Worker: Check deposit + balance (total eligibility for job claiming)
+        availableAmount = deposit + balance;
     } else {
-        // Customer: Check only available balance
-        availableAmount = balance - pendingBalance;
+        // Customer: Check only balance
+        availableAmount = balance;
     }
 
     const sufficient = availableAmount >= requiredAmount;
@@ -210,14 +208,17 @@ export async function checkWalletBalanceWithLock(
  * Smart deduction for workers: deducts from balance first, then from deposit if needed
  * This prevents negative balance by using worker deposit as available funds
  *
- * @returns Object with deduction details: { fromBalance, fromDeposit, newBalance, newDeposit }
+ * Record depositBefore/depositAfter on the lock transaction: releaseWorkerDeposit
+ * reads them to return each part to where it came from.
+ *
+ * @returns { fromBalance, fromDeposit, depositBefore, depositAfter }
  */
 export async function deductFromWorkerWallet(
     tx: TransactionClient,
     walletId: string,
     requiredAmount: number,
     addToPending: number = 0
-): Promise<{ fromBalance: number; fromDeposit: number }> {
+): Promise<{ fromBalance: number; fromDeposit: number; depositBefore: number; depositAfter: number }> {
     const wallet = await lockWalletForUpdate(tx, walletId);
 
     const balance = typeof wallet.balance === 'object'
@@ -226,11 +227,9 @@ export async function deductFromWorkerWallet(
     const deposit = typeof wallet.deposit === 'object'
         ? parseFloat(wallet.deposit.toString())
         : wallet.deposit;
-    const pendingBalance = typeof wallet.pendingBalance === 'object'
-        ? parseFloat(wallet.pendingBalance.toString())
-        : wallet.pendingBalance;
 
-    const availableBalance = balance - pendingBalance;
+    // Balance is already net of earlier locks (see checkWalletBalanceWithLock)
+    const availableBalance = Math.max(0, balance);
 
     let fromBalance = 0;
     let fromDeposit = 0;
@@ -241,7 +240,7 @@ export async function deductFromWorkerWallet(
     } else {
         // Need to use deposit
         fromBalance = availableBalance;
-        fromDeposit = requiredAmount - availableBalance;
+        fromDeposit = Number((requiredAmount - availableBalance).toFixed(8));
 
         if (deposit < fromDeposit) {
             throw new Error(
@@ -276,7 +275,87 @@ export async function deductFromWorkerWallet(
         data: updateData
     });
 
-    return { fromBalance, fromDeposit };
+    return {
+        fromBalance,
+        fromDeposit,
+        depositBefore: deposit,
+        depositAfter: Number((deposit - fromDeposit).toFixed(8)),
+    };
+}
+
+/**
+ * How much of a worker's lock on this order was taken from their deposit (the
+ * rest came from balance). New locks record depositBefore/depositAfter; older
+ * ones only have the split in their notes ("X from balance, Y from deposit").
+ */
+async function lockedFromDeposit(
+    tx: TransactionClient,
+    walletId: string,
+    orderId: string,
+    amount: number
+): Promise<number> {
+    const lock = await tx.walletTransaction.findFirst({
+        where: {
+            walletId,
+            orderId,
+            type: "PAYMENT",
+            amount: { lt: 0 },
+            // "Deposit locked" (create), "Worker deposit locked" (claim / replacement)
+            OR: [
+                { reference: { contains: "Deposit locked" } },
+                { reference: { contains: "deposit locked" } },
+            ],
+        },
+        orderBy: { createdAt: "desc" },
+        select: { depositBefore: true, depositAfter: true, notes: true },
+    });
+
+    let fromDeposit = 0;
+    if (lock?.depositBefore != null && lock?.depositAfter != null) {
+        fromDeposit = parseFloat(lock.depositBefore.toString()) - parseFloat(lock.depositAfter.toString());
+    } else {
+        const match = lock?.notes?.match(/([\d.]+) from deposit/);
+        if (match) fromDeposit = parseFloat(match[1]);
+    }
+
+    if (!Number.isFinite(fromDeposit)) return 0;
+    return Number(Math.min(Math.max(fromDeposit, 0), amount).toFixed(8));
+}
+
+/**
+ * Returns a worker's locked order deposit: the part taken from their deposit
+ * goes back to deposit, the rest to balance, and the lock leaves pendingBalance.
+ */
+export async function releaseWorkerDeposit(
+    tx: TransactionClient,
+    walletId: string,
+    orderId: string,
+    amount: number
+): Promise<{
+    toBalance: number;
+    toDeposit: number;
+    balanceBefore: number;
+    balanceAfter: number;
+    depositBefore: number;
+    depositAfter: number;
+}> {
+    const wallet = await lockWalletForUpdate(tx, walletId);
+    const balanceBefore = parseFloat(wallet.balance.toString());
+    const depositBefore = parseFloat(wallet.deposit.toString());
+
+    const toDeposit = await lockedFromDeposit(tx, walletId, orderId, amount);
+    const toBalance = Number((amount - toDeposit).toFixed(8));
+
+    await updateWalletBalance(tx, walletId, toBalance, -amount, toDeposit);
+
+    return {
+        toBalance,
+        toDeposit,
+        balanceBefore,
+        balanceAfter: Number((balanceBefore + toBalance).toFixed(8)),
+        depositBefore,
+        depositAfter: Number((depositBefore + toDeposit).toFixed(8)),
+    };
 }
 
 /**
