@@ -1,8 +1,10 @@
-import { ButtonInteraction } from "discord.js";
+import { ButtonInteraction, GuildMember } from "discord.js";
 import { EmbedBuilder } from "../../utils/embedBuilder";
 import logger from "../../../common/loggers";
 import { requireSupportOrAdmin } from "../../utils/permissions.util";
 import { discordApiClient } from "../../clients/DiscordApiClient";
+import { unwrapApiData } from "../../utils/apiResponse.util";
+import { syncUserDiscordRole } from "../../utils/role-sync.util";
 
 export async function handleCancelOrder(
     interaction: ButtonInteraction
@@ -20,17 +22,24 @@ export async function handleCancelOrder(
         logger.info(`[CancelOrder] Support ${interaction.user.tag} cancelling order ${orderId}`);
 
         const orderResponse: any = await discordApiClient.get(`/discord/orders/${orderId}`);
-        const orderData = orderResponse.data || orderResponse;
+        const orderData = unwrapApiData<any>(orderResponse);
 
-        await discordApiClient.put(`/discord/orders/${orderId}/status`, {
-            status: "CANCELLED",
-            supportDiscordId: interaction.user.id,
-            reason: "Cancelled by support",
+        // The API checks the canceller's stored role, so bring it up to date first
+        if (interaction.member instanceof GuildMember) {
+            await syncUserDiscordRole(interaction.member).catch(() => null);
+        }
+
+        // The cancel endpoint refunds the customer in full and returns the
+        // worker's deposit; a bare status change would leave both locked.
+        await discordApiClient.put(`/discord/orders/${orderId}/cancel`, {
+            cancelledByDiscordId: interaction.user.id,
+            cancellationReason: "Cancelled by support",
+            refundType: "full",
         });
 
         const embed = EmbedBuilder.createSuccessEmbed(
             `Order #${orderData.orderNumber} has been cancelled.\n\n` +
-            `Customer and worker have been notified.`,
+            `The customer was refunded in full and the worker's deposit was returned.`,
             "✅ Order Cancelled"
         );
 
@@ -48,7 +57,8 @@ export async function handleCancelOrder(
     } catch (error: any) {
         logger.error("[CancelOrder] Error handling cancel order button:", error);
 
-        const errorMessage = error?.response?.data?.message || error?.message || "Unknown error";
+        const errorMessage =
+            error?.response?.data?.msg || error?.response?.data?.message || error?.message || "Unknown error";
 
         await interaction.editReply({
             content: `❌ **Failed to cancel order**\n\n${errorMessage}\n\nPlease try again or contact an administrator.`,

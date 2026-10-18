@@ -1155,6 +1155,14 @@ export default class OrderService {
     async updateOrderStatus(orderId: string, data: UpdateOrderStatusDto) {
         const order = await this.getOrderById(orderId);
 
+        // A bare status change would leave the customer's payment and the
+        // worker's deposit locked; only cancelOrder refunds and releases them.
+        if (data.status === OrderStatus.CANCELLED && order.status !== OrderStatus.CANCELLED) {
+            throw new BadRequestError(
+                "Use Cancel Order to cancel, so the customer is refunded and the worker's deposit is returned"
+            );
+        }
+
         if (order.status !== data.status) {
             this.validateStatusTransition(order.status, data.status);
         }
