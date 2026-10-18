@@ -96,8 +96,8 @@ export class AccountChannelManager {
         }
 
         if (this.isUpdating) {
-            logger.warn("[AccountChannelManager] Already updating, skipping");
-            return;
+            // Callers report success when this returns, so say it did not run
+            throw new Error("The account shop is already being published, try again in a moment");
         }
 
         try {
@@ -216,7 +216,8 @@ export class AccountChannelManager {
 
             try {
                 const categories = await this.apiService.getAccountCategories();
-                categoryCount = categories.length;
+                // Same rule as the dropdowns: only categories with stock are shown
+                categoryCount = categories.filter((cat: any) => cat.availableCount > 0).length;
                 totalAccounts = categories.reduce(
                     (sum: number, cat: any) => sum + (cat.availableCount || 0),
                     0
@@ -322,6 +323,9 @@ export class AccountChannelManager {
                 "[AccountChannelManager] Error creating category messages:",
                 error
             );
+            // Without this the publish reported success while the channel
+            // showed only the header
+            throw error;
         }
     }
 

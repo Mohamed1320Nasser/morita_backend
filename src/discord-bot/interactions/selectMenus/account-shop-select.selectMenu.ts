@@ -113,17 +113,20 @@ export async function handleAccountShopSelect(
         const { embeds, components } =
             EnhancedAccountBuilder.buildAccountDetailEmbeds(account);
 
-        await interaction.followUp({
+        const detailMessage = await interaction.followUp({
             embeds: embeds.map((e) => e as any),
             components: components.map((c) => c as any),
             ephemeral: true,
         });
 
-        // Track message for auto-deletion (10 minutes)
+        // Auto-delete the account preview after 10 minutes. It must target the
+        // follow-up: this interaction was answered with update(), so its
+        // '@original' reply is the shared shop message, and deleteReply()
+        // without an argument would delete every customer's dropdowns.
         const messageId = `${interaction.id}`;
         pricingMessageTracker.trackMessage(messageId, async () => {
             try {
-                await interaction.deleteReply();
+                await interaction.deleteReply(detailMessage);
             } catch (error) {
                 logger.debug(
                     "[AccountShopSelect] Could not delete message (likely already deleted)"
