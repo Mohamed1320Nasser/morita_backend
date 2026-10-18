@@ -26,7 +26,7 @@ export const data = new SlashCommandBuilder()
     .addStringOption((option) =>
         option
             .setName("status")
-            .setDescription("New status for the order")
+            .setDescription("New status for the order (to cancel, use /cancel-order)")
             .setRequired(true)
             .addChoices(
                 { name: "Pending", value: "PENDING" },
@@ -34,7 +34,6 @@ export const data = new SlashCommandBuilder()
                 { name: "In Progress", value: "IN_PROGRESS" },
                 { name: "Awaiting Confirmation", value: "AWAITING_CONFIRM" },
                 { name: "Completed", value: "COMPLETED" },
-                { name: "Cancelled", value: "CANCELLED" },
                 { name: "Disputed", value: "DISPUTED" },
                 { name: "Refunded", value: "REFUNDED" }
             )
