@@ -129,6 +129,13 @@ export default class KpiController {
         return this.kpiService.getOrderCompletionTime(query);
     }
 
+    @Get("/order-lifecycle")
+    @Authorized(API.Role.system)
+    @HttpCode(200)
+    async getOrderLifecycle(@QueryParams() query: any) {
+        return this.kpiService.getOrderLifecycle(query);
+    }
+
     @Get("/financial-overview")
     @Authorized(API.Role.system)
     @HttpCode(200)

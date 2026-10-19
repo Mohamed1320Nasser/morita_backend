@@ -154,7 +154,47 @@ export class AccountDataService {
         }
     }
 
+    /**
+     * Every attempt is logged, allowed or refused (KPI plan, Part 2 #6), so
+     * admins can see exactly who opened an order's credentials and when.
+     */
     async viewAccountData(orderId: string, viewerDiscordId: string) {
+        try {
+            const result = await this.openAccountData(orderId, viewerDiscordId);
+            await this.logAccess(orderId, viewerDiscordId, "VIEWED");
+            return result;
+        } catch (error: any) {
+            await this.logAccess(orderId, viewerDiscordId, "DENIED", error?.message);
+            throw error;
+        }
+    }
+
+    /**
+     * Wipe an order's credentials once the order is finished (completed or
+     * cancelled): nobody needs them after that. The record stays, so the log
+     * still shows who submitted and claimed them.
+     */
+    async clearAccountData(orderId: string, byDiscordId: string, reason: string) {
+        const data = await prisma.orderAccountData.findUnique({ where: { orderId } });
+        if (!data || data.clearedAt) return;
+
+        await prisma.orderAccountData.update({
+            where: { orderId },
+            data: { encryptedData: "", clearedAt: new Date() },
+        });
+        await this.logAccess(orderId, byDiscordId, "CLEARED", reason);
+    }
+
+    private async logAccess(orderId: string, discordId: string, action: string, note?: string) {
+        // Only for orders that exist; a bad id has nothing to attach to
+        const order = await prisma.order.findUnique({ where: { id: orderId }, select: { id: true } });
+        if (!order) return;
+        await prisma.accountDataAccessLog
+            .create({ data: { orderId, discordId: discordId.slice(0, 32), action, note: note?.slice(0, 255) || null } })
+            .catch(() => {});
+    }
+
+    private async openAccountData(orderId: string, viewerDiscordId: string) {
         const order = await prisma.order.findUnique({
             where: { id: orderId },
             include: {
@@ -167,6 +207,9 @@ export class AccountDataService {
 
         if (!order) throw new Error("Order not found");
         if (!order.accountData) throw new Error("No account data submitted");
+        if (order.accountData.clearedAt) {
+            throw new Error("Account data was cleared when the order finished");
+        }
         if (order.accountData.isClaimed) {
             throw new Error(`Data already claimed by ${order.accountData.claimedByRole} on ${order.accountData.claimedAt}`);
         }

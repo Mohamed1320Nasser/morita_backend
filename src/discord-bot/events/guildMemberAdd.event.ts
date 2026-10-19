@@ -27,6 +27,12 @@ export default {
                             return;
                         }
 
+                        // Campaign links (KPI plan, Feature 9) are tracked on their own;
+                        // a join can't be both, but asking costs nothing
+                        discordApiClient
+                            .post('/discord/campaigns/track', { inviteCode: usedInvite.code, discordId: member.id })
+                            .catch((err: any) => logger.warn(`[Campaign] Could not track join via ${usedInvite.code}: ${err?.message}`));
+
                         // The backend resolves the real owner from the invite code: personal
                         // links are created by the bot, so Discord reports the bot as inviter.
                         let tracked: { isNew: boolean; rewardEligible?: boolean; referrerDiscordId: string } | null = null;

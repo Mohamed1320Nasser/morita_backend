@@ -77,3 +77,36 @@ export async function getOrCreatePersonalInvite(
     logger.info(`[PersonalInvite] ✅ Created personal invite ${discordInvite.code} for ${label}`);
     return { inviteUrl: discordInvite.url, inviteCode: discordInvite.code, created: true };
 }
+
+/**
+ * A permanent invite for a marketing campaign (KPI plan, Feature 9). Joins
+ * through it are reported to the backend by guildMemberAdd.
+ */
+export async function createCampaignInvite(client: Client, guild: Guild, name: string) {
+    const channel =
+        guild.channels.cache.find(ch => ch.isTextBased() && (ch.name === "general" || ch.name === "welcome")) ||
+        guild.channels.cache.find(ch => ch.isTextBased());
+
+    if (!channel || !("createInvite" in channel)) {
+        throw new Error("No suitable channel found for invites");
+    }
+
+    const botMember = await guild.members.fetch(client.user!.id);
+    if (!botMember.permissions.has(PermissionFlagsBits.CreateInstantInvite)) {
+        throw new Error("Bot missing CREATE_INSTANT_INVITE permission");
+    }
+
+    const discordInvite = await channel.createInvite({
+        maxAge: 0,
+        maxUses: 0,
+        unique: true,
+        reason: `Campaign invite: ${name}`.slice(0, 500),
+    });
+
+    // Snapshot it at 0 uses so the first join through it is detected
+    client.inviteCache?.addInvite(guild.id, discordInvite);
+
+    logger.info(`[CampaignInvite] ✅ Created ${discordInvite.code} for campaign "${name}"`);
+    return { inviteUrl: discordInvite.url, inviteCode: discordInvite.code };
+}
+

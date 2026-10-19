@@ -62,7 +62,7 @@ import { startBot } from "./index";
 import discordClient from "./index";
 import prisma from "../common/prisma/client";
 import { getTicketService } from "./services/ticket.service";
-import { getOrCreatePersonalInvite } from "./services/personalInvite.service";
+import { getOrCreatePersonalInvite, createCampaignInvite } from "./services/personalInvite.service";
 
 logger.info("Discord bot startup script loaded - starting bot explicitly...");
 startBot();
@@ -546,6 +546,34 @@ function hasBotApiKey(req: express.Request): boolean {
  * an admin can send a user their link. Same invite as /referral gives them.
  * Requires the bot API key.
  */
+app.post("/discord/campaign/invite", async (req, res) => {
+    if (!hasBotApiKey(req)) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
+
+    try {
+        if (!discordClient.isReady()) {
+            return res.status(400).json({ success: false, error: "Discord bot not connected" });
+        }
+
+        const name = String(req.body?.name || "").trim();
+        if (!name) {
+            return res.status(400).json({ success: false, error: "A campaign name is required" });
+        }
+
+        const guild = discordClient.guilds.cache.get(discordConfig.guildId);
+        if (!guild) {
+            return res.status(400).json({ success: false, error: "Discord server not found" });
+        }
+
+        const invite = await createCampaignInvite(discordClient, guild, name);
+        res.json({ success: true, data: invite });
+    } catch (error: any) {
+        logger.error(`[Bot API] Failed to create campaign invite: ${error?.message}`);
+        res.status(500).json({ success: false, error: error?.message || "Could not create the invite" });
+    }
+});
+
 app.post("/discord/referral/invite", async (req, res) => {
     if (!hasBotApiKey(req)) {
         return res.status(401).json({ success: false, error: "Unauthorized" });

@@ -124,6 +124,22 @@ export default class DiscordTicketController {
     }
 
     /**
+     * Why the ticket closed without an order, picked by support in Discord.
+     * Body: { reason, discordId }
+     */
+    @Post("/:id/no-order-reason")
+    async setNoOrderReason(
+        @Param("id") id: string,
+        @Body() data: { reason: string; discordId: string }
+    ) {
+        const result = await this.ticketService.setNoOrderReason(id, data.reason, data.discordId);
+        return {
+            success: true,
+            data: result,
+        };
+    }
+
+    /**
      * Store one piece of the HTML transcript generated when the ticket closes.
      * Query: uploadId, part (0-based), parts. Body: raw bytes
      * (application/octet-stream, parsed in app.ts).

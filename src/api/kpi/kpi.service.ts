@@ -19,6 +19,8 @@ import {
     startOfBusinessPeriod,
 } from "../../common/utils/businessTime.util";
 import { getStaffDiscordIds, nonStaffUserWhere } from "../../common/utils/staff.util";
+import { NO_ORDER_REASONS } from "../../common/constants/noOrderReasons.constants";
+import { CUSTOMER_TIERS, customerTierFor } from "../../common/utils/customerTier.util";
 
 // Revenue only counts orders that completed; an order still pending or
 // cancelled is not money earned, even though its ticket did convert.
@@ -264,12 +266,20 @@ export default class KpiService {
             const cohortAnalysis = await this.getCohortRetention({ startDate: gte, endDate: lte, minOrderValue, includeAllStatuses });
             const timeAnalysis = this.calculateTimeMetrics(customersWithOrders);
 
+            // Customers per repeat-customer tier, by orders in the period
+            const tierDistribution = CUSTOMER_TIERS.map(tier => ({
+                tier: tier.name,
+                emoji: tier.emoji,
+                customers: customersWithOrders.filter(c => customerTierFor(c.customerOrders.length).name === tier.name).length,
+            }));
+
             return {
                 summary,
                 distribution,
                 topCustomers,
                 cohortAnalysis,
-                timeAnalysis
+                timeAnalysis,
+                tierDistribution
             };
 
         } catch (error) {
@@ -381,7 +391,8 @@ export default class KpiService {
                     daysSinceLastOrder,
                     loyaltyTier: customer.loyaltyTier
                         ? `${customer.loyaltyTier.emoji} ${customer.loyaltyTier.name}`
-                        : null
+                        : null,
+                    customerTier: (({ emoji, name }) => `${emoji} ${name}`)(customerTierFor(orders.length))
                 };
             })
             .sort((a, b) => b.totalSpent - a.totalSpent)
@@ -863,13 +874,54 @@ export default class KpiService {
                 conversionByService,
                 fastestConversions: fastest,
                 slowestConversions: slowest,
-                unconvertedTickets: unconverted
+                unconvertedTickets: unconverted,
+                noOrderReasons: await this.noOrderReasonBreakdown(ticketsWithoutOrders),
             };
 
         } catch (error) {
             logger.error("[KPI] Failed to calculate ticket-to-order conversion:", error);
             throw error;
         }
+    }
+
+    /** Closed tickets without an order, grouped by the reason support picked */
+    private async noOrderReasonBreakdown(ticketsWithoutOrders: any[]) {
+        const closed = ticketsWithoutOrders.filter(t => ['CLOSED', 'CANCELLED', 'COMPLETED'].includes(t.status));
+        const withReason = closed.filter(t => t.noOrderReason);
+
+        const byReason = (Object.keys(NO_ORDER_REASONS) as Array<keyof typeof NO_ORDER_REASONS>).map(reason => {
+            const count = withReason.filter(t => t.noOrderReason === reason).length;
+            return {
+                reason,
+                label: NO_ORDER_REASONS[reason],
+                count,
+                percentage: withReason.length ? Math.round((count / withReason.length) * 1000) / 10 : 0,
+            };
+        });
+
+        const staffIds = Array.from(new Set(withReason.map(t => t.noOrderReasonDiscordId).filter(Boolean))) as string[];
+        const staff = staffIds.length
+            ? await prisma.user.findMany({
+                  where: { discordId: { in: staffIds } },
+                  select: { discordId: true, username: true, discordUsername: true, discordDisplayName: true },
+              })
+            : [];
+        const staffName = new Map(staff.map(u => [u.discordId, u.discordDisplayName || u.discordUsername || u.username]));
+
+        const byStaff = staffIds.map(discordId => {
+            const picked = withReason.filter(t => t.noOrderReasonDiscordId === discordId);
+            const reasons: Record<string, number> = {};
+            picked.forEach(t => { reasons[t.noOrderReason] = (reasons[t.noOrderReason] || 0) + 1; });
+            return { discordId, name: staffName.get(discordId) || discordId, count: picked.length, reasons };
+        }).sort((a, b) => b.count - a.count);
+
+        return {
+            closedWithoutOrder: closed.length,
+            withReason: withReason.length,
+            withoutReason: closed.length - withReason.length,
+            byReason,
+            byStaff,
+        };
     }
 
     private calculateConversionSummary(totalTickets: number, conversions: any[], period: string, gte: Date | undefined, lte: Date | undefined) {
@@ -2422,6 +2474,78 @@ export default class KpiService {
     // ============================================
     // ORDER COMPLETION TIME KPI
     // ============================================
+
+    /**
+     * KPI plan, Feature 7: time spent at each stage of an order, for orders
+     * created in the period. Each average only uses orders that reached both
+     * ends of that stage. A claimed job counts as assigned when claimed.
+     */
+    async getOrderLifecycle(query: any): Promise<any> {
+        const { period, startDate, endDate } = query;
+        const { gte, lte } = this.calculateDateRange(period, startDate, endDate);
+
+        const orders = await prisma.order.findMany({
+            where: { createdAt: { gte, lte } },
+            select: {
+                createdAt: true,
+                assignedAt: true,
+                claimedAt: true,
+                startedAt: true,
+                completedAt: true,
+                confirmedAt: true,
+                supportId: true,
+                support: { select: { username: true, discordUsername: true, discordDisplayName: true } },
+                ticket: { select: { createdAt: true } },
+            },
+        });
+
+        const minutesBetween = (from?: Date | null, to?: Date | null) =>
+            from && to && to.getTime() >= from.getTime() ? (to.getTime() - from.getTime()) / 60000 : null;
+
+        const STAGES = [
+            { key: 'ticketToOrder', label: 'Ticket → Order', span: (o: any) => minutesBetween(o.ticket?.createdAt, o.createdAt) },
+            { key: 'orderToAssigned', label: 'Order → Assigned', span: (o: any) => minutesBetween(o.createdAt, o.assignedAt || o.claimedAt) },
+            { key: 'assignedToStarted', label: 'Assigned → Started', span: (o: any) => minutesBetween(o.assignedAt || o.claimedAt, o.startedAt) },
+            { key: 'startedToCompleted', label: 'Started → Completed', span: (o: any) => minutesBetween(o.startedAt, o.completedAt) },
+            { key: 'completedToConfirmed', label: 'Completed → Confirmed', span: (o: any) => minutesBetween(o.completedAt, o.confirmedAt) },
+        ];
+
+        const summarise = (list: any[]) =>
+            STAGES.map(stage => {
+                const spans = list.map(stage.span).filter((m): m is number => m !== null);
+                return {
+                    key: stage.key,
+                    label: stage.label,
+                    orders: spans.length,
+                    avgMinutes: spans.length
+                        ? Math.round((spans.reduce((a, b) => a + b, 0) / spans.length) * 10) / 10
+                        : null,
+                };
+            });
+
+        // Same stages per support member who created the orders
+        const bySupport = new Map<number, { name: string; orders: any[] }>();
+        orders.forEach(order => {
+            if (!order.supportId) return;
+            const entry = bySupport.get(order.supportId) || {
+                name: order.support?.discordDisplayName || order.support?.discordUsername || order.support?.username || `#${order.supportId}`,
+                orders: [],
+            };
+            entry.orders.push(order);
+            bySupport.set(order.supportId, entry);
+        });
+
+        return {
+            summary: { period: period || 'monthly', startDate: gte || null, endDate: lte || null, totalOrders: orders.length },
+            stages: summarise(orders),
+            bySupport: Array.from(bySupport.entries()).map(([supportId, entry]) => ({
+                supportId,
+                supportName: entry.name,
+                orders: entry.orders.length,
+                stages: summarise(entry.orders),
+            })),
+        };
+    }
 
     async getOrderCompletionTime(query: any): Promise<any> {
         const { period, startDate, endDate } = query;

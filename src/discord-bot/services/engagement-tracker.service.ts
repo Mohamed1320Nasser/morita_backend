@@ -409,6 +409,44 @@ export default class EngagementTrackerService {
     }
 
     /**
+     * Staff mark a member as helpful (KPI plan, Feature 3). Counts like a
+     * helpful reaction received today, so it adds to the engagement score.
+     */
+    async markHelpful(member: { id: string; username: string; displayName?: string | null }): Promise<void> {
+        const now = new Date();
+        const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+
+        const current = await prisma.discordEngagement.findUnique({
+            where: { discordId_date: { discordId: member.id, date: today } },
+        });
+
+        const counts = {
+            messagesCount: current?.messagesCount || 0,
+            reactionsGiven: current?.reactionsGiven || 0,
+            reactionsReceived: current?.reactionsReceived || 0,
+            helpfulReactions: (current?.helpfulReactions || 0) + 1,
+        };
+
+        await prisma.discordEngagement.upsert({
+            where: { discordId_date: { discordId: member.id, date: today } },
+            update: {
+                helpfulReactions: counts.helpfulReactions,
+                engagementScore: this.calculateEngagementScore(counts),
+            },
+            create: {
+                discordId: member.id,
+                username: member.username,
+                displayName: member.displayName || null,
+                date: today,
+                helpfulReactions: 1,
+                engagementScore: this.calculateEngagementScore(counts),
+            },
+        });
+
+        logger.info(`[EngagementTracker] ${member.username} marked helpful`);
+    }
+
+    /**
      * Calculate engagement score based on activity
      * Formula: Messages(1) + ReactionsGiven(0.5) + ReactionsReceived(0.3) + HelpfulReactions(2)
      */

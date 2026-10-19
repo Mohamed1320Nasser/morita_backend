@@ -87,4 +87,14 @@ export interface TicketConversionResponse {
     fastestConversions: TicketConversionDetail[];
     slowestConversions: TicketConversionDetail[];
     unconvertedTickets: UnconvertedTicket[];
+    noOrderReasons: NoOrderReasonBreakdown;
+}
+
+/** Why closed tickets had no order, as picked by support (KPI plan, Feature 2) */
+export interface NoOrderReasonBreakdown {
+    closedWithoutOrder: number;
+    withReason: number;
+    withoutReason: number;
+    byReason: Array<{ reason: string; label: string; count: number; percentage: number }>;
+    byStaff: Array<{ discordId: string; name: string; count: number; reasons: Record<string, number> }>;
 }

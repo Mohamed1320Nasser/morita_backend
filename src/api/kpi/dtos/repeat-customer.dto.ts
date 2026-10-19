@@ -60,6 +60,8 @@ export interface TopCustomer {
     lastOrderDate: Date;
     daysSinceLastOrder: number;
     loyaltyTier: string | null;
+    /** Repeat-customer tier by order count (KPI plan, Feature 4) */
+    customerTier: string;
 }
 
 export interface CohortAnalysis {
@@ -81,4 +83,5 @@ export interface RepeatCustomerResponse {
     topCustomers: TopCustomer[];
     cohortAnalysis: CohortAnalysis[];
     timeAnalysis: TimeAnalysis;
+    tierDistribution: Array<{ tier: string; emoji: string; customers: number }>;
 }

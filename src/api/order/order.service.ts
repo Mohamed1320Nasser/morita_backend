@@ -35,6 +35,8 @@ import {
     startOfBusinessDay,
 } from "../../common/utils/businessTime.util";
 
+import { accountDataService } from "../account-data/account-data.service";
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // The worker's share of an order as saved when the order was created (the
@@ -478,8 +480,13 @@ export default class OrderService {
                         claimedAt: true,
                         claimedBy: true,
                         claimedByRole: true,
+                        clearedAt: true,
                         // Note: encryptedData is NOT included for security
                     },
+                },
+                accountDataAccessLogs: {
+                    orderBy: { createdAt: "desc" },
+                    take: 50,
                 },
                 // Include issues
                 issues: {
@@ -537,6 +544,7 @@ export default class OrderService {
                 claimedAt: order.accountData.claimedAt,
                 claimedBy: order.accountData.claimedBy,
                 claimedByRole: order.accountData.claimedByRole,
+                clearedAt: order.accountData.clearedAt,
                 claimedByName: order.accountData.claimedByRole === 'worker'
                     ? (order.worker?.fullname || order.worker?.username || order.accountData.claimedBy)
                     : (order.support?.fullname || order.support?.username || order.accountData.claimedBy),
@@ -1280,6 +1288,7 @@ export default class OrderService {
         if (data.status === OrderStatus.COMPLETED && !order.payoutProcessed) {
             try {
                 await this.processOrderPayouts(orderId);
+                await this.clearFinishedOrderAccountData(orderId, "Order completed");
             } catch (error) {
                 logger.error(
                     `[OrderService] Payout failed for order ${orderId} after status change to COMPLETED:`,
@@ -1381,6 +1390,18 @@ export default class OrderService {
         });
     }
 
+    /**
+     * Credentials are wiped once an order is finished (KPI plan, Part 2 #6).
+     * Best effort: a failure here must not undo the completion or refund.
+     */
+    private async clearFinishedOrderAccountData(orderId: string, reason: string) {
+        try {
+            await accountDataService.clearAccountData(orderId, "system", reason);
+        } catch (error) {
+            logger.warn(`[OrderService] Could not clear account data for order ${orderId}: ${error}`);
+        }
+    }
+
     async confirmOrderCompletion(data: ConfirmOrderDto) {
         const order = await this.getOrderById(data.orderId);
 
@@ -1417,6 +1438,7 @@ export default class OrderService {
         });
 
         await this.processOrderPayouts(data.orderId);
+        await this.clearFinishedOrderAccountData(data.orderId, "Order completed");
 
         // Resolve any open or in-review issues for this order
         try {
@@ -1925,6 +1947,8 @@ export default class OrderService {
                 `worker deposit returned $${workerDeposit.toFixed(2)}, ` +
                 `forfeited to system $${forfeitedAmount.toFixed(2)}`
         );
+
+        await this.clearFinishedOrderAccountData(data.orderId, "Order cancelled");
 
         return this.getOrderById(data.orderId);
     }
