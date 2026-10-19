@@ -36,6 +36,7 @@ import { handlePricingPagination } from "./pricing-pagination.button";
 import { handleClaimJobButton } from "./claim-job.button";
 import { handleConfirmCompleteButton } from "./confirm-complete.button";
 import { handleReportIssueButton } from "./report-issue.button";
+import { handleNoOrderReasonButton } from "./no-order-reason.button";
 import { handleOrderInfoButton } from "./order-info.button";
 import { handleStartWork } from "./start-work.button";
 import { handleLeaveReviewButton } from "./leave-review.button";
@@ -195,6 +196,11 @@ export async function handleButtonInteraction(
 
         if (customId.startsWith("confirm_complete_")) {
             await handleConfirmCompleteButton(interaction);
+            return;
+        }
+
+        if (customId.startsWith("no_order_reason_")) {
+            await handleNoOrderReasonButton(interaction);
             return;
         }
 

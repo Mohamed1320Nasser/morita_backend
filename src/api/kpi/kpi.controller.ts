@@ -11,6 +11,7 @@ import { Service } from "typedi";
 import KpiService from "./kpi.service";
 import { RecordMemberActivityDto, MemberGrowthQueryDto, RepeatCustomerQueryDto, SupportResponseQueryDto, TicketConversionQueryDto, PeakTimesQueryDto, SupportReplySpeedQueryDto, OrderIssuesQueryDto, OrderCompletionTimeQueryDto, ServiceRequestQueryDto } from "./dtos";
 import API from "../../common/config/api.types";
+import { parseRangeEnd, parseRangeStart } from "../../common/utils/businessTime.util";
 
 @JsonController("/kpi")
 @Service()
@@ -26,8 +27,8 @@ export default class KpiController {
     @Authorized(API.Role.system)
     @HttpCode(200)
     async getMemberGrowth(@QueryParams() query: MemberGrowthQueryDto) {
-        const startDate = query.startDate ? new Date(query.startDate) : undefined;
-        const endDate = query.endDate ? new Date(query.endDate) : undefined;
+        const startDate = query.startDate ? parseRangeStart(query.startDate) : undefined;
+        const endDate = query.endDate ? parseRangeEnd(query.endDate) : undefined;
 
         return this.kpiService.getMemberGrowth(
             query.period || 'monthly',
@@ -126,6 +127,13 @@ export default class KpiController {
     @HttpCode(200)
     async getOrderCompletionTime(@QueryParams() query: any) {
         return this.kpiService.getOrderCompletionTime(query);
+    }
+
+    @Get("/order-lifecycle")
+    @Authorized(API.Role.system)
+    @HttpCode(200)
+    async getOrderLifecycle(@QueryParams() query: any) {
+        return this.kpiService.getOrderLifecycle(query);
     }
 
     @Get("/financial-overview")

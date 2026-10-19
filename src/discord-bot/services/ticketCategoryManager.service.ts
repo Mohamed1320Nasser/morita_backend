@@ -272,6 +272,15 @@ export class TicketCategoryManager {
         try {
             const messagePersistence = getMessagePersistence(this.client);
 
+            // No active ticket type for this panel means no Open Ticket button.
+            // Posting it anyway put a dead panel in the channel (Swap Crypto
+            // kept coming back with its type switched off), so take it down.
+            if (messageData.components.length === 0) {
+                await messagePersistence.clearMessages(channel.id, "TICKET_MENU");
+                logger.info(`[TicketCategoryManager] No active ticket types for ${channel.name}, panel removed`);
+                return;
+            }
+
             await messagePersistence.ensureMessage(
                 channel.id,
                 "TICKET_MENU",

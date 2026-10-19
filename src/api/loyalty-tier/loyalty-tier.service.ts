@@ -3,6 +3,7 @@ import prisma from '../../common/prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import logger from '../../common/loggers';
 import { NotFoundError, BadRequestError } from 'routing-controllers';
+import { isStaffUser } from '../../common/utils/staff.util';
 import { CreateLoyaltyTierDto, UpdateLoyaltyTierDto } from './dtos';
 //  const { getDiscordClient } = import('../../discord-bot');
 
@@ -50,7 +51,6 @@ export default class LoyaltyTierService {
     totalSpent: Decimal;
   }> {
     const totalSpent = await this.calculateUserTotalSpending(userId);
-    const newTier = await this.getTierForSpending(totalSpent);
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -60,6 +60,9 @@ export default class LoyaltyTierService {
     if (!user) {
       throw new NotFoundError(`User ${userId} not found`);
     }
+
+    // Staff and the company account never hold a customer tier (or its discount)
+    const newTier = isStaffUser(user) ? null : await this.getTierForSpending(totalSpent);
 
     const oldTier = user.loyaltyTier;
     const oldTierId = user.loyaltyTierId;

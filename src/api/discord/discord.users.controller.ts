@@ -6,6 +6,7 @@ import {
 import { Service } from 'typedi';
 import prisma from '../../common/prisma/client';
 import { NotFoundError } from 'routing-controllers';
+import { customerTierFor } from '../../common/utils/customerTier.util';
 
 @Service()
 @JsonController('/discord/users')
@@ -31,6 +32,15 @@ export default class DiscordUsersController {
     }
 
     return user;
+  }
+
+  /** Repeat-customer tier for the ticket welcome message (KPI plan, Feature 4) */
+  @Get('/discord/:discordId/customer-tier')
+  async getCustomerTier(@Param('discordId') discordId: string) {
+    const completedOrders = await prisma.order.count({
+      where: { status: 'COMPLETED', customer: { discordId } },
+    });
+    return customerTierFor(completedOrders);
   }
 
   @Get('/:userId')

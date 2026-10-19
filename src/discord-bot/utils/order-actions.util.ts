@@ -360,7 +360,10 @@ export async function confirmOrderCompletion(
     logger.info(`[ConfirmOrderUtil] Confirming order #${orderData.orderNumber} by ${confirmedByDiscordId}`);
 
     const orderValue = parseFloat(orderData.orderValue);
-    const workerPayout = orderValue * 0.8; 
+    // The split is set in System Settings and the backend stores the actual
+    // payout on the order when it completes; read it rather than assuming 80%.
+    const workerPayout = parseFloat(orderData.workerPayout ?? "0");
+    const workerShare = orderValue > 0 ? Math.round((workerPayout / orderValue) * 1000) / 10 : 0;
 
     const customerEmbed = new EmbedBuilder()
         .setTitle("✅ Order Confirmed!")
@@ -559,7 +562,7 @@ export async function confirmOrderCompletion(
                     name: "✅ Payment Details",
                     value:
                         `• Order value: $${orderValue.toFixed(2)}\n` +
-                        `• Your earnings (80%): $${workerPayout.toFixed(2)}\n` +
+                        `• Your earnings (${workerShare}%): $${workerPayout.toFixed(2)}\n` +
                         `• Deposit returned: $${parseFloat(orderData.depositAmount || 0).toFixed(2)}\n` +
                         `• Payment has been added to your balance`,
                     inline: false

@@ -202,13 +202,16 @@ export class CompletedOrdersChannelService {
         const completedAt = order.completedAt ? new Date(order.completedAt) : new Date();
         const completedTimestamp = Math.floor(completedAt.getTime() / 1000);
 
+        // Author line rather than title: the embed carries a URL so Discord
+        // groups the screenshots into one gallery, and a title would turn
+        // that URL into a link on the order number.
         const embed = new EmbedBuilder()
             .setColor(0xfca311 as ColorResolvable)
-            .setTitle(
-                inProgress
+            .setAuthor({
+                name: inProgress
                     ? `🔄 Order #${orderNumber} — In Progress`
-                    : `🎉 Order #${orderNumber} — Completed`
-            )
+                    : `🎉 Order #${orderNumber} — Completed`,
+            })
             .setTimestamp();
 
         // Embeds shrink to fit their text, which leaves a narrow block of text
@@ -254,10 +257,14 @@ export class CompletedOrdersChannelService {
             descriptionParts.push(`⏱️ **Completion Time:** ${durationStr}`);
         }
 
-        // Completion notes (if any)
+        // Notes sit right above the proof images; shown even when empty so
+        // the slot is visible on every completed order
         if (order.completionNotes) {
             descriptionParts.push("");
             descriptionParts.push(`📝 **Notes:** *"${order.completionNotes.substring(0, 300)}"*`);
+        } else if (!inProgress) {
+            descriptionParts.push("");
+            descriptionParts.push("📝 **Notes:** No notes");
         }
 
         const screenshots = (order.proofScreenshots as string[] | null) || [];

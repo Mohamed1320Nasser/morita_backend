@@ -29,8 +29,10 @@ export async function getActiveTicketTypesForGroup(groupKey: string) {
         logger.warn(`No ticket types found for group: ${groupKey}`);
         return [];
     } catch (error) {
+        // Rethrown rather than read as "no active types": an empty list now
+        // takes the panel down, and a backend hiccup must not do that
         logger.error(`Error fetching ticket types for group ${groupKey}:`, error);
-        return [];
+        throw error;
     }
 }
 

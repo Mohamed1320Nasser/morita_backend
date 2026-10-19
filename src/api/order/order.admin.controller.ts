@@ -42,6 +42,12 @@ export default class AdminOrderController {
     }
 
     @Authorized(API.Role.admin)
+    @Get("/stats/performance")
+    async getOrderPerformanceStats(@QueryParams() query: { days?: number; startDate?: string; endDate?: string }) {
+        return await this.orderService.getOrderPerformanceStats(query);
+    }
+
+    @Authorized(API.Role.admin)
     @Get("/activity/recent")
     async getRecentActivity() {
         return await this.orderService.getRecentActivity();

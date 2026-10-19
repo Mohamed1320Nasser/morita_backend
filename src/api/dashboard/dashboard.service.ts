@@ -2,6 +2,20 @@ import { Service } from "typedi";
 import prisma from "../../common/prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
 import WalletService from "../wallet/wallet.service";
+import { startOfBusinessDay, startOfBusinessMonth } from "../../common/utils/businessTime.util";
+
+// Members who joined through Discord often have no username, which showed as
+// "null registered"; fall back to their Discord names.
+const displayNameSelect = {
+    username: true,
+    discordUsername: true,
+    discordDisplayName: true,
+    discordId: true,
+} as const;
+
+const displayName = (
+    user: { username: string | null; discordUsername: string | null; discordDisplayName: string | null; discordId: string | null } | null | undefined
+) => user ? user.discordDisplayName || user.discordUsername || user.username || user.discordId : undefined;
 
 @Service()
 export default class DashboardService {
@@ -47,17 +61,10 @@ export default class DashboardService {
     }
 
     public async getAdminDashboardStats() {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const monthStart = new Date();
-        monthStart.setDate(1);
-        monthStart.setHours(0, 0, 0, 0);
-
-        const lastMonthStart = new Date();
-        lastMonthStart.setMonth(lastMonthStart.getMonth() - 1);
-        lastMonthStart.setDate(1);
-        lastMonthStart.setHours(0, 0, 0, 0);
+        // Day and month boundaries on the business clock, as in the KPIs
+        const today = startOfBusinessDay();
+        const monthStart = startOfBusinessMonth();
+        const lastMonthStart = startOfBusinessMonth(new Date(), 1);
 
         const [
             totalOrders,
@@ -152,6 +159,21 @@ export default class DashboardService {
             this.walletService.getSystemWallet(),
         ]);
 
+        // Operating expenses come off profit here too, so the home page and
+        // KPIs > Financial show the same net profit
+        const [monthExpenses, lastMonthExpenses] = await Promise.all([
+            prisma.operationalExpense.aggregate({
+                where: { date: { gte: monthStart } },
+                _sum: { amount: true },
+            }),
+            prisma.operationalExpense.aggregate({
+                where: { date: { gte: lastMonthStart, lt: monthStart } },
+                _sum: { amount: true },
+            }),
+        ]);
+        const expensesThisMonth = Number(monthExpenses._sum.amount || 0);
+        const expensesLastMonth = Number(lastMonthExpenses._sum.amount || 0);
+
         const orderGrowth = lastMonthOrders > 0
             ? ((monthOrders - lastMonthOrders) / lastMonthOrders) * 100
             : 0;
@@ -176,7 +198,7 @@ export default class DashboardService {
             return sum + (order.systemPayout
                 ? new Decimal(order.systemPayout.toString()).toNumber()
                 : 0);
-        }, 0);
+        }, 0) - expensesThisMonth;
 
         const profitMargin = revenueThisMonth > 0
             ? (netProfit / revenueThisMonth) * 100
@@ -186,7 +208,7 @@ export default class DashboardService {
             return sum + (order.systemPayout
                 ? new Decimal(order.systemPayout.toString()).toNumber()
                 : 0);
-        }, 0);
+        }, 0) - expensesLastMonth;
 
         const profitGrowth = lastMonthProfit > 0
             ? ((netProfit - lastMonthProfit) / lastMonthProfit) * 100
@@ -261,12 +283,8 @@ export default class DashboardService {
             take: 20,
             orderBy: { createdAt: "desc" },
             include: {
-                customer: {
-                    select: { username: true, discordId: true },
-                },
-                worker: {
-                    select: { username: true, discordId: true },
-                },
+                customer: { select: displayNameSelect },
+                worker: { select: displayNameSelect },
             },
         });
 
@@ -276,9 +294,7 @@ export default class DashboardService {
             include: {
                 wallet: {
                     include: {
-                        user: {
-                            select: { username: true, discordId: true },
-                        },
+                        user: { select: displayNameSelect },
                     },
                 },
             },
@@ -289,7 +305,7 @@ export default class DashboardService {
             orderBy: { createdAt: "desc" },
             select: {
                 id: true,
-                username: true,
+                ...displayNameSelect,
                 role: true,
                 createdAt: true,
             },
@@ -303,8 +319,8 @@ export default class DashboardService {
                 data: {
                     orderNumber: order.orderNumber,
                     status: order.status,
-                    customer: order.customer?.username,
-                    worker: order.worker?.username,
+                    customer: displayName(order.customer),
+                    worker: displayName(order.worker),
                     orderValue: new Decimal(
                         order.orderValue.toString()
                     ).toNumber(),
@@ -316,7 +332,7 @@ export default class DashboardService {
                 timestamp: tx.createdAt,
                 data: {
                     amount: new Decimal(tx.amount.toString()).toNumber(),
-                    username: tx.wallet.user?.username,
+                    username: displayName(tx.wallet.user),
                     walletType: tx.wallet.walletType,
                     status: tx.status,
                 },
@@ -326,7 +342,7 @@ export default class DashboardService {
                 action: "registered",
                 timestamp: user.createdAt,
                 data: {
-                    username: user.username,
+                    username: displayName(user),
                     role: user.role,
                 },
             })),

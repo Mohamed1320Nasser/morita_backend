@@ -536,6 +536,8 @@ model Order {
   referralOrderReward ReferralOrderReward? @relation("orderReferralReward")
   accountData        OrderAccountData?
 
+  accountDataAccessLogs AccountDataAccessLog[]
+
   @@index([customerId])
   @@index([workerId])
   @@index([status])
@@ -763,6 +765,8 @@ model Ticket {
   createdAt         DateTime     @default(now()) @db.DateTime(0)
   updatedAt         DateTime     @default(now()) @updatedAt @db.DateTime(0)
   closedAt          DateTime?    @db.DateTime(0)
+  // Why the ticket was closed, as typed by whoever closed it
+  closeReason       String?      @db.VarChar(500)
   // HTML transcript saved at close (private storage, served to admins only)
   transcriptFile      String?    @db.VarChar(255)
   transcriptCreatedAt DateTime?  @db.DateTime(0)
@@ -770,6 +774,12 @@ model Ticket {
   // Service Request Measurement KPI
   convertedToOrder Boolean   @default(false)
   conversionAt     DateTime? @db.DateTime(0)
+  // Why a ticket closed without an order, picked by support (KPI plan,
+  // Feature 2): PRICE_TOO_HIGH, NO_RESPONSE, FOUND_ELSEWHERE, NOT_READY,
+  // JUST_ASKING or OTHER
+  noOrderReason          String?   @db.VarChar(32)
+  noOrderReasonDiscordId String?   @db.VarChar(32)
+  noOrderReasonAt        DateTime? @db.DateTime(0)
 
   // Customer feedback for tickets that never become an order (gold, crypto)
   rating     Int?
@@ -1265,6 +1275,7 @@ model CryptoWallet {
   @@index([isActive])
 }
 
+
 // Crypto Transaction records (auto-detected payments)
 model CryptoTransaction {
   id       String       @id @default(uuid())
@@ -1393,6 +1404,22 @@ model AccountQuestion {
   @@index([templateId])
 }
 
+// Every attempt to open an order's account credentials, allowed or refused,
+// and when they were wiped (KPI plan, Part 2 #6: "every view is logged")
+model AccountDataAccessLog {
+  id        String   @id @default(uuid())
+  orderId   String
+  discordId String   @db.VarChar(32)
+  action    String   @db.VarChar(16) // VIEWED, DENIED, CLEARED
+  note      String?  @db.VarChar(255)
+  createdAt DateTime @default(now()) @db.DateTime(0)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([createdAt])
+}
+
 model OrderAccountData {
   id            String   @id @default(uuid())
   orderId       String   @unique
@@ -1405,6 +1432,8 @@ model OrderAccountData {
   claimedAt     DateTime? @db.DateTime(0)
   claimedBy     String?
   claimedByRole String?
+  // Credentials are wiped once the order is finished (KPI plan, Part 2 #6)
+  clearedAt     DateTime? @db.DateTime(0)
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
@@ -1740,3 +1769,37 @@ model PayoutConfig {
   @@map("payout_configs")
 }
 
+// Marketing campaign with its own Discord invite link (KPI plan, Feature 9:
+// Customer Acquisition Cost). Joins through the link are recorded as signups;
+// cost per signup / per paying customer and ROI are worked out from them.
+model MarketingCampaign {
+  id         String    @id @default(uuid())
+  name       String    @db.VarChar(120)
+  platform   String    @db.VarChar(60) // Sythe, Discord ads, Reddit, ...
+  budget     Decimal   @default(0) @db.Decimal(18, 2)
+  inviteCode String?   @unique @db.VarChar(32)
+  inviteUrl  String?   @db.VarChar(191)
+  startDate  DateTime  @default(now()) @db.DateTime(0)
+  endDate    DateTime? @db.DateTime(0)
+  isActive   Boolean   @default(true)
+  notes      String?   @db.Text
+  createdAt  DateTime  @default(now()) @db.DateTime(0)
+  updatedAt  DateTime  @default(now()) @updatedAt @db.DateTime(0)
+
+  signups CampaignSignup[]
+
+  @@map("marketing_campaigns")
+}
+
+model CampaignSignup {
+  id         String   @id @default(uuid())
+  campaignId String
+  discordId  String   @db.VarChar(32)
+  joinedAt   DateTime @default(now()) @db.DateTime(0)
+
+  campaign MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, discordId])
+  @@index([discordId])
+  @@map("campaign_signups")
+}

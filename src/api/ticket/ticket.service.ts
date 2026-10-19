@@ -16,6 +16,7 @@ import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
 import { Environment } from "../../common/config/environment";
+import { isNoOrderReason, NO_ORDER_REASONS } from "../../common/constants/noOrderReasons.constants";
 
 @Service()
 export default class TicketService {
@@ -519,6 +520,10 @@ export default class TicketService {
         const terminalStatuses: TicketStatus[] = [TicketStatus.COMPLETED, TicketStatus.CANCELLED, TicketStatus.CLOSED];
         if (terminalStatuses.includes(data.status)) {
             updateData.closedAt = new Date();
+            // The reason was shown in Discord and then lost
+            if (data.reason?.trim()) {
+                updateData.closeReason = data.reason.trim().slice(0, 500);
+            }
         }
 
         const updatedTicket = await prisma.ticket.update({
@@ -544,6 +549,38 @@ export default class TicketService {
         logger.info(`Ticket #${ticket.ticketNumber} status changed: ${ticket.status} -> ${data.status}`);
 
         return updatedTicket;
+    }
+
+    /**
+     * Record why a ticket closed without an order (KPI plan, Feature 2). The
+     * first answer stands, so two staff clicking at once cannot overwrite it.
+     */
+    async setNoOrderReason(id: string, reason: string, discordId: string) {
+        if (!isNoOrderReason(reason)) {
+            throw new BadRequestError(`Unknown reason. Use one of: ${Object.keys(NO_ORDER_REASONS).join(", ")}`);
+        }
+
+        const ticket = await prisma.ticket.findUnique({
+            where: { id },
+            select: { id: true, ticketNumber: true, convertedToOrder: true, noOrderReason: true },
+        });
+        if (!ticket) {
+            throw new NotFoundError("Ticket not found");
+        }
+        if (ticket.convertedToOrder) {
+            throw new BadRequestError("This ticket has an order, so it needs no reason");
+        }
+        if (ticket.noOrderReason) {
+            return { alreadySet: true, reason: ticket.noOrderReason, label: NO_ORDER_REASONS[ticket.noOrderReason as keyof typeof NO_ORDER_REASONS] };
+        }
+
+        await prisma.ticket.update({
+            where: { id },
+            data: { noOrderReason: reason, noOrderReasonDiscordId: discordId, noOrderReasonAt: new Date() },
+        });
+        logger.info(`Ticket #${ticket.ticketNumber} no-order reason: ${reason} (by ${discordId})`);
+
+        return { alreadySet: false, reason, label: NO_ORDER_REASONS[reason] };
     }
 
     /**
@@ -988,7 +1025,10 @@ export default class TicketService {
                 id: true,
                 ticketNumber: true,
                 ticketType: true,
+                status: true,
                 createdAt: true,
+                noOrderReason: true,
+                noOrderReasonDiscordId: true,
                 orders: {
                     orderBy: { createdAt: 'asc' },
                     take: 1,

@@ -20,6 +20,8 @@ import { ApiService } from "./api.service";
 import logger from "../../common/loggers";
 import { logTicketOpened, logTicketClosed } from "./ticketLog.service";
 import { createTicketTranscript } from "./ticketTranscript.service";
+import { unwrapApiData } from "../utils/apiResponse.util";
+import { buildNoOrderReasonPrompt } from "../interactions/buttons/no-order-reason.button";
 import { applyBrandThumbnail, applyCalculatorBranding } from "../utils/priceEmbed";
 import axios, { AxiosInstance } from "axios";
 import { getTicketChannelMover } from "./ticket-channel-mover.service";
@@ -894,6 +896,22 @@ export class TicketService {
                 });
             }
 
+            // Repeat-customer tier, so staff see who they are serving (KPI
+            // plan, Feature 4). Best effort: the ticket opens without it.
+            try {
+                const tierResponse = await this.apiClient.get(`/discord/users/discord/${user.id}/customer-tier`);
+                const tier = unwrapApiData<any>(tierResponse);
+                if (tier?.name) {
+                    embed.addFields({
+                        name: "🏅 Customer Tier",
+                        value: `${tier.emoji} **${tier.name}** · ${tier.completedOrders} completed order${tier.completedOrders === 1 ? "" : "s"}`,
+                        inline: false,
+                    });
+                }
+            } catch (error) {
+                logger.debug(`[TicketService] Could not load customer tier for ${user.id}`);
+            }
+
             // Add customer Q&A if provided
             if (customerNotes && customerNotes.trim()) {
                 embed.addFields({
@@ -1438,6 +1456,14 @@ export class TicketService {
             }
 
             await channel.send({ embeds: [closeEmbed.toJSON() as any] });
+
+            // No order came out of this ticket: support records why (KPI
+            // plan, Feature 2)
+            if (!ticket.convertedToOrder) {
+                await channel.send(buildNoOrderReasonPrompt(ticketId)).catch(err =>
+                    logger.warn(`[CloseTicket] Could not post the no-order reason prompt: ${err.message}`)
+                );
+            }
 
             // Transcript + log run in the background: exporting a long chat with
             // images can take a while, and the channel exists for days before

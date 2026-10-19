@@ -8,6 +8,24 @@ import OrderService from "../order/order.service";
 import WorkerFeedbackService from "../workerFeedback/worker-feedback.service";
 import DiscordChannelsService from "../discord/discord.channels.service";
 import { OrderStatus } from "../order/dtos/common.dto";
+import {
+    businessDateKey,
+    businessHour,
+    businessParts,
+    businessTime,
+    businessWeekday,
+    parseRangeEnd,
+    parseRangeStart,
+    startOfBusinessPeriod,
+} from "../../common/utils/businessTime.util";
+import { getStaffDiscordIds, nonStaffUserWhere } from "../../common/utils/staff.util";
+import { NO_ORDER_REASONS } from "../../common/constants/noOrderReasons.constants";
+import { CUSTOMER_TIERS, customerTierFor } from "../../common/utils/customerTier.util";
+
+// Revenue only counts orders that completed; an order still pending or
+// cancelled is not money earned, even though its ticket did convert.
+const completedValue = (order: { status: string; orderValue: any }) =>
+    order.status === OrderStatus.COMPLETED ? parseFloat(order.orderValue.toString()) : 0;
 
 @Service()
 export default class KpiService {
@@ -55,33 +73,10 @@ export default class KpiService {
     }
 
     async getMemberGrowth(period: string = 'monthly', startDate?: Date, endDate?: Date) {
-        const now = new Date();
-        let gte: Date;
-        let lte: Date = endDate || now;
-
-        if (startDate) {
-            gte = startDate;
-        } else {
-            switch (period) {
-                case 'daily':
-                    gte = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-                    break;
-                case 'weekly':
-                    gte = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-                    break;
-                case 'monthly':
-                    gte = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-                    break;
-                case 'quarterly':
-                    gte = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-                    break;
-                case 'yearly':
-                    gte = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-                    break;
-                default:
-                    gte = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-            }
-        }
+        // Calendar periods on the business clock, like every other KPI ("this
+        // month" used to mean the last 30 days here). "all" starts at the epoch.
+        const lte: Date = endDate || new Date();
+        const gte: Date = startDate || startOfBusinessPeriod(period) || new Date(0);
 
         // Get all activities in the period
         const activities = await prisma.memberActivity.findMany({
@@ -168,7 +163,7 @@ export default class KpiService {
         const grouped: { [key: string]: { joins: number; leaves: number; kicks: number; bans: number } } = {};
 
         activities.forEach(activity => {
-            const dateKey = activity.timestamp.toISOString().split('T')[0]; // YYYY-MM-DD
+            const dateKey = businessDateKey(activity.timestamp); // YYYY-MM-DD
 
             if (!grouped[dateKey]) {
                 grouped[dateKey] = { joins: 0, leaves: 0, kicks: 0, bans: 0 };
@@ -271,12 +266,20 @@ export default class KpiService {
             const cohortAnalysis = await this.getCohortRetention({ startDate: gte, endDate: lte, minOrderValue, includeAllStatuses });
             const timeAnalysis = this.calculateTimeMetrics(customersWithOrders);
 
+            // Customers per repeat-customer tier, by orders in the period
+            const tierDistribution = CUSTOMER_TIERS.map(tier => ({
+                tier: tier.name,
+                emoji: tier.emoji,
+                customers: customersWithOrders.filter(c => customerTierFor(c.customerOrders.length).name === tier.name).length,
+            }));
+
             return {
                 summary,
                 distribution,
                 topCustomers,
                 cohortAnalysis,
-                timeAnalysis
+                timeAnalysis,
+                tierDistribution
             };
 
         } catch (error) {
@@ -388,7 +391,8 @@ export default class KpiService {
                     daysSinceLastOrder,
                     loyaltyTier: customer.loyaltyTier
                         ? `${customer.loyaltyTier.emoji} ${customer.loyaltyTier.name}`
-                        : null
+                        : null,
+                    customerTier: (({ emoji, name }) => `${emoji} ${name}`)(customerTierFor(orders.length))
                 };
             })
             .sort((a, b) => b.totalSpent - a.totalSpent)
@@ -472,34 +476,16 @@ export default class KpiService {
         };
     }
 
+    /**
+     * Periods are calendar periods on the business clock (BUSINESS_TIMEZONE),
+     * not the server's UTC clock. A date-only endDate covers that whole day, so
+     * a range ending "today" includes today's tickets and orders.
+     */
     private calculateDateRange(period?: string, startDate?: string, endDate?: string) {
-        const now = new Date();
-        let gte: Date | undefined;
-        let lte: Date | undefined = endDate ? new Date(endDate) : undefined;
-
-        if (startDate) {
-            gte = new Date(startDate);
-        } else if (period) {
-            switch (period) {
-                case 'yearly':
-                    gte = new Date(now.getFullYear(), 0, 1);
-                    break;
-                case 'quarterly':
-                    const currentQuarter = Math.floor(now.getMonth() / 3);
-                    gte = new Date(now.getFullYear(), currentQuarter * 3, 1);
-                    break;
-                case 'monthly':
-                    gte = new Date(now.getFullYear(), now.getMonth(), 1);
-                    break;
-                case 'weekly':
-                    // Week starts Monday. getDay() is 0 for Sunday, so shift it.
-                    const dayOfWeek = (now.getDay() + 6) % 7;
-                    gte = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek);
-                    break;
-                default: // 'all'
-                    gte = undefined;
-            }
-        }
+        const lte: Date | undefined = endDate ? parseRangeEnd(endDate) : undefined;
+        const gte: Date | undefined = startDate
+            ? parseRangeStart(startDate)
+            : startOfBusinessPeriod(period);
 
         return { gte, lte };
     }
@@ -527,26 +513,11 @@ export default class KpiService {
             return { gte: new Date(gte.getTime() - span), lte: endsAt };
         }
 
-        let previousStart: Date;
-        switch (period) {
-            case 'yearly':
-                previousStart = new Date(gte.getFullYear() - 1, 0, 1);
-                break;
-            case 'quarterly':
-                previousStart = new Date(gte.getFullYear(), gte.getMonth() - 3, 1);
-                break;
-            case 'monthly':
-                previousStart = new Date(gte.getFullYear(), gte.getMonth() - 1, 1);
-                break;
-            case 'weekly':
-                previousStart = new Date(
-                    gte.getFullYear(),
-                    gte.getMonth(),
-                    gte.getDate() - 7
-                );
-                break;
-            default:
-                return { gte: undefined, lte: undefined };
+        // The previous period is the one containing the moment just before
+        // this one starts
+        const previousStart = startOfBusinessPeriod(period, endsAt);
+        if (!previousStart) {
+            return { gte: undefined, lte: undefined };
         }
 
         return { gte: previousStart, lte: endsAt };
@@ -826,7 +797,7 @@ export default class KpiService {
         const dayMap = new Map<number, any[]>();
 
         tickets.forEach(ticket => {
-            const day = ticket.ticketCreatedAt.getDay();
+            const day = businessWeekday(ticket.ticketCreatedAt);
             if (!dayMap.has(day)) {
                 dayMap.set(day, []);
             }
@@ -903,13 +874,54 @@ export default class KpiService {
                 conversionByService,
                 fastestConversions: fastest,
                 slowestConversions: slowest,
-                unconvertedTickets: unconverted
+                unconvertedTickets: unconverted,
+                noOrderReasons: await this.noOrderReasonBreakdown(ticketsWithoutOrders),
             };
 
         } catch (error) {
             logger.error("[KPI] Failed to calculate ticket-to-order conversion:", error);
             throw error;
         }
+    }
+
+    /** Closed tickets without an order, grouped by the reason support picked */
+    private async noOrderReasonBreakdown(ticketsWithoutOrders: any[]) {
+        const closed = ticketsWithoutOrders.filter(t => ['CLOSED', 'CANCELLED', 'COMPLETED'].includes(t.status));
+        const withReason = closed.filter(t => t.noOrderReason);
+
+        const byReason = (Object.keys(NO_ORDER_REASONS) as Array<keyof typeof NO_ORDER_REASONS>).map(reason => {
+            const count = withReason.filter(t => t.noOrderReason === reason).length;
+            return {
+                reason,
+                label: NO_ORDER_REASONS[reason],
+                count,
+                percentage: withReason.length ? Math.round((count / withReason.length) * 1000) / 10 : 0,
+            };
+        });
+
+        const staffIds = Array.from(new Set(withReason.map(t => t.noOrderReasonDiscordId).filter(Boolean))) as string[];
+        const staff = staffIds.length
+            ? await prisma.user.findMany({
+                  where: { discordId: { in: staffIds } },
+                  select: { discordId: true, username: true, discordUsername: true, discordDisplayName: true },
+              })
+            : [];
+        const staffName = new Map(staff.map(u => [u.discordId, u.discordDisplayName || u.discordUsername || u.username]));
+
+        const byStaff = staffIds.map(discordId => {
+            const picked = withReason.filter(t => t.noOrderReasonDiscordId === discordId);
+            const reasons: Record<string, number> = {};
+            picked.forEach(t => { reasons[t.noOrderReason] = (reasons[t.noOrderReason] || 0) + 1; });
+            return { discordId, name: staffName.get(discordId) || discordId, count: picked.length, reasons };
+        }).sort((a, b) => b.count - a.count);
+
+        return {
+            closedWithoutOrder: closed.length,
+            withReason: withReason.length,
+            withoutReason: closed.length - withReason.length,
+            byReason,
+            byStaff,
+        };
     }
 
     private calculateConversionSummary(totalTickets: number, conversions: any[], period: string, gte: Date | undefined, lte: Date | undefined) {
@@ -1051,10 +1063,18 @@ export default class KpiService {
                 lte
             );
 
+            // Day x hour grid for the heatmap: heatmap[weekday][hour], with
+            // weekday 0 = Sunday, on the business clock
+            const heatmap = Array.from({ length: 7 }, () => new Array(24).fill(0));
+            tickets.forEach(ticket => {
+                heatmap[businessWeekday(ticket.createdAt)][businessHour(ticket.createdAt)]++;
+            });
+
             return {
                 summary,
                 hourlyDistribution,
                 dailyDistribution,
+                heatmap,
                 peakTimesByType
             };
 
@@ -1068,7 +1088,7 @@ export default class KpiService {
         const hourCounts = new Array(24).fill(0);
 
         tickets.forEach(ticket => {
-            const hour = ticket.createdAt.getHours();
+            const hour = businessHour(ticket.createdAt);
             hourCounts[hour]++;
         });
 
@@ -1086,7 +1106,7 @@ export default class KpiService {
         const dayCounts = new Array(7).fill(0);
 
         tickets.forEach(ticket => {
-            const dayOfWeek = ticket.createdAt.getDay();
+            const dayOfWeek = businessWeekday(ticket.createdAt);
             dayCounts[dayOfWeek]++;
         });
 
@@ -1109,8 +1129,8 @@ export default class KpiService {
             }
 
             const typeData = typeMap.get(ticket.ticketType)!;
-            typeData.hours.push(ticket.createdAt.getHours());
-            typeData.days.push(ticket.createdAt.getDay());
+            typeData.hours.push(businessHour(ticket.createdAt));
+            typeData.days.push(businessWeekday(ticket.createdAt));
         });
 
         const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -1580,11 +1600,16 @@ export default class KpiService {
                 }
             });
 
-            // Calculate summary
-            const summary = this.calculateServiceRequestSummary(tickets, period || 'monthly', gte, lte);
-
             // Calculate service performance
             const servicePerformance = this.calculateServicePerformance(tickets);
+
+            // The counters are taken from the same rows as the table below
+            // them; they used to be missing, so the page showed 0 over a table
+            // listing several services.
+            const summary = {
+                ...this.calculateServiceRequestSummary(tickets, period || 'monthly', gte, lte),
+                ...this.serviceRequestCounters(servicePerformance, gte, lte),
+            };
 
             // Calculate category performance
             const categoryPerformance = this.calculateCategoryPerformance(tickets);
@@ -1599,6 +1624,25 @@ export default class KpiService {
             logger.error("[KPI] Failed to get service request metrics:", error);
             throw error;
         }
+    }
+
+    private serviceRequestCounters(
+        servicePerformance: Array<{ serviceName: string; inquiries: number }>,
+        gte: Date | null | undefined,
+        lte: Date | null | undefined
+    ) {
+        const totalRequests = servicePerformance.reduce((sum, row) => sum + row.inquiries, 0);
+        // "All time" has no start; it then averages over the days with data
+        const days = gte
+            ? Math.max(1, Math.ceil(((lte || new Date()).getTime() - gte.getTime()) / (24 * 60 * 60 * 1000)))
+            : null;
+
+        return {
+            totalRequests,
+            uniqueServices: servicePerformance.length,
+            mostPopularService: servicePerformance[0]?.serviceName || null,
+            avgRequestsPerDay: days ? parseFloat((totalRequests / days).toFixed(2)) : null,
+        };
     }
 
     private calculateServiceRequestSummary(tickets: any[], period: string, gte: Date | null | undefined, lte: Date | null | undefined) {
@@ -1755,6 +1799,7 @@ export default class KpiService {
                             id: true,
                             orderNumber: true,
                             orderValue: true,
+                            status: true,
                             createdAt: true
                         }
                     }
@@ -1797,7 +1842,7 @@ export default class KpiService {
             .filter(t => t.convertedToOrder && t.orders.length > 0)
             .reduce((sum, t) => {
                 const orderValue = t.orders.reduce((oSum: number, o: any) =>
-                    oSum + parseFloat(o.orderValue.toString()), 0);
+                    oSum + completedValue(o), 0);
                 return sum + orderValue;
             }, 0);
 
@@ -1856,7 +1901,7 @@ export default class KpiService {
 
                 // Add revenue
                 const orderRevenue = ticket.orders.reduce((sum: number, o: any) =>
-                    sum + parseFloat(o.orderValue.toString()), 0);
+                    sum + completedValue(o), 0);
                 stats.revenue += orderRevenue;
 
                 // Track conversion time
@@ -1911,7 +1956,7 @@ export default class KpiService {
             if (ticket.convertedToOrder) {
                 stats.conversions++;
                 const orderRevenue = ticket.orders.reduce((sum: number, o: any) =>
-                    sum + parseFloat(o.orderValue.toString()), 0);
+                    sum + completedValue(o), 0);
                 stats.revenue += orderRevenue;
             }
         });
@@ -1933,7 +1978,7 @@ export default class KpiService {
         const dateMap = new Map<string, { requests: number; conversions: number }>();
 
         tickets.forEach(ticket => {
-            const dateKey = ticket.createdAt.toISOString().split('T')[0]; // YYYY-MM-DD
+            const dateKey = businessDateKey(ticket.createdAt); // YYYY-MM-DD
 
             if (!dateMap.has(dateKey)) {
                 dateMap.set(dateKey, { requests: 0, conversions: 0 });
@@ -2054,8 +2099,18 @@ export default class KpiService {
             // than being folded into them.
             const staffFeedback = await this.workerFeedbackService.summaryByWorker(gte, lte);
 
+            // Orders that had at least one issue reported, for the issue rate
+            const issueRows = workerOrders.length
+                ? await prisma.orderIssue.findMany({
+                      where: { orderId: { in: workerOrders.map((o: any) => o.id) } },
+                      select: { orderId: true },
+                      distinct: ['orderId'],
+                  })
+                : [];
+            const ordersWithIssues = new Set(issueRows.map(row => row.orderId));
+
             // Calculate worker stats
-            const workerStats = this.calculateWorkerStats(workerOrders, staffFeedback);
+            const workerStats = this.calculateWorkerStats(workerOrders, staffFeedback, ordersWithIssues);
 
             // Summary
             const summary = {
@@ -2078,7 +2133,7 @@ export default class KpiService {
         }
     }
 
-    private calculateWorkerStats(orders: any[], staffFeedback?: Map<number, any>) {
+    private calculateWorkerStats(orders: any[], staffFeedback?: Map<number, any>, ordersWithIssues?: Set<string>) {
         const workerMap = new Map<number, any>();
 
         orders.forEach(order => {
@@ -2142,11 +2197,19 @@ export default class KpiService {
 
             const staff = staffFeedback?.get(Number(workerId));
 
+            // A claimed job carries claimedAt; anything else was assigned
+            // directly by support
+            const jobsClaimed = orders.filter((o: any) => o.claimedAt).length;
+            const issueOrders = orders.filter((o: any) => ordersWithIssues?.has(o.id)).length;
+
             return {
                 workerId,
                 workerName,
                 discordUsername,
                 totalOrders: total,
+                jobsClaimed,
+                directAssignments: total - jobsClaimed,
+                issueRate: total > 0 ? parseFloat(((issueOrders / total) * 100).toFixed(2)) : 0,
                 completedOrders: completed.length,
                 activeOrders: active.length,
                 avgCompletionMinutes: parseFloat(avgCompletionTime.toFixed(2)),
@@ -2209,26 +2272,16 @@ export default class KpiService {
             orderBy: { createdAt: 'desc' }
         });
 
-        const workerIds = Array.from(
-            new Set(issues.map(i => i.order.workerId).filter((id): id is number => id !== null))
-        );
-
-        const orderCounts = workerIds.length
-            ? await prisma.order.groupBy({
-                  by: ["workerId"],
-                  where: {
-                      workerId: { in: workerIds },
-                      createdAt: gte && lte ? { gte, lte } : undefined,
-                  },
-                  _count: { _all: true },
-              })
-            : [];
-
-        const ordersByWorker = new Map<number, number>(
-            orderCounts
-                .filter(row => row.workerId !== null)
-                .map(row => [row.workerId as number, row._count._all])
-        );
+        // Every worker with orders in the period is listed, with 0 issues when
+        // they had none. Listing only workers with issues made this section say
+        // "0 workers" while Worker Performance showed 2.
+        const workersWithOrders = new Map<number, { worker: any; orders: number }>();
+        orders.forEach((order: any) => {
+            if (!order.workerId) return;
+            const entry = workersWithOrders.get(order.workerId) || { worker: order.worker, orders: 0 };
+            entry.orders++;
+            workersWithOrders.set(order.workerId, entry);
+        });
 
         // Calculate summary
         const summary = {
@@ -2239,7 +2292,7 @@ export default class KpiService {
             closedIssues: issues.filter(i => i.status === 'CLOSED').length,
             urgentIssues: issues.filter(i => i.priority === 'URGENT').length,
             highPriorityIssues: issues.filter(i => i.priority === 'HIGH').length,
-            totalWorkers: new Set(issues.map(i => i.order.workerId).filter(Boolean)).size,
+            totalWorkers: workersWithOrders.size,
             avgIssuesPerWorker: 0,
             avgResolutionTimeHours: 0
         };
@@ -2258,7 +2311,7 @@ export default class KpiService {
         }
 
         // Group issues by worker
-        const workerIssueStats = this.calculateWorkerIssueStats(issues, ordersByWorker);
+        const workerIssueStats = this.calculateWorkerIssueStats(issues, workersWithOrders);
 
         if (workerIssueStats.length > 0) {
             const assignedIssues = issues.filter(i => i.order.workerId !== null).length;
@@ -2335,9 +2388,18 @@ export default class KpiService {
         };
     }
 
-    private calculateWorkerIssueStats(issues: any[], ordersByWorker?: Map<number, number>): any[] {
-        // Group issues by worker
+    private calculateWorkerIssueStats(
+        issues: any[],
+        workersWithOrders: Map<number, { worker: any; orders: number }>
+    ): any[] {
+        // Start from every worker with orders, then add issues on top
         const workerMap = new Map<string, any[]>();
+        const workerInfo = new Map<string, any>();
+
+        workersWithOrders.forEach(({ worker }, workerId) => {
+            workerMap.set(workerId.toString(), []);
+            workerInfo.set(workerId.toString(), worker);
+        });
 
         issues.forEach(issue => {
             if (!issue.order.workerId) return;
@@ -2347,11 +2409,12 @@ export default class KpiService {
                 workerMap.set(workerId, []);
             }
             workerMap.get(workerId)!.push(issue);
+            workerInfo.set(workerId, issue.order.worker);
         });
 
         // Calculate stats for each worker
         return Array.from(workerMap.entries()).map(([workerId, workerIssues]) => {
-            const worker = workerIssues[0].order.worker;
+            const worker = workerInfo.get(workerId);
 
             const openIssues = workerIssues.filter(i => i.status === 'OPEN');
             const inReviewIssues = workerIssues.filter(i => i.status === 'IN_REVIEW');
@@ -2376,16 +2439,18 @@ export default class KpiService {
             }
 
             const uniqueOrders = new Set(workerIssues.map(i => i.orderId)).size;
-            const totalOrders = ordersByWorker?.get(parseInt(workerId)) ?? 0;
+            const totalOrders = workersWithOrders.get(parseInt(workerId))?.orders ?? 0;
             const issueRate = totalOrders > 0
                 ? parseFloat(((uniqueOrders / totalOrders) * 100).toFixed(2))
                 : null;
 
-            const lastIssueDate = workerIssues.reduce(
-                (latest, issue) =>
-                    new Date(issue.createdAt) > new Date(latest) ? issue.createdAt : latest,
-                workerIssues[0].createdAt
-            );
+            const lastIssueDate = workerIssues.length === 0
+                ? null
+                : workerIssues.reduce(
+                    (latest, issue) =>
+                        new Date(issue.createdAt) > new Date(latest) ? issue.createdAt : latest,
+                    workerIssues[0].createdAt
+                );
 
             return {
                 workerId: parseInt(workerId),
@@ -2410,6 +2475,78 @@ export default class KpiService {
     // ORDER COMPLETION TIME KPI
     // ============================================
 
+    /**
+     * KPI plan, Feature 7: time spent at each stage of an order, for orders
+     * created in the period. Each average only uses orders that reached both
+     * ends of that stage. A claimed job counts as assigned when claimed.
+     */
+    async getOrderLifecycle(query: any): Promise<any> {
+        const { period, startDate, endDate } = query;
+        const { gte, lte } = this.calculateDateRange(period, startDate, endDate);
+
+        const orders = await prisma.order.findMany({
+            where: { createdAt: { gte, lte } },
+            select: {
+                createdAt: true,
+                assignedAt: true,
+                claimedAt: true,
+                startedAt: true,
+                completedAt: true,
+                confirmedAt: true,
+                supportId: true,
+                support: { select: { username: true, discordUsername: true, discordDisplayName: true } },
+                ticket: { select: { createdAt: true } },
+            },
+        });
+
+        const minutesBetween = (from?: Date | null, to?: Date | null) =>
+            from && to && to.getTime() >= from.getTime() ? (to.getTime() - from.getTime()) / 60000 : null;
+
+        const STAGES = [
+            { key: 'ticketToOrder', label: 'Ticket → Order', span: (o: any) => minutesBetween(o.ticket?.createdAt, o.createdAt) },
+            { key: 'orderToAssigned', label: 'Order → Assigned', span: (o: any) => minutesBetween(o.createdAt, o.assignedAt || o.claimedAt) },
+            { key: 'assignedToStarted', label: 'Assigned → Started', span: (o: any) => minutesBetween(o.assignedAt || o.claimedAt, o.startedAt) },
+            { key: 'startedToCompleted', label: 'Started → Completed', span: (o: any) => minutesBetween(o.startedAt, o.completedAt) },
+            { key: 'completedToConfirmed', label: 'Completed → Confirmed', span: (o: any) => minutesBetween(o.completedAt, o.confirmedAt) },
+        ];
+
+        const summarise = (list: any[]) =>
+            STAGES.map(stage => {
+                const spans = list.map(stage.span).filter((m): m is number => m !== null);
+                return {
+                    key: stage.key,
+                    label: stage.label,
+                    orders: spans.length,
+                    avgMinutes: spans.length
+                        ? Math.round((spans.reduce((a, b) => a + b, 0) / spans.length) * 10) / 10
+                        : null,
+                };
+            });
+
+        // Same stages per support member who created the orders
+        const bySupport = new Map<number, { name: string; orders: any[] }>();
+        orders.forEach(order => {
+            if (!order.supportId) return;
+            const entry = bySupport.get(order.supportId) || {
+                name: order.support?.discordDisplayName || order.support?.discordUsername || order.support?.username || `#${order.supportId}`,
+                orders: [],
+            };
+            entry.orders.push(order);
+            bySupport.set(order.supportId, entry);
+        });
+
+        return {
+            summary: { period: period || 'monthly', startDate: gte || null, endDate: lte || null, totalOrders: orders.length },
+            stages: summarise(orders),
+            bySupport: Array.from(bySupport.entries()).map(([supportId, entry]) => ({
+                supportId,
+                supportName: entry.name,
+                orders: entry.orders.length,
+                stages: summarise(entry.orders),
+            })),
+        };
+    }
+
     async getOrderCompletionTime(query: any): Promise<any> {
         const { period, startDate, endDate } = query;
         const { gte, lte } = this.calculateDateRange(period, startDate, endDate);
@@ -2417,6 +2554,7 @@ export default class KpiService {
         // Use existing orderService.getOrders() method
         const { list: orders } = await this.orderService.getOrders({
             status: OrderStatus.COMPLETED,
+            dateField: 'completedAt',
             startDate: gte?.toISOString(),
             endDate: lte?.toISOString(),
             page: 1,
@@ -2659,9 +2797,11 @@ export default class KpiService {
         const { period, startDate, endDate } = query;
         const { gte, lte } = this.calculateDateRange(period, startDate, endDate);
 
-        // 1. Get completed orders for revenue calculation
+        // 1. Revenue = orders completed in the period, by completion date. Every
+        // revenue figure in the dashboard uses this same rule.
         const { list: completedOrders } = await this.orderService.getOrders({
             status: OrderStatus.COMPLETED,
+            dateField: 'completedAt',
             startDate: gte?.toISOString(),
             endDate: lte?.toISOString(),
             page: 1,
@@ -2733,7 +2873,7 @@ export default class KpiService {
                 description: expense.description,
                 date: expense.date,
                 reference: expense.reference,
-                createdBy: expense.creator.username
+                createdBy: expense.creator.username || expense.creator.discordUsername
             });
             return acc;
         }, {} as Record<string, any>);
@@ -2747,7 +2887,7 @@ export default class KpiService {
         });
 
         // 8. Monthly trend (if period is long enough)
-        const monthlyTrend = gte && lte ? await this.calculateMonthlyFinancialTrend(gte, lte) : [];
+        const monthlyTrend = gte ? await this.calculateMonthlyFinancialTrend(gte, lte || new Date()) : [];
 
         // 9. Top expenses (largest 10)
         const topExpenses = operationalExpenses
@@ -2759,7 +2899,7 @@ export default class KpiService {
                 amount: parseFloat(expense.amount.toString()),
                 description: expense.description,
                 date: expense.date,
-                createdBy: expense.creator.username
+                createdBy: expense.creator.username || expense.creator.discordUsername
             }));
 
         return {
@@ -2830,15 +2970,17 @@ export default class KpiService {
     // Helper: Calculate monthly financial trend
     private async calculateMonthlyFinancialTrend(gte: Date, lte: Date): Promise<any[]> {
         const months: any[] = [];
-        const current = new Date(gte);
+        const first = businessParts(gte);
 
-        while (current <= lte) {
-            const monthStart = new Date(current.getFullYear(), current.getMonth(), 1);
-            const monthEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0, 23, 59, 59, 999);
+        for (let offset = 0; ; offset++) {
+            const monthStart = businessTime(first.year, first.monthIndex + offset, 1);
+            if (monthStart > lte) break;
+            const monthEnd = new Date(businessTime(first.year, first.monthIndex + offset + 1, 1).getTime() - 1);
 
-            // Get orders for this month
+            // Orders completed in this month
             const { list: orders } = await this.orderService.getOrders({
                 status: OrderStatus.COMPLETED,
+                dateField: 'completedAt',
                 startDate: monthStart.toISOString(),
                 endDate: monthEnd.toISOString(),
                 page: 1,
@@ -2861,15 +3003,13 @@ export default class KpiService {
             const netProfit = grossProfit - operationalCost;
 
             months.push({
-                month: monthStart.toISOString().substring(0, 7), // YYYY-MM
+                month: businessDateKey(monthStart).substring(0, 7), // YYYY-MM
                 revenue,
                 grossProfit,
                 operationalExpenses: operationalCost,
                 netProfit,
                 orders: orders.length
             });
-
-            current.setMonth(current.getMonth() + 1);
         }
 
         return months;
@@ -2918,39 +3058,8 @@ export default class KpiService {
                 },
             });
 
-            const topUsers = lte
-                ? await prisma.$queryRaw<any[]>`
-                    SELECT
-                        discordId,
-                        MAX(username) as username,
-                        MAX(displayName) as displayName,
-                        SUM(messagesCount) as totalMessages,
-                        SUM(reactionsGiven) as totalReactionsGiven,
-                        SUM(reactionsReceived) as totalReactionsReceived,
-                        SUM(helpfulReactions) as totalHelpfulReactions,
-                        SUM(engagementScore) as totalEngagementScore
-                    FROM DiscordEngagement
-                    WHERE date >= ${gte} AND date <= ${lte}
-                    GROUP BY discordId
-                    ORDER BY totalEngagementScore DESC, totalMessages DESC
-                    LIMIT ${Number(limit)}
-                `
-                : await prisma.$queryRaw<any[]>`
-                    SELECT
-                        discordId,
-                        MAX(username) as username,
-                        MAX(displayName) as displayName,
-                        SUM(messagesCount) as totalMessages,
-                        SUM(reactionsGiven) as totalReactionsGiven,
-                        SUM(reactionsReceived) as totalReactionsReceived,
-                        SUM(helpfulReactions) as totalHelpfulReactions,
-                        SUM(engagementScore) as totalEngagementScore
-                    FROM DiscordEngagement
-                    WHERE date >= ${gte}
-                    GROUP BY discordId
-                    ORDER BY totalEngagementScore DESC, totalMessages DESC
-                    LIMIT ${Number(limit)}
-                `;
+            const staffDiscordIds = await getStaffDiscordIds();
+            const topUsers = await this.topEngagedMembers(gte, lte, Number(limit), staffDiscordIds);
 
             const dailyEngagement = await prisma.discordEngagement.groupBy({
                 by: ['date'],
@@ -3036,6 +3145,10 @@ export default class KpiService {
             const activeRanks = await prisma.engagementRank.findMany({
                 where: {
                     active: true,
+                    discordId: { notIn: staffDiscordIds },
+                },
+                include: {
+                    user: { select: { username: true, discordUsername: true, discordDisplayName: true } },
                 },
                 orderBy: {
                     earnedAt: 'desc',
@@ -3046,8 +3159,8 @@ export default class KpiService {
             return {
                     period,
                     dateRange: {
-                        start: gte?.toISOString().split('T')[0] || '',
-                        end: lte?.toISOString().split('T')[0] || '',
+                        start: gte ? businessDateKey(gte) : '',
+                        end: lte ? businessDateKey(lte) : '',
                     },
                     summary: {
                         totalMessages: totalEngagement._sum.messagesCount || 0,
@@ -3055,6 +3168,9 @@ export default class KpiService {
                         totalReactionsReceived: totalEngagement._sum.reactionsReceived || 0,
                         totalHelpfulReactions: totalEngagement._sum.helpfulReactions || 0,
                         totalEngagementScore: Math.round((totalEngagement._sum.engagementScore || 0) * 100) / 100,
+                        avgEngagementScore: uniqueUsers.length > 0
+                            ? Math.round(((totalEngagement._sum.engagementScore || 0) / uniqueUsers.length) * 100) / 100
+                            : 0,
                         activeUsers: uniqueUsers.length,
                         totalRecords: totalEngagement._count.id,
                     },
@@ -3074,6 +3190,7 @@ export default class KpiService {
                         id: rank.id,
                         discordId: rank.discordId,
                         userId: rank.userId,
+                        username: rank.user?.discordDisplayName || rank.user?.discordUsername || rank.user?.username || rank.discordId,
                         rank: rank.rank,
                         reason: rank.reason,
                         earnedAt: rank.earnedAt,
@@ -3091,6 +3208,64 @@ export default class KpiService {
     }
 
     /**
+     * Most engaged community members in the range, staff excluded. Staff and
+     * the company account are not members to reward, so they stay out of the
+     * leaderboard. (The raw SQL this replaces returned nothing for "all
+     * time": with no start date it compared date >= NULL.)
+     */
+    private async topEngagedMembers(
+        gte: Date | undefined,
+        lte: Date | undefined,
+        limit: number,
+        staffDiscordIds: string[]
+    ) {
+        const groups = await prisma.discordEngagement.groupBy({
+            by: ['discordId'],
+            where: {
+                date: { gte, lte },
+                discordId: { notIn: staffDiscordIds },
+            },
+            _sum: {
+                messagesCount: true,
+                reactionsGiven: true,
+                reactionsReceived: true,
+                helpfulReactions: true,
+                engagementScore: true,
+            },
+            // One row per member per day, so the row count is days active
+            _count: { _all: true },
+            orderBy: [
+                { _sum: { engagementScore: 'desc' } },
+                { _sum: { messagesCount: 'desc' } },
+            ],
+            take: limit,
+        });
+
+        // Latest name each member was seen with
+        const nameRows = await prisma.discordEngagement.findMany({
+            where: { discordId: { in: groups.map(g => g.discordId) } },
+            orderBy: { date: 'desc' },
+            select: { discordId: true, username: true, displayName: true },
+        });
+        const names = new Map<string, { username: string; displayName: string | null }>();
+        nameRows.forEach(row => {
+            if (!names.has(row.discordId)) names.set(row.discordId, row);
+        });
+
+        return groups.map(group => ({
+            discordId: group.discordId,
+            username: names.get(group.discordId)?.username || null,
+            displayName: names.get(group.discordId)?.displayName || null,
+            totalMessages: group._sum.messagesCount || 0,
+            totalReactionsGiven: group._sum.reactionsGiven || 0,
+            totalReactionsReceived: group._sum.reactionsReceived || 0,
+            totalHelpfulReactions: group._sum.helpfulReactions || 0,
+            totalEngagementScore: group._sum.engagementScore || 0,
+            activeDays: group._count._all,
+        }));
+    }
+
+    /**
      * Get top engaged users
      */
     async getTopEngagedUsers(query: any): Promise<any> {
@@ -3098,35 +3273,12 @@ export default class KpiService {
             const { period = 'monthly', startDate, endDate, limit = 10 } = query;
             const { gte, lte } = this.calculateDateRange(period, startDate, endDate);
 
-            const topUsers = await prisma.$queryRaw<any[]>`
-                SELECT
-                    discordId,
-                    MAX(username) as username,
-                    MAX(displayName) as displayName,
-                    SUM(messagesCount) as totalMessages,
-                    SUM(reactionsGiven) as totalReactionsGiven,
-                    SUM(reactionsReceived) as totalReactionsReceived,
-                    SUM(helpfulReactions) as totalHelpfulReactions,
-                    SUM(engagementScore) as totalEngagementScore,
-                    COUNT(DISTINCT date) as activeDays
-                FROM DiscordEngagement
-                WHERE date >= ${gte} AND date <= ${lte}
-                GROUP BY discordId
-                ORDER BY totalEngagementScore DESC
-                LIMIT ${Number(limit)}
-            `;
+            const topUsers = await this.topEngagedMembers(gte, lte, Number(limit), await getStaffDiscordIds());
 
             return topUsers.map(user => ({
-                    discordId: user.discordId,
-                    username: user.username,
-                    displayName: user.displayName,
-                    totalMessages: Number(user.totalMessages),
-                    totalReactionsGiven: Number(user.totalReactionsGiven),
-                    totalReactionsReceived: Number(user.totalReactionsReceived),
-                    totalHelpfulReactions: Number(user.totalHelpfulReactions),
-                    totalEngagementScore: Math.round(Number(user.totalEngagementScore) * 100) / 100,
-                    activeDays: Number(user.activeDays),
-                }))
+                ...user,
+                totalEngagementScore: Math.round(user.totalEngagementScore * 100) / 100,
+            }));
         } catch (error) {
             logger.error('[KPI Service] Error getting top engaged users:', error);
             return {
