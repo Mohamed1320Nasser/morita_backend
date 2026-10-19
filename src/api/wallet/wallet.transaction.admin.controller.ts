@@ -10,6 +10,7 @@ import prisma from "../../common/prisma/client";
 import { GetTransactionHistoryDto } from "./dtos";
 import logger from "../../common/loggers";
 import { Decimal } from "@prisma/client/runtime/library";
+import { parseRangeEnd, parseRangeStart } from "../../common/utils/businessTime.util";
 import API from "../../common/config/api.types";
 
 // Admin Transaction Controller (for transaction management in admin panel)
@@ -85,11 +86,12 @@ export default class AdminTransactionController {
             // Date range filter
             if (query.startDate || query.endDate) {
                 where.createdAt = {};
+                // Whole days on the business clock, so "to" includes that day
                 if (query.startDate) {
-                    where.createdAt.gte = new Date(query.startDate);
+                    where.createdAt.gte = parseRangeStart(query.startDate);
                 }
                 if (query.endDate) {
-                    where.createdAt.lte = new Date(query.endDate);
+                    where.createdAt.lte = parseRangeEnd(query.endDate);
                 }
             }
 
@@ -131,6 +133,8 @@ export default class AdminTransactionController {
                                 id: true,
                                 username: true,
                                 email: true,
+                                discordUsername: true,
+                                discordDisplayName: true,
                             },
                         },
                         order: {
@@ -527,11 +531,12 @@ export default class AdminTransactionController {
 
             if (query.startDate || query.endDate) {
                 where.createdAt = {};
+                // Whole days on the business clock, so "to" includes that day
                 if (query.startDate) {
-                    where.createdAt.gte = new Date(query.startDate);
+                    where.createdAt.gte = parseRangeStart(query.startDate);
                 }
                 if (query.endDate) {
-                    where.createdAt.lte = new Date(query.endDate);
+                    where.createdAt.lte = parseRangeEnd(query.endDate);
                 }
             }
 

@@ -1011,10 +1011,18 @@ export default class KpiService {
                 lte
             );
 
+            // Day x hour grid for the heatmap: heatmap[weekday][hour], with
+            // weekday 0 = Sunday, on the business clock
+            const heatmap = Array.from({ length: 7 }, () => new Array(24).fill(0));
+            tickets.forEach(ticket => {
+                heatmap[businessWeekday(ticket.createdAt)][businessHour(ticket.createdAt)]++;
+            });
+
             return {
                 summary,
                 hourlyDistribution,
                 dailyDistribution,
+                heatmap,
                 peakTimesByType
             };
 
@@ -2039,8 +2047,18 @@ export default class KpiService {
             // than being folded into them.
             const staffFeedback = await this.workerFeedbackService.summaryByWorker(gte, lte);
 
+            // Orders that had at least one issue reported, for the issue rate
+            const issueRows = workerOrders.length
+                ? await prisma.orderIssue.findMany({
+                      where: { orderId: { in: workerOrders.map((o: any) => o.id) } },
+                      select: { orderId: true },
+                      distinct: ['orderId'],
+                  })
+                : [];
+            const ordersWithIssues = new Set(issueRows.map(row => row.orderId));
+
             // Calculate worker stats
-            const workerStats = this.calculateWorkerStats(workerOrders, staffFeedback);
+            const workerStats = this.calculateWorkerStats(workerOrders, staffFeedback, ordersWithIssues);
 
             // Summary
             const summary = {
@@ -2063,7 +2081,7 @@ export default class KpiService {
         }
     }
 
-    private calculateWorkerStats(orders: any[], staffFeedback?: Map<number, any>) {
+    private calculateWorkerStats(orders: any[], staffFeedback?: Map<number, any>, ordersWithIssues?: Set<string>) {
         const workerMap = new Map<number, any>();
 
         orders.forEach(order => {
@@ -2127,11 +2145,19 @@ export default class KpiService {
 
             const staff = staffFeedback?.get(Number(workerId));
 
+            // A claimed job carries claimedAt; anything else was assigned
+            // directly by support
+            const jobsClaimed = orders.filter((o: any) => o.claimedAt).length;
+            const issueOrders = orders.filter((o: any) => ordersWithIssues?.has(o.id)).length;
+
             return {
                 workerId,
                 workerName,
                 discordUsername,
                 totalOrders: total,
+                jobsClaimed,
+                directAssignments: total - jobsClaimed,
+                issueRate: total > 0 ? parseFloat(((issueOrders / total) * 100).toFixed(2)) : 0,
                 completedOrders: completed.length,
                 activeOrders: active.length,
                 avgCompletionMinutes: parseFloat(avgCompletionTime.toFixed(2)),

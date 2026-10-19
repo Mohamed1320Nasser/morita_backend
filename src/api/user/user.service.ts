@@ -455,6 +455,13 @@ export default class UserService {
                     }
                 },
                 loyaltyTier: true,
+                tosAcceptances: {
+                    orderBy: { acceptedAt: 'desc' },
+                    select: {
+                        acceptedAt: true,
+                        tos: { select: { title: true, version: true, isActive: true } },
+                    },
+                },
                 customerOrders: {
                     orderBy: { createdAt: 'desc' }
                 },
@@ -564,7 +571,14 @@ export default class UserService {
             orders,
             tickets,
             activity,
-            charts
+            charts,
+            // Which Terms of Service versions the member accepted, and when
+            terms: (user.tosAcceptances || []).map((row: any) => ({
+                title: row.tos.title,
+                version: row.tos.version,
+                isCurrent: row.tos.isActive,
+                acceptedAt: row.acceptedAt,
+            })),
         };
     }
 
