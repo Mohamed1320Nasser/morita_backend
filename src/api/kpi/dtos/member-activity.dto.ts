@@ -31,7 +31,7 @@ export class RecordMemberActivityDto {
 }
 
 export class MemberGrowthQueryDto {
-    @IsEnum(['daily', 'weekly', 'monthly', 'quarterly', 'yearly'])
+    @IsEnum(['all', 'daily', 'weekly', 'monthly', 'quarterly', 'yearly'])
     @IsOptional()
     period?: string = 'monthly';
 

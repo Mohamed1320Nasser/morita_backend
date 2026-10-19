@@ -43,6 +43,9 @@ async function send(client: Client, embed: EmbedBuilder, files: AttachmentBuilde
         }
         // Mentions inside embeds never ping; allowedMentions keeps it that way
         await channel.send({ embeds: [embed.toJSON() as any], files, allowedMentions: { parse: [] } });
+        // Names the channel, so a wrong or missing DISCORD_TICKET_LOG_CHANNEL_ID
+        // (logs landing in the general logs channel) shows up in the bot logs
+        logger.info(`[TicketLog] Posted "${embed.data.title}" to #${channel.name}${files.length ? " with transcript" : ""}`);
     } catch (error: any) {
         logger.warn(`[TicketLog] Could not post ticket log: ${error?.message || error}`);
     }

@@ -4,6 +4,7 @@ import {
     IsNumber,
     IsOptional,
     IsEnum,
+    IsIn,
 } from "class-validator";
 import { OrderStatus } from "./common.dto";
 import { getListDto } from "../../common/dtos/getList.dto";
@@ -43,6 +44,12 @@ export class GetOrderListDto extends getListDto {
     @IsOptional()
     @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
     endDate?: string;
+
+    // Which date startDate/endDate filter on: when the order was created, or
+    // when it was completed (revenue is counted when an order completes)
+    @IsIn(["createdAt", "completedAt"])
+    @IsOptional()
+    dateField?: "createdAt" | "completedAt";
 
     @IsString()
     @IsOptional()

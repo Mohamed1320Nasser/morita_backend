@@ -8,6 +8,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { TrackReferralDto, GiveRewardDto, GetReferralsDto } from './dtos';
 import ReferralRewardService from '../referralReward/referral-reward.service';
 import { TransactionClient } from '../../common/utils/transaction.util';
+import { isStaffUser, nonStaffUserWhere } from '../../common/utils/staff.util';
 import ReferralOrderRewardService, { ReferralOrderPayout } from './referral-order-reward.service';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -113,12 +114,12 @@ export default class ReferralService {
   async trackReferral(dto: TrackReferralDto) {
     // Personal invites are created by the bot, so Discord reports the bot as the
     // inviter. The invite-code mapping is the source of truth for who owns it.
-    let referrer: { id: number; discordId: string | null; referredByUserId: number | null } | null = null;
+    let referrer: { id: number; discordId: string | null; referredByUserId: number | null; discordRole: string | null; role: string } | null = null;
 
     if (dto.inviteCode) {
       const invite = await prisma.discordInvite.findUnique({
         where: { inviteCode: dto.inviteCode },
-        include: { user: { select: { id: true, discordId: true, referredByUserId: true } } },
+        include: { user: { select: { id: true, discordId: true, referredByUserId: true, discordRole: true, role: true } } },
       });
       if (invite?.user) {
         referrer = invite.user;
@@ -128,12 +129,18 @@ export default class ReferralService {
     if (!referrer && dto.referrerDiscordId) {
       referrer = await prisma.user.findUnique({
         where: { discordId: dto.referrerDiscordId },
-        select: { id: true, discordId: true, referredByUserId: true },
+        select: { id: true, discordId: true, referredByUserId: true, discordRole: true, role: true },
       });
     }
 
     if (!referrer || !referrer.discordId) {
       throw new NotFoundError(`Referrer not found`);
+    }
+
+    // Staff and the company account invite people as part of the job (manual
+    // server invites); those joins are not customer referrals.
+    if (isStaffUser(referrer)) {
+      throw new BadRequestError('Invites from staff accounts are not referrals');
     }
 
     const referrerDiscordId = referrer.discordId;
@@ -331,6 +338,14 @@ export default class ReferralService {
 
     if (referral.hasLeftServer) {
       return 'Member left the server';
+    }
+
+    const referrerAccount = await tx.user.findUnique({
+      where: { id: referral.referrerId },
+      select: { discordRole: true, role: true },
+    });
+    if (isStaffUser(referrerAccount)) {
+      return 'Staff accounts do not earn referral rewards';
     }
 
     if (config.requireOnboarding && !referral.onboardedAt) {
@@ -704,7 +719,7 @@ export default class ReferralService {
 
   async getLeaderboard(limit: number = 10, sortBy: string = 'total') {
     const topReferrers = await prisma.user.findMany({
-      where: { referrals: { some: {} } },
+      where: { referrals: { some: {} }, ...nonStaffUserWhere },
       orderBy: { referrals: { _count: 'desc' } },
       // Over-fetch so the alternative sorts have something to reorder
       take: limit * 3,
@@ -761,7 +776,8 @@ export default class ReferralService {
     const limit = dto.limit || 20;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.ReferralWhereInput = {};
+    // Staff invites are part of the job, not referrals
+    const where: Prisma.ReferralWhereInput = { referrer: nonStaffUserWhere };
 
     // Status filter takes precedence over the individual boolean filters
     if (dto.status && dto.status !== 'all') {
@@ -901,8 +917,10 @@ export default class ReferralService {
     } as const;
 
     // Recent bursts, regardless of whether anything has been paid yet
+    // Staff accounts are left out: the company account's manual invites were
+    // flagged as a referral burst
     const recentReferrers = await prisma.user.findMany({
-      where: { referrals: { some: { joinedAt: { gte: twentyFourHoursAgo } } } },
+      where: { referrals: { some: { joinedAt: { gte: twentyFourHoursAgo } } }, ...nonStaffUserWhere },
       select: {
         ...userSelect,
         _count: { select: { referrals: { where: { joinedAt: { gte: twentyFourHoursAgo } } } } },
@@ -912,7 +930,7 @@ export default class ReferralService {
     });
 
     const allTopReferrers = await prisma.user.findMany({
-      where: { referrals: { some: {} } },
+      where: { referrals: { some: {} }, ...nonStaffUserWhere },
       select: userSelect,
       orderBy: { referrals: { _count: 'desc' } },
       take: 10,
@@ -923,6 +941,7 @@ export default class ReferralService {
       Promise.all(allTopReferrers.map((u) => describe(u))),
     ]);
 
+    const customerReferral: Prisma.ReferralWhereInput = { referrer: nonStaffUserWhere };
     const [
       totalReferrals,
       pendingReferrals,
@@ -932,15 +951,15 @@ export default class ReferralService {
       last24hReferrals,
       last7dReferrals,
     ] = await Promise.all([
-      prisma.referral.count(),
+      prisma.referral.count({ where: customerReferral }),
       prisma.referral.count({
-        where: { rewardGiven: false, rewardEligible: true, onboardedAt: { not: null }, hasLeftServer: false },
+        where: { ...customerReferral, rewardGiven: false, rewardEligible: true, onboardedAt: { not: null }, hasLeftServer: false },
       }),
-      prisma.referral.count({ where: { onboardedAt: null } }),
-      prisma.referral.count({ where: { rewardGiven: true } }),
-      prisma.referral.count({ where: { hasLeftServer: true } }),
-      prisma.referral.count({ where: { joinedAt: { gte: twentyFourHoursAgo } } }),
-      prisma.referral.count({ where: { joinedAt: { gte: sevenDaysAgo } } }),
+      prisma.referral.count({ where: { ...customerReferral, onboardedAt: null } }),
+      prisma.referral.count({ where: { ...customerReferral, rewardGiven: true } }),
+      prisma.referral.count({ where: { ...customerReferral, hasLeftServer: true } }),
+      prisma.referral.count({ where: { ...customerReferral, joinedAt: { gte: twentyFourHoursAgo } } }),
+      prisma.referral.count({ where: { ...customerReferral, joinedAt: { gte: sevenDaysAgo } } }),
     ]);
 
     return {

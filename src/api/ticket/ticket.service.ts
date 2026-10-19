@@ -519,6 +519,10 @@ export default class TicketService {
         const terminalStatuses: TicketStatus[] = [TicketStatus.COMPLETED, TicketStatus.CANCELLED, TicketStatus.CLOSED];
         if (terminalStatuses.includes(data.status)) {
             updateData.closedAt = new Date();
+            // The reason was shown in Discord and then lost
+            if (data.reason?.trim()) {
+                updateData.closeReason = data.reason.trim().slice(0, 500);
+            }
         }
 
         const updatedTicket = await prisma.ticket.update({

@@ -26,6 +26,23 @@ import { PAYOUT_STRUCTURE, FINANCIAL_LIMITS, isValidAmount } from "../../common/
 import { InsufficientBalanceError } from "../../common/utils/errorHandler.util";
 import { OrderStatus as PrismaOrderStatus } from "@prisma/client";
 import axios from "axios";
+import {
+    businessDateKey,
+    businessParts,
+    businessTime,
+    parseRangeEnd,
+    parseRangeStart,
+    startOfBusinessDay,
+} from "../../common/utils/businessTime.util";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// The worker's share of an order as saved when the order was created (the
+// split in System Settings at that time), e.g. 70 for 70%
+const workerSharePercent = (order: { orderValue: any; workerPayout: any }) => {
+    const value = Number(order.orderValue);
+    return value > 0 ? Math.round((Number(order.workerPayout) / value) * 1000) / 10 : 0;
+};
 
 /** e.g. "Returned 15.00 to deposit, 5.00 to balance" */
 function depositReturnNote(release: { toBalance: number; toDeposit: number }): string {
@@ -631,6 +648,15 @@ export default class OrderService {
             logger.info(`[OrderService] Filtering by ticketId: ${ticketId}`);
         }
 
+        // The KPI pages pass a period here; ignoring it made every report
+        // count all orders ever, whatever period was picked.
+        if (query.startDate || query.endDate) {
+            where[query.dateField || "createdAt"] = {
+                ...(query.startDate && { gte: parseRangeStart(query.startDate) }),
+                ...(query.endDate && { lte: parseRangeEnd(query.endDate) }),
+            };
+        }
+
         // Match the service wherever it appears on the order, not only when it
         // happens to be the primary one. Nested under AND so it stays a separate
         // condition from the search OR rather than widening it.
@@ -669,6 +695,8 @@ export default class OrderService {
                                 fullname: true,
                                 username: true,
                                 discordId: true,
+                                discordUsername: true,
+                                discordDisplayName: true,
                             },
                         },
                         service: true,
@@ -1696,7 +1724,7 @@ export default class OrderService {
                     balanceBefore: release.balanceAfter,
                     balanceAfter: new Decimal(release.balanceAfter).add(workerPayout).toNumber(),
                     status: "COMPLETED",
-                    reference: `Order #${order.orderNumber} - Payment (80%)`,
+                    reference: `Order #${order.orderNumber} - Payment (${workerSharePercent(order)}%)`,
                     notes: `Worker earnings`,
                     createdById: order.customerId,
                 },
@@ -1967,66 +1995,125 @@ export default class OrderService {
         };
     }
 
-    async getOrderVolumeStats(query: { days?: number; startDate?: string; endDate?: string }) {
-        let startDate: Date;
-        let endDate: Date;
-        let days: number;
-
+    /**
+     * Reports range on the business clock: either startDate..endDate (whole
+     * days) or the last `days` days including today.
+     */
+    private reportRange(query: { days?: number; startDate?: string; endDate?: string }) {
         if (query.startDate && query.endDate) {
-            startDate = new Date(query.startDate);
-            startDate.setHours(0, 0, 0, 0);
-            endDate = new Date(query.endDate);
-            endDate.setHours(23, 59, 59, 999);
-            days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-        } else {
-            days = query.days || 30;
-            startDate = new Date();
-            startDate.setDate(startDate.getDate() - days);
-            startDate.setHours(0, 0, 0, 0);
-            endDate = new Date();
-            endDate.setHours(23, 59, 59, 999);
+            const startDate = parseRangeStart(query.startDate);
+            const endDate = parseRangeEnd(query.endDate);
+            const days = Math.round((startOfBusinessDay(endDate).getTime() - startDate.getTime()) / DAY_MS) + 1;
+            return { startDate, endDate, days };
         }
 
-        const orders = await prisma.order.findMany({
-            where: {
-                createdAt: {
-                    gte: startDate,
-                    lte: endDate,
+        const days = Number(query.days) || 30;
+        const today = businessParts(new Date());
+        const startDate = businessTime(today.year, today.monthIndex, today.day - (days - 1));
+        const endDate = new Date();
+        return { startDate, endDate, days };
+    }
+
+    /**
+     * Daily order volume and revenue for the Reports page. `count` is orders
+     * created that day; `value` is revenue, i.e. orders completed that day, the
+     * same rule as the KPI and home pages. (It used to add up every order
+     * created, pending and cancelled included, so Reports showed more revenue
+     * than the rest of the dashboard.)
+     */
+    async getOrderVolumeStats(query: { days?: number; startDate?: string; endDate?: string }) {
+        const { startDate, endDate, days } = this.reportRange(query);
+
+        const [created, completed] = await Promise.all([
+            prisma.order.findMany({
+                where: { createdAt: { gte: startDate, lte: endDate } },
+                select: { createdAt: true },
+            }),
+            prisma.order.findMany({
+                where: {
+                    status: "COMPLETED",
+                    completedAt: { gte: startDate, lte: endDate },
                 },
-            },
-            select: {
-                createdAt: true,
-                orderValue: true,
-                status: true,
-            },
-            orderBy: { createdAt: "asc" },
+                select: { completedAt: true, orderValue: true },
+            }),
+        ]);
+
+        const volumeByDate = new Map<string, { count: number; completed: number; value: number }>();
+        const bucket = (key: string) => {
+            if (!volumeByDate.has(key)) volumeByDate.set(key, { count: 0, completed: 0, value: 0 });
+            return volumeByDate.get(key)!;
+        };
+
+        created.forEach((order) => {
+            bucket(businessDateKey(order.createdAt)).count++;
+        });
+        completed.forEach((order) => {
+            const day = bucket(businessDateKey(order.completedAt!));
+            day.completed++;
+            day.value += parseFloat(order.orderValue.toString());
         });
 
-        const volumeByDate = new Map<string, { count: number; value: number }>();
-
-        orders.forEach((order) => {
-            const dateKey = order.createdAt.toISOString().split("T")[0];
-            const existing = volumeByDate.get(dateKey) || { count: 0, value: 0 };
-            volumeByDate.set(dateKey, {
-                count: existing.count + 1,
-                value: existing.value + parseFloat(order.orderValue.toString()),
-            });
-        });
-
+        const first = businessParts(startDate);
         const result = [];
         for (let i = 0; i < days; i++) {
-            const date = new Date(startDate);
-            date.setDate(date.getDate() + i);
-            const dateKey = date.toISOString().split("T")[0];
-            const data = volumeByDate.get(dateKey) || { count: 0, value: 0 };
+            const dateKey = businessDateKey(businessTime(first.year, first.monthIndex, first.day + i, 12));
+            const data = volumeByDate.get(dateKey) || { count: 0, completed: 0, value: 0 };
             result.push({
                 date: dateKey,
                 count: data.count,
-                value: data.value,
+                completed: data.completed,
+                value: Math.round(data.value * 100) / 100,
             });
         }
 
         return result;
+    }
+
+    /**
+     * Performance metrics for the Reports page, for orders created in the
+     * range. Times are averages in minutes over the orders that reached both
+     * steps; success rate is completed / (completed + cancelled).
+     */
+    async getOrderPerformanceStats(query: { days?: number; startDate?: string; endDate?: string }) {
+        const { startDate, endDate } = this.reportRange(query);
+
+        const orders = await prisma.order.findMany({
+            where: { createdAt: { gte: startDate, lte: endDate } },
+            select: {
+                status: true,
+                createdAt: true,
+                assignedAt: true,
+                claimedAt: true,
+                completedAt: true,
+                confirmedAt: true,
+            },
+        });
+
+        const averageMinutes = (pairs: Array<[Date | null, Date | null]>) => {
+            const spans = pairs
+                .filter(([from, to]) => from && to && to.getTime() >= from.getTime())
+                .map(([from, to]) => (to!.getTime() - from!.getTime()) / 60000);
+            return spans.length > 0
+                ? Math.round((spans.reduce((sum, m) => sum + m, 0) / spans.length) * 10) / 10
+                : 0;
+        };
+
+        // A claimed job is assigned when the claim goes through
+        const assignedAt = (o: (typeof orders)[number]) => o.assignedAt || o.claimedAt;
+
+        const completedOrders = orders.filter((o) => o.status === "COMPLETED").length;
+        const cancelledOrders = orders.filter((o) => o.status === "CANCELLED").length;
+        const finished = completedOrders + cancelledOrders;
+
+        return {
+            totalOrders: orders.length,
+            completedOrders,
+            cancelledOrders,
+            successRate: finished > 0 ? Math.round((completedOrders / finished) * 1000) / 10 : 0,
+            avgTimeToAssign: averageMinutes(orders.map((o) => [o.createdAt, assignedAt(o)])),
+            avgTimeToComplete: averageMinutes(orders.map((o) => [assignedAt(o), o.completedAt])),
+            avgTimeToConfirm: averageMinutes(orders.map((o) => [o.completedAt, o.confirmedAt])),
+        };
     }
 
     async getRecentActivity() {

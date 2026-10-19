@@ -3,6 +3,7 @@ import prisma from "../../common/prisma/client";
 import { UpdateConfigDto, ClaimStatus, ClaimResult } from "./dtos";
 import { BadRequestError } from "routing-controllers";
 import logger from "../../common/loggers";
+import { isStaffUser } from "../../common/utils/staff.util";
 import { Decimal } from "@prisma/client/runtime/library";
 
 const DEFAULT_CONFIG_ID = "default-config";
@@ -210,6 +211,10 @@ export default class DailyRewardService {
 
         if (!user) {
             return { success: false, error: "User not found. Please complete onboarding first." };
+        }
+
+        if (isStaffUser(user)) {
+            return { success: false, error: "Daily rewards are for customers; staff accounts cannot claim them." };
         }
 
         const status = await this.getClaimStatus(discordId);

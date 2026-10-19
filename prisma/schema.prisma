@@ -763,6 +763,8 @@ model Ticket {
   createdAt         DateTime     @default(now()) @db.DateTime(0)
   updatedAt         DateTime     @default(now()) @updatedAt @db.DateTime(0)
   closedAt          DateTime?    @db.DateTime(0)
+  // Why the ticket was closed, as typed by whoever closed it
+  closeReason       String?      @db.VarChar(500)
   // HTML transcript saved at close (private storage, served to admins only)
   transcriptFile      String?    @db.VarChar(255)
   transcriptCreatedAt DateTime?  @db.DateTime(0)
